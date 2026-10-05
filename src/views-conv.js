@@ -42,7 +42,7 @@ function convTable(list, key, showOwner) {
 }
 
 function viewConversations() {
-  const fp = App.focus ? DB.people.get(App.focus) : null;
+  const fp = focusPerson();
   const list = fp ? fp.conversations : DB.conversations;
   return `<div class="page">
     <div class="page-head"><div class="grow"><h1>Conversations</h1>
@@ -145,7 +145,12 @@ function viewConversation(id) {
   const offBranch = totalMsgs - path.length;
   const outputs = collectOutputs(conv);
 
-  after(() => drawThread(conv, { q, target }));
+  after(() => {
+    drawThread(conv, { q, target });
+    // drawThread runs again on branch switches, so the sticky toolbar is wired here, once.
+    const main = $('#main'), tb = $('#conv-toolbar');
+    if (tb) main.addEventListener('scroll', () => tb.classList.toggle('stuck', main.scrollTop > 120), { passive: true, signal: VIEW.ac.signal });
+  });
 
   return `<div class="page narrow">
     <div class="crumbs"><a href="#/conversations">Conversations</a><span>›</span>${p && !p.system ? `${personLink(p)}<span>›</span>` : ''}<span class="ellipsis" style="max-width:420px" dir="auto">${esc(conv.title || 'Untitled')}</span></div>
@@ -197,12 +202,15 @@ function threadAnchor() {
   return null;
 }
 
+// Counts thread draws; a newer draw (branch switch, option change) stops the batches of an older one.
+let threadSeq = 0;
+
 /* opts: q (highlight), target (message to scroll to and flash),
  *       anchor {id, top} (keep this message at the same screen position after a redraw). */
 function drawThread(conv, opts) {
   const thread = $('#thread');
   if (!thread) return;
-  const tok = thread._tok = (thread._tok || 0) + 1;
+  const tok = ++threadSeq;
   const path = currentPath(conv);
   const terms = opts.q ? searchTerms(opts.q) : [];
   const ctx = { conv, created: createdFilesIndex(conv) };
@@ -232,10 +240,9 @@ function drawThread(conv, opts) {
       if (hc) hc.textContent = hits ? `${hits} match${hits === 1 ? '' : 'es'} shown` : 'no visible matches (they may be inside collapsed blocks)';
     }
   };
-  // Render the rest in small slices so long chats open instantly. A newer draw
-  // (branch switch, toggle) bumps the token and stops this one.
+  // Render the rest in small slices so long chats open instantly.
   const pump = () => {
-    if (!thread.isConnected || thread._tok !== tok) return;
+    if (!thread.isConnected || threadSeq !== tok) return;
     if (i < path.length) { renderBatch(25); setTimeout(pump, 16); } else finish();
   };
   if (i < path.length) setTimeout(pump, 30); else finish();
@@ -252,13 +259,6 @@ function drawThread(conv, opts) {
       const firstMark = el.querySelector('mark');
       if (firstMark) firstMark.scrollIntoView({ block: 'center' });
     }
-  }
-  if (!thread._scrollBound) {
-    thread._scrollBound = true;
-    const tb = $('#conv-toolbar');
-    const onScroll = () => { if (tb) tb.classList.toggle('stuck', main.scrollTop > 120); };
-    main.addEventListener('scroll', onScroll, { passive: true });
-    App.cleanup.push(() => main.removeEventListener('scroll', onScroll));
   }
 }
 
@@ -307,7 +307,7 @@ function humanBody(m, ctx) {
   for (const t of texts) {
     if (t.length > HUMAN_FOLD) {
       // The preview stays; opening the box adds only the rest of the text.
-      const k = lazyKey(() => `<div dir="auto" style="white-space:pre-wrap">${plainTextHtml(t.slice(HUMAN_FOLD))}</div>`);
+      const k = viewKey(() => `<div dir="auto" style="white-space:pre-wrap">${plainTextHtml(t.slice(HUMAN_FOLD))}</div>`);
       parts.push(`<div dir="auto" style="white-space:pre-wrap">${plainTextHtml(t.slice(0, HUMAN_FOLD))}</div>
         <details class="blk" data-lazy="${k}"><summary><span class="lbl">Show the rest of the message</span><span class="meta">${fmtBytes(t.length - HUMAN_FOLD)} more</span></summary><div class="blk-body"></div></details>`);
     } else {
@@ -317,7 +317,7 @@ function humanBody(m, ctx) {
   if (CONV_OPTS.showSystem) {
     for (const b of blocks) {
       if (b && b.type === 'injected_prompt_block') {
-        const k = lazyKey(() => preHtml(b.prompt || '', { wrap: true }));
+        const k = viewKey(() => preHtml(b.prompt || '', { wrap: true }));
         parts.push(`<details class="blk thinking" data-lazy="${k}"><summary><span class="lbl">System note</span><span class="desc">${esc(b.injection_source || '')} — added by the platform, not typed by the person</span><span class="meta">${fmtBytes((b.prompt || '').length)}</span></summary><div class="blk-body"></div></details>`);
       }
     }
@@ -336,7 +336,7 @@ function filesHtml(m) {
   for (const a of atts) {
     const name = a.file_name || 'Pasted text';
     const content = a.extracted_content || '';
-    const k = lazyKey(() => /\.(md|markdown)$/i.test(a.file_name || '') || /markdown/.test(a.file_type || '')
+    const k = viewKey(() => /\.(md|markdown)$/i.test(a.file_name || '') || /markdown/.test(a.file_type || '')
       ? `<div class="row" style="margin-bottom:6px"><span class="muted" style="font-size:12.5px">Rendered Markdown</span></div>${mdBlock(content)}`
       : preHtml(content, { wrap: true }));
     out.push(`<details class="blk attach" data-lazy="${k}"><summary><span class="lbl" dir="auto">${esc(name)}</span><span class="desc">${esc(a.file_type || '')}</span><span class="meta">${fmtBytes(a.file_size || content.length)}</span></summary><div class="blk-body"></div></details>`);
@@ -410,7 +410,7 @@ function assistantBody(m, ctx) {
     } else if (b.type === 'token_budget') {
       continue;
     } else if (b.type !== 'injected_prompt_block') {
-      const k = lazyKey(() => preHtml(jsonPretty(b)));
+      const k = viewKey(() => preHtml(jsonPretty(b)));
       out.push(`<details class="blk" data-lazy="${k}"><summary><span class="lbl">${esc(b.type || 'block')}</span></summary><div class="blk-body"></div></details>`);
     }
   }
@@ -452,7 +452,7 @@ function thinkingHtml(b) {
   const dur = t0 && t1 && t1 > t0 ? fmtDuration(t1 - t0) : '';
   const label = sums.length ? sums[sums.length - 1] : (b.thinking ? truncate(oneLine(b.thinking), 120) : 'Thinking');
   const hidden = b.thinking_hidden || !b.thinking;
-  const k = lazyKey(() => {
+  const k = viewKey(() => {
     let h = '';
     if (b.thinking) h += `<div class="md" dir="auto">${mdToHtml(b.thinking)}</div>`;
     else h += `<p class="faint">The thinking text itself is not in the export${sums.length ? '; only these summaries remain' : ''}.</p>`;
@@ -496,7 +496,7 @@ function toolCallHtml(use, res, ctx) {
   if (special) return special;
 
   const desc = toolInputSummary(name, input) || use.message || '';
-  const k = lazyKey(() => toolBodyHtml(use, res, ctx));
+  const k = viewKey(() => toolBodyHtml(use, res, ctx));
   return `<details class="blk tool${error ? ' result error' : ''}" data-lazy="${k}" id="t-${esc(use.id || '')}">
     <summary><span class="lbl">${esc(toolLabel(name))}</span>${integ ? `<span class="faint" style="flex:none">${esc(integ)}</span>` : ''}<span class="desc" dir="auto">${esc(truncate(oneLine(desc), 160))}</span>
     <span class="meta">${error ? `<b style="color:var(--err)">failed${errType ? ' · ' + esc(errType) : ''}</b> ` : ''}${!res ? 'no result ' : ''}${dur}</span></summary>
@@ -573,7 +573,7 @@ function toolResultHtml(res, ctx) {
       out.push(linkifyChats(preHtml(prettyMaybeJson(t), { wrap: true })));
     } else if (it.type === 'knowledge') {
       // The page text Claude read is in the export: show it on demand.
-      const k = lazyKey(() => `<p style="margin:0 0 6px"><a href="${esc(safeUrl(it.url))}" target="_blank" rel="noopener noreferrer">${esc(it.url || '')}</a></p>` + preHtml(it.text || '', { wrap: true }));
+      const k = viewKey(() => `<p style="margin:0 0 6px"><a href="${esc(safeUrl(it.url))}" target="_blank" rel="noopener noreferrer">${esc(it.url || '')}</a></p>` + preHtml(it.text || '', { wrap: true }));
       out.push(`<details class="blk" data-lazy="${k}"><summary><span class="lbl" dir="auto">${esc(it.title || it.url || 'Web page')}</span>
         <span class="desc">${esc((it.metadata && (it.metadata.site_name || it.metadata.site_domain)) || '')}${it.prompt_context_metadata && it.prompt_context_metadata.age ? ' · ' + esc(it.prompt_context_metadata.age) : ''}</span>
         <span class="meta">${fmtBytes((it.text || '').length)} of page text</span></summary><div class="blk-body"></div></details>`);
@@ -649,7 +649,7 @@ function specialToolHtml(name, input, res, ctx, use) {
     const type = input.type || '';
     const title = input.title || input.id || 'Artifact';
     const content = input.content || '';
-    const k = lazyKey(() => {
+    const k = viewKey(() => {
       if (/markdown/.test(type)) return mdBlock(content);
       if (/html/.test(type)) return `${sandboxFrame(content, 520)}<details class="blk" style="margin-top:8px"><summary><span class="lbl">Source</span></summary><div class="blk-body">${preHtml(content)}</div></details>`;
       return `<p class="muted" style="margin:0 0 6px">${esc(type)} source (React components cannot run offline)</p>${preHtml(content)}`;
@@ -659,7 +659,7 @@ function specialToolHtml(name, input, res, ctx, use) {
   if (name === 'create_file' && input.file_text != null) {
     const path = input.path || '';
     const ext = codeLangFromPath(path);
-    const k = lazyKey(() => {
+    const k = viewKey(() => {
       if (ext === 'md' || ext === 'markdown') return `<div class="row" style="margin-bottom:8px"><span class="muted" style="font-size:12.5px">${esc(path)}</span><button class="btn small" type="button" data-action="dl-text" data-name="${esc(path.split('/').pop())}" data-stash="${stashText(input.file_text)}">Download</button></div>${mdBlock(input.file_text)}<details class="blk" style="margin-top:8px"><summary><span class="lbl">Source</span></summary><div class="blk-body">${preHtml(input.file_text)}</div></details>`;
       if (ext === 'html' || ext === 'htm' || ext === 'svg') return `<div class="row" style="margin-bottom:8px"><span class="muted" style="font-size:12.5px">${esc(path)}</span><button class="btn small" type="button" data-action="dl-text" data-name="${esc(path.split('/').pop())}" data-stash="${stashText(input.file_text)}">Download</button></div>${sandboxFrame(input.file_text, 520)}<details class="blk" style="margin-top:8px"><summary><span class="lbl">Source</span></summary><div class="blk-body">${preHtml(input.file_text)}</div></details>`;
       return `<div class="row" style="margin-bottom:8px"><span class="muted" style="font-size:12.5px">${esc(path)}</span><button class="btn small" type="button" data-action="dl-text" data-name="${esc(path.split('/').pop())}" data-stash="${stashText(input.file_text)}">Download</button></div>${preHtml(input.file_text)}`;
@@ -667,7 +667,7 @@ function specialToolHtml(name, input, res, ctx, use) {
     return `<details class="blk artifact" data-lazy="${k}" id="t-${id}"><summary><span class="lbl">📄 Created file</span><span class="desc mono" dir="auto">${esc(path.split('/').pop())}</span><span class="meta">${fmtBytes(input.file_text.length)}</span></summary><div class="blk-body"></div></details>`;
   }
   if (name === 'visualize:show_widget' && input.widget_code) {
-    const k = lazyKey(() => `${sandboxFrame(`<!doctype html><html><head><meta charset="utf-8"><style>${WIDGET_CSS}</style></head><body>${input.widget_code}</body></html>`, 460)}<details class="blk" style="margin-top:8px"><summary><span class="lbl">Source</span></summary><div class="blk-body">${preHtml(input.widget_code)}</div></details>`);
+    const k = viewKey(() => `${sandboxFrame(`<!doctype html><html><head><meta charset="utf-8"><style>${WIDGET_CSS}</style></head><body>${input.widget_code}</body></html>`, 460)}<details class="blk" style="margin-top:8px"><summary><span class="lbl">Source</span></summary><div class="blk-body">${preHtml(input.widget_code)}</div></details>`);
     return `<details class="blk artifact" data-lazy="${k}" id="t-${id}"><summary><span class="lbl">▦ Widget</span><span class="desc" dir="auto">${esc(input.title || 'Interactive widget')}</span><span class="meta">open to render</span></summary><div class="blk-body"></div></details>`;
   }
   if (name === 'message_compose_v1') {

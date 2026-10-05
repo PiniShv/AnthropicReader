@@ -23,6 +23,7 @@ For the format of the export itself, see [export-format.md](export-format.md).
 | `src/zip.js` | `ZipArchive` / `ZipEntry`: random-access zip reader. `ZipWriter`: small zip writer for downloads. |
 | `src/load.js` | `FileNode` / `ZipNode`: one interface for loose files and zip entries. File and folder picking, drag and drop, remembered file handles (`HandleStore`), and `parseJsonArrayStream()`. |
 | `src/render.js` | Escaping (`esc`), formatting of dates, numbers and sizes, Markdown (`mdToHtml`, `mdBlock`), sanitizing, search highlighting, the sandbox frame shim, small helpers (toast, copy, download, MIME types). |
+| `src/ui.js` | `App` (route and focus), the `$` / `$$` shortcuts, and the lifetime of one drawn page: `VIEW`, `after()`, `viewKey()`. |
 | `src/model.js` | The in-memory model: `Person`, the `DB` object, `classify()`, one `add…()` function per record type, `importExport()` (the import pipeline) and `finalize()` (links and derived data). |
 | `src/views.js` | Router dispatch (`renderRoute`), sidebar, the shared sortable table, start page, people list, person page, and click actions. |
 | `src/views-conv.js` | Conversation list, message tree and branches, message and tool rendering, the "What Claude produced here" box, Markdown export. |
@@ -116,6 +117,8 @@ Progress is reported in bytes, so the loading bar moves smoothly.
 
 Views are plain functions that return HTML strings built with template literals. The router puts the string into `#main`. Interactive parts are wired after insertion through `after(fn)` hooks and a few delegated listeners on `document` (`data-action` attributes).
 
+Everything that belongs to one drawn page lives in `VIEW` (`src/ui.js`): its `after()` hooks, its lazy renderers and an `AbortController`. When the route changes, `onRoute()` aborts the old view and starts a new one. Listeners added with the view's `signal` are removed, and async drawers (artifact versions, docs, search) check `signal.aborted` after each `await`, so a slow draw never writes into a newer page.
+
 Rules that keep this safe:
 
 - **Every value** from the export goes through `esc()` before it enters a template.
@@ -134,7 +137,7 @@ Size limits keep the tab responsive:
 
 ## Lazy rendering
 
-- **Collapsed blocks** (tool calls, thinking, attachments, docs, memory files) are `<details data-lazy="key">` elements with an empty body. Their renderer is stored in `App.lazy` under that key. A capturing `toggle` listener renders the body the first time the block is opened.
+- **Collapsed blocks** (tool calls, thinking, attachments, docs, memory files) are `<details data-lazy="key">` elements with an empty body. Their renderer is stored in the current view under that key (`viewKey()`). A capturing `toggle` listener renders the body the first time the block is opened.
 - **Long conversations** are drawn in batches: the first 30 messages (or enough to reach a linked message) at once, then 25 more every few milliseconds. A token stops an old batch run when the thread is redrawn (for example after a branch switch).
 - **Tables** show 200 rows at a time with a **Show more** button.
 - **Artifact metadata** is read at load time, but version files are read only when a version is opened.
@@ -182,7 +185,7 @@ The app uses hash routes, so it works from `file://` and a reload keeps your pla
 | `#/search?q=…&t=<type>&deep=1` | search |
 | `#/about` | about this export |
 
-`navigate()` uses `history.pushState` / `replaceState` and draws the page. `onRoute()` clears lazy renderers, runs cleanup callbacks, draws the view, runs `after()` hooks, hydrates frames and redraws the sidebar. Because a link click fires both `popstate` and `hashchange`, the app draws only when the hash really changed.
+`navigate()` uses `history.pushState` / `replaceState` and draws the page. `onRoute()` ends the old view, draws the new one, runs its `after()` hooks and redraws the sidebar. Because a link click fires both `popstate` and `hashchange`, the app draws only when the hash really changed.
 
 **Focus mode** keeps the focused person's id in `App.focus` (and in `sessionStorage` for this tab). Lists, sidebar counts and search read it to limit what they show.
 
@@ -192,7 +195,7 @@ The app uses hash routes, so it works from `file://` and a reload keeps your pla
 
 - Each item keeps a lower-cased text cache (`_lcMsgs`, `_lc`, …) built the first time it is searched, so later searches are fast.
 - Normal search covers titles, summaries, message text and file names. **Deep search** adds tool inputs and results, thinking, attachment text and artifact content (the visible text of each artifact's current version, read from the zip once and capped at 2 MB).
-- The conversation loop yields to the browser every 40 conversations and reports progress. A new search increments a token, which stops the old one.
+- The conversation loop yields to the browser every 40 conversations and reports progress. Leaving the page aborts the view's signal, which stops the search at its next pause.
 - A result links to the matching message (switching to its branch if needed) with the words highlighted.
 
 ## Per-person download

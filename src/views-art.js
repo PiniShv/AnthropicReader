@@ -40,7 +40,7 @@ function artifactTable(list, key, showOwner) {
 }
 
 function viewArtifacts() {
-  const fp = App.focus ? DB.people.get(App.focus) : null;
+  const fp = focusPerson();
   const list = fp ? fp.artifacts : DB.artifacts;
   const byType = new Map();
   for (const a of list) byType.set(a.contentType, (byType.get(a.contentType) || 0) + 1);
@@ -69,8 +69,14 @@ function viewArtifact(id, vid) {
   const nComments = artifactCommentCount(a);
 
   after(() => {
-    if (isPage) drawPage(a);
-    else drawVersion(a, selected, App.route.query.view || 'preview');
+    if (isPage) return drawPage(a);
+    // A Design board link clicked inside the preview: switch the board picker to it.
+    addEventListener('message', e => {
+      const f = document.getElementById('art-frame');
+      if (!f || e.source !== f.contentWindow || !e.data || typeof e.data.cerBoard !== 'string') return;
+      navigate('#/a/' + encodeURIComponent(id) + (vid ? '/' + encodeURIComponent(vid) : '') + '?board=' + encodeURIComponent(e.data.cerBoard), true);
+    }, { signal: VIEW.ac.signal });
+    return drawVersion(a, selected, App.route.query.view || 'preview');
   });
 
   const versionList = versions.map(v => {
@@ -149,7 +155,7 @@ async function drawVersion(a, vid, view) {
       <button class="btn small" type="button" data-action="art-download" data-art="${esc(a.id)}" data-vid="${esc(vid)}" title="Download this version">⇩</button>
     </div>`;
   box.innerHTML = `<div class="frame-box">${bar()}<div class="empty">Opening ${esc(info.type)}…</div></div>`;
-  const token = (drawVersion.token = (drawVersion.token || 0) + 1);
+  const { signal } = VIEW.ac;
   try {
     if (!info.slot) { box.innerHTML = `<div class="frame-box">${bar()}<div class="empty">This version has no files in the loaded export.</div></div>`; return; }
     if (view === 'files') {
@@ -158,19 +164,19 @@ async function drawVersion(a, vid, view) {
     }
     if (view === 'source') {
       const src = await versionSource(info);
-      if (token !== drawVersion.token) return;
+      if (signal.aborted) return;
       box.innerHTML = `<div class="frame-box">${bar()}<div class="card-pad">${src != null ? preHtml(src) : '<p class="faint">No single source file. See the Files tab.</p>'}</div></div>`;
       return;
     }
     const built = await getBuilt(a, vid, info, board);
-    if (token !== drawVersion.token) return;
+    if (signal.aborted) return;
     const notes = built.notes.length ? `<div class="notice" style="border-radius:0;border-width:0 0 1px">${built.notes.map(esc).join('<br>')}</div>` : '';
     if (built.html == null) {
       box.innerHTML = `<div class="frame-box">${bar()}${notes}<div class="empty">${esc(built.empty || 'Nothing to preview.')}</div></div>`;
       return;
     }
     box.innerHTML = `<div class="frame-box" id="art-frame-box">${bar(built.extra)}${notes}<iframe class="preview" id="art-frame" sandbox="allow-scripts allow-popups allow-forms allow-modals allow-downloads" referrerpolicy="no-referrer" title="${esc(a.title)}"></iframe></div>`;
-    $('#art-frame').srcdoc = built.html;
+    box.querySelector('iframe').srcdoc = built.html;
   } catch (err) {
     console.error(err);
     box.innerHTML = `<div class="frame-box">${bar()}<div class="notice warn">Could not open this version: ${esc(err.message || err)}</div></div>`;
@@ -407,15 +413,21 @@ async function openArtifactFile(a, vid, path) {
   else node = s.folder.get(path);
   const box = $('#art-file-view');
   if (!node || !box) return;
+  const { signal } = VIEW.ac;
   const ext = fileExt(path);
   box.innerHTML = '<p class="muted">Opening…</p>';
   const head = `<div class="row" style="margin-bottom:8px"><b class="mono" dir="auto">${esc(path)}</b><span class="grow"></span><button class="btn small" type="button" data-action="art-file-dl" data-art="${esc(a.id)}" data-vid="${esc(vid)}" data-path="${esc(path)}">Download</button></div>`;
   if (/^(png|jpe?g|gif|webp|svg|avif|ico|bmp)$/.test(ext)) {
-    box.innerHTML = head + `<img alt="" style="max-width:100%;border:1px solid var(--border);border-radius:6px" src="${await dataUrl(node, path)}">`;
+    const src = await dataUrl(node, path);
+    if (signal.aborted) return;
+    box.innerHTML = head + `<img alt="" style="max-width:100%;border:1px solid var(--border);border-radius:6px" src="${src}">`;
   } else if (/^(mp4|webm)$/.test(ext)) {
-    box.innerHTML = head + `<video controls style="max-width:100%" src="${URL.createObjectURL(await node.blob(mimeFor(path)))}"></video>`;
+    const blob = await node.blob(mimeFor(path));
+    if (signal.aborted) return;
+    box.innerHTML = head + `<video controls style="max-width:100%" src="${URL.createObjectURL(blob)}"></video>`;
   } else if (isTextExt(ext) || node.size < 2e6) {
     const t = await node.text();
+    if (signal.aborted) return;
     box.innerHTML = head + (ext === 'md' ? mdBlock(t, { frontmatter: true }) : preHtml(ext === 'json' ? prettyMaybeJson(t) : t));
   } else {
     box.innerHTML = head + '<p class="muted">Binary file; use Download.</p>';
@@ -429,7 +441,9 @@ async function drawPage(a) {
   const box = $('#art-main');
   if (!box) return;
   if (!a.pageNode) { box.innerHTML = '<div class="card empty">This doc has no page.md in the loaded files.</div>'; return; }
+  const { signal } = VIEW.ac;
   const md = await a.pageNode.text();
+  if (signal.aborted) return;
   const tabs = splitTabs(md);
   const want = App.route.query.tab;
   const idx = Math.max(0, tabs.findIndex(t => t.title === want));
@@ -447,7 +461,7 @@ async function drawPage(a) {
   ${(a.comments || []).length ? `<h2 class="section-title">Comments${tabs.length > 1 ? ' on this tab' : ''} <span class="badge">${threads.reduce((n, t) => n + (t.comments || []).length, 0)}</span></h2><div class="card card-pad">${threads.length ? pageCommentsHtml(a, threads) : '<p class="faint">No comments on this tab.</p>'}</div>` : ''}`;
   // Highlight the text each comment thread points at.
   const quotes = threads.map(t => t.quoted_text).filter(q => q && q.replace(/\s/g, '').length >= 3);
-  if (quotes.length) highlightIn($('#page-body'), quotes, { firstOnly: true });
+  if (quotes.length) highlightIn(box.querySelector('#page-body'), quotes, { firstOnly: true });
 }
 
 function splitTabs(md) {
@@ -549,15 +563,6 @@ function artAction(action, el) {
   }
   return false;
 }
-
-// A Design board link clicked inside the preview: switch the board picker to it.
-window.addEventListener('message', e => {
-  const f = document.getElementById('art-frame');
-  if (!f || e.source !== f.contentWindow || !e.data || typeof e.data.cerBoard !== 'string') return;
-  const r = App.route;
-  if (r.path[0] !== 'a') return;
-  navigate('#/a/' + encodeURIComponent(r.path[1]) + (r.path[2] ? '/' + encodeURIComponent(r.path[2]) : '') + '?board=' + encodeURIComponent(e.data.cerBoard), true);
-});
 
 document.addEventListener('change', e => {
   const el = e.target.closest('[data-action-change="pick-board"]');

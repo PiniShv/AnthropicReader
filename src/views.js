@@ -56,19 +56,12 @@ function notFound(msg) {
   return `<div class="page narrow"><div class="empty"><h2>Not found</h2><p>${esc(msg)}</p><p><a href="#/">Go to the start page</a></p></div></div>`;
 }
 
-const AFTER = [];
-function after(fn) { AFTER.push(fn); }
-function afterRender() {
-  const fns = AFTER.splice(0);
-  for (const fn of fns) { try { fn(); } catch (e) { console.error(e); } }
-}
-
 /* ---------- Sidebar ---------- */
 
 function renderSidebar() {
   const r = App.route.path;
   const sec = r[0] || '';
-  const fp = App.focus ? DB.people.get(App.focus) : null;
+  const fp = focusPerson();
   const n = {
     conv: fp ? fp.convCount() : DB.conversations.filter(c => !c.empty).length,
     proj: fp ? fp.projects.length : DB.projects.length,
@@ -206,7 +199,7 @@ const COL = {
 /* ---------- Home ---------- */
 
 function viewHome() {
-  const fp = App.focus ? DB.people.get(App.focus) : null;
+  const fp = focusPerson();
   if (fp) return viewPerson(fp.id, 'overview');
   const people = peopleSorted().filter(p => !p.system);
   const active = people.filter(p => p.total() > 0);

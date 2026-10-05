@@ -18,7 +18,7 @@ export const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 
 // Same order as the built page; build.mjs is the source of truth when it exports it.
 const FALLBACK_ORDER = [
-  'src/zip.js', 'src/load.js', 'src/render.js', 'src/model.js',
+  'src/zip.js', 'src/load.js', 'src/render.js', 'src/ui.js', 'src/model.js',
   'src/views.js', 'src/views-conv.js', 'src/views-art.js', 'src/views-misc.js',
   'src/demo.js', 'src/app.js',
 ];
@@ -148,10 +148,6 @@ export function loadApp(opts = {}) {
   const ctx = vm.createContext(sandbox, { name: 'claude-export-reader test' });
   // window/self must be the context's own global, not the sandbox object we passed in.
   vm.runInContext('globalThis.window = globalThis; globalThis.self = globalThis;', ctx);
-  // app.js declares the real App; views read App.focus / App.route, so stand in for it.
-  if (!wanted.has('src/app.js')) {
-    vm.runInContext('globalThis.App = { focus: null, route: { path: [], query: {} }, lazy: new Map(), cleanup: [] };', ctx);
-  }
 
   if (opts.vendor) {
     for (const v of ['vendor/marked.min.js', 'vendor/purify.min.js']) {

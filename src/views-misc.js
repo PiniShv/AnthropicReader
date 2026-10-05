@@ -23,7 +23,7 @@ function projectTable(list, key, showOwner) {
 }
 
 function viewProjects() {
-  const fp = App.focus ? DB.people.get(App.focus) : null;
+  const fp = focusPerson();
   const list = fp ? fp.projects : DB.projects;
   return `<div class="page"><div class="page-head"><div class="grow"><h1>Projects</h1>
     <div class="sub">${fp ? `<span>Only ${personLink(fp)}’s</span>` : ''}<span>${plural(list.length, 'project')}</span><span>${fmtNum(list.reduce((a, x) => a + x.docs.length, 0))} docs</span></div></div></div>
@@ -67,7 +67,7 @@ function viewProject(id) {
 
 function docHtml(d) {
   const ext = fileExt(d.filename);
-  const k = lazyKey(() => {
+  const k = viewKey(() => {
     const dl = `<div class="row" style="margin-bottom:8px"><span class="faint" style="font-size:12.5px">Added ${esc(fmtDateTime(d.created))}</span><span class="grow"></span><button class="btn small" type="button" data-action="dl-text" data-name="${esc(d.filename.split('/').pop())}" data-stash="${stashText(d.content)}">Download</button></div>`;
     if (ext === 'md' || ext === 'markdown' || ext === 'pptx' || ext === 'docx' || ext === 'pdf') {
       return dl + (ext !== 'md' && ext !== 'markdown' ? `<p class="notice" style="margin:0 0 8px">Text extracted from the ${esc(ext)} file. The original file is not in the export.</p>` : '') + mdBlock(d.content) +
@@ -86,7 +86,7 @@ function docHtml(d) {
 /* ======================= Memory ======================= */
 
 function viewMemories() {
-  const fp = App.focus ? DB.people.get(App.focus) : null;
+  const fp = focusPerson();
   if (fp) {
     return `<div class="page narrow"><div class="page-head"><div class="grow"><h1>Memory</h1><div class="sub"><span>Only ${personLink(fp)}</span></div></div></div>
       ${fp.memory ? memoryBody(fp.memory) : '<div class="card empty">No memory for this person in this export.</div>'}</div>`;
@@ -172,7 +172,7 @@ function memoryFileCard(f, mem, i) {
   const title = String(name).replace(/[-_]+/g, ' ');
   const sources = Array.isArray(f.meta.sources) ? f.meta.sources : [];
   const aliases = Array.isArray(f.meta.aliases) ? f.meta.aliases : [];
-  const k = lazyKey(() => (f.body.trim() ? memoryText(f.body, mem) : '<p class="faint">(empty)</p>') + `<details class="blk" style="margin-top:10px"><summary><span class="lbl">Raw file</span><span class="desc mono">${esc(f.path)}</span></summary><div class="blk-body">${preHtml(f.content, { wrap: true })}</div></details>`);
+  const k = viewKey(() => (f.body.trim() ? memoryText(f.body, mem) : '<p class="faint">(empty)</p>') + `<details class="blk" style="margin-top:10px"><summary><span class="lbl">Raw file</span><span class="desc mono">${esc(f.path)}</span></summary><div class="blk-body">${preHtml(f.content, { wrap: true })}</div></details>`);
   return `<details class="blk mem-file" data-lazy="${k}" id="${memSlugId(mem, f.path)}"><summary>
     <span class="lbl" dir="auto">${esc(title)}</span><span class="desc" dir="auto">${esc(f.meta.description || '')}</span>
     <span class="meta">${sources.map(s => `<span class="chip" style="font-size:11px" title="${esc(SOURCE_HELP[s] || '')}">${esc(s)}</span>`).join(' ')} ${f.updated ? esc(fmtDate(f.updated)) : ''}</span></summary>
@@ -209,7 +209,7 @@ function designTable(list, key, showOwner) {
 }
 
 function viewDesignChats() {
-  const fp = App.focus ? DB.people.get(App.focus) : null;
+  const fp = focusPerson();
   const list = fp ? fp.designChats : DB.designChats;
   return `<div class="page"><div class="page-head"><div class="grow"><h1>Design chats</h1>
     <div class="sub">${fp ? `<span>Only ${personLink(fp)}’s</span>` : ''}<span>${plural(list.length, 'chat')} from Claude Design</span><span>${new Set(list.map(d => d.project.id)).size} design projects</span></div></div></div>
@@ -252,7 +252,7 @@ function designUserContent(text) {
   const injected = raw.length - cleaned.length > 20;
   let h = cleaned ? `<div class="md" dir="auto">${mdToHtml(cleaned, { breaks: true })}</div>` : '';
   if (injected) {
-    const k = lazyKey(() => preHtml(raw, { wrap: true }));
+    const k = viewKey(() => preHtml(raw, { wrap: true }));
     h += `<details class="blk thinking" data-lazy="${k}"><summary><span class="lbl">Context added by the app</span></summary><div class="blk-body"></div></details>`;
   }
   return h;
@@ -266,7 +266,7 @@ function designAttachments(atts, showHidden) {
     if (a.hidden && !showHidden) continue;
     const name = a.name || a.type || 'attachment';
     if (a.type === 'skill' || a.type === 'text' || (a.type === 'image' && a.content)) {
-      const k = lazyKey(() => preHtml(a.content || '', { wrap: true }));
+      const k = viewKey(() => preHtml(a.content || '', { wrap: true }));
       out.push(`<details class="blk attach" data-lazy="${k}"><summary><span class="lbl" dir="auto">${a.type === 'skill' ? 'skill: ' : ''}${esc(name)}</span><span class="meta">${fmtBytes((a.content || '').length)}</span></summary><div class="blk-body"></div></details>`);
     } else if (a.type === 'comment') {
       const content = String(a.content || '');
@@ -274,7 +274,7 @@ function designAttachments(atts, showHidden) {
       const onFile = a.filePath || ((/^File:\s*(.+)$/m.exec(content) || [])[1] || '').trim();
       out.push(`<div class="card card-pad" style="padding:8px 12px"><div class="row wrap" style="font-size:12.5px;color:var(--muted)"><span class="chip">🗨 comment on the design</span>${onFile ? `<span class="mono">${esc(onFile)}</span>` : ''}</div><div class="md" dir="auto">${mdToHtml(fb.replace(/^\s*Feedback:\s*/, '').trim())}</div></div>`);
     } else if (a.type === 'fig-file') {
-      const k = lazyKey(() => (Array.isArray(a.selectedFrames) ? `<ul>${a.selectedFrames.map(f => `<li class="mono">${esc(f)}</li>`).join('')}</ul>` : '') + (a.figOutline ? preHtml(a.figOutline, { wrap: true }) : ''));
+      const k = viewKey(() => (Array.isArray(a.selectedFrames) ? `<ul>${a.selectedFrames.map(f => `<li class="mono">${esc(f)}</li>`).join('')}</ul>` : '') + (a.figOutline ? preHtml(a.figOutline, { wrap: true }) : ''));
       out.push(`<details class="blk attach" data-lazy="${k}"><summary><span class="lbl">Figma: ${esc(name)}</span></summary><div class="blk-body"></div></details>`);
     } else {
       const ico = a.type === 'image' ? '🖼' : a.type === 'folder' ? '📁' : '📄';
@@ -370,7 +370,7 @@ function designToolHtml(t) {
   const i = t.input && typeof t.input === 'object' ? t.input : {};
   const desc = i.path || i.a_filename || i.query || i.purpose || i.title || i.pattern || i.label || i.filename || (i.from_id ? i.from_id + '→' + i.to_id : '') || '';
   const out = typeof t.output === 'string' ? t.output : null;
-  const k = lazyKey(() => {
+  const k = viewKey(() => {
     let h = '<div class="blk-sub">Input</div>';
     if ((t.name === 'questions_v2' || t.name === 'ask_user') && Array.isArray(i.questions)) {
       h += designQuestionCard(i, null).replace(/<p class="faint"[^>]*>No answer recorded\.<\/p>/, '') + '<p class="faint" style="font-size:12.5px">The answers are in the next message from the person.</p>';
@@ -443,14 +443,12 @@ function countHits(hay, terms) {
   return n;
 }
 
-const SEARCH_STATE = { token: 0, cache: null };
-
-async function runSearch(q, deep, onProgress) {
+// Returns null when `signal` aborts (the page changed) before the search ends.
+async function runSearch(q, deep, signal, onProgress) {
   const terms = searchTerms(q);
-  const token = ++SEARCH_STATE.token;
   const res = { conversations: [], artifacts: [], projects: [], design: [], memory: [], people: [], terms };
   if (!terms.length) return res;
-  const fp = App.focus ? DB.people.get(App.focus) : null;
+  const fp = focusPerson();
   const inScope = x => !fp || x.ownerId === fp.id || (x.authorIds && x.authorIds.includes(fp.id)) || (x.owner && x.owner.id === fp.id);
   const all = terms;
   const has = s => { const l = String(s || '').toLowerCase(); return all.every(t => l.includes(t)); };
@@ -477,7 +475,7 @@ async function runSearch(q, deep, onProgress) {
     if (ci % 40 === 39) {
       onProgress && onProgress(`Searching conversations… ${ci + 1} / ${convs.length}`);
       await new Promise(r => setTimeout(r, 0));
-      if (token !== SEARCH_STATE.token) return null;
+      if (signal.aborted) return null;
     }
   }
   res.conversations.sort((a, b) => b.score - a.score || b.c.lastTs - a.c.lastTs);
@@ -522,7 +520,7 @@ async function runSearch(q, deep, onProgress) {
   const arts = fp ? fp.artifacts : DB.artifacts;
   const needPages = arts.filter(a => a.pageNode && a._pageText == null);
   await mapLimit(needPages, 8, async a => { try { a._pageText = await a.pageNode.text(); } catch (e) { a._pageText = ''; } });
-  if (token !== SEARCH_STATE.token) return null;
+  if (signal.aborted) return null;
   if (deep) {
     // Read each artifact's current version once (text only) so its content is searchable too.
     const todo = arts.filter(a => a._contentLc == null);
@@ -532,7 +530,7 @@ async function runSearch(q, deep, onProgress) {
       a._contentLc = a._contentText.toLowerCase();
       if (++done % 25 === 0) onProgress && onProgress(`Reading artifact content… ${done} / ${todo.length}`);
     });
-    if (token !== SEARCH_STATE.token) return null;
+    if (signal.aborted) return null;
   }
   for (const a of arts) {
     if (!a._lc) {
@@ -582,14 +580,14 @@ const SEARCH_TYPES = [
 
 function viewSearch(q, t) {
   const deep = App.route.query.deep === '1';
-  const fp = App.focus ? DB.people.get(App.focus) : null;
+  const fp = focusPerson();
   after(async () => {
     const box = $('#search-results');
     if (!box) return;
     if (!q.trim()) { box.innerHTML = '<div class="empty">Type in the search box above. Use quotes for exact phrases, e.g. <code>"design system"</code>.</div>'; return; }
     box.innerHTML = '<div class="empty" id="search-progress">Searching…</div>';
-    const res = await runSearch(q, deep, msg => { const p = $('#search-progress'); if (p) p.textContent = msg; });
-    if (!res || !$('#search-results')) return;
+    const res = await runSearch(q, deep, VIEW.ac.signal, msg => { const p = $('#search-progress'); if (p) p.textContent = msg; });
+    if (!res) return;
     drawSearchResults(res, q, t, deep);
   });
   return `<div class="page narrow">

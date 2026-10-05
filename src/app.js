@@ -1,16 +1,6 @@
 /* App bootstrap: loading screen, routing, global events. */
 'use strict';
 
-const App = {
-  focus: null,          // Person id that scopes every list, or null
-  route: { path: [], query: {} },
-  lazy: new Map(),      // per-view lazy renderers for collapsed blocks
-  cleanup: [],          // per-view teardown callbacks
-};
-
-const $ = (sel, root) => (root || document).querySelector(sel);
-const $$ = (sel, root) => Array.from((root || document).querySelectorAll(sel));
-
 /* ---------- Theme ---------- */
 
 function applyTheme(t) {
@@ -104,12 +94,8 @@ function showApp() {
   if (App.focus && !DB.people.has(App.focus)) App.focus = null;
   updateFocusButton();
   renderSidebar();
-  if (!location.hash || location.hash === '#' || location.hash === '#/') navigate(defaultRoute(), true);
+  if (!location.hash || location.hash === '#' || location.hash === '#/') navigate('#/', true);
   else onRoute();
-}
-
-function defaultRoute() {
-  return '#/';
 }
 
 async function pickFiles() {
@@ -221,19 +207,14 @@ function onRoute() {
   if ($('#shell').hidden) return;
   App.route = parseHash();
   App.lastHash = location.hash;
-  App.lazy.clear();
-  App.cleanup.forEach(fn => { try { fn(); } catch (e) { /* ignore */ } });
-  App.cleanup = [];
+  VIEW.ac.abort();
+  VIEW = newView();
   $('#shell').classList.remove('nav-open');
   closePicker();
   const main = $('#main');
-  const html = renderRoute(App.route);
-  if (typeof html === 'string') main.innerHTML = html;
+  main.innerHTML = renderRoute(App.route);
   main.scrollTop = 0;
-  afterRender(App.route);
-  hydrateFrames(main);
-  // Lazy blocks that start open (e.g. artifacts in a chat) render right away.
-  main.querySelectorAll('details[data-lazy][open]').forEach(d => d.dispatchEvent(new Event('toggle')));
+  mountView(VIEW);
   renderSidebar();
   const q = App.route.path[0] === 'search' ? (App.route.query.q || '') : '';
   if (document.activeElement !== $('#q')) $('#q').value = q;
@@ -254,7 +235,7 @@ function setFocus(id) {
 }
 
 function updateFocusButton() {
-  const p = App.focus ? DB.people.get(App.focus) : null;
+  const p = focusPerson();
   $('#person-btn-label').textContent = p ? p.name : 'Focus on a person';
   $('#person-btn').setAttribute('aria-label', p ? 'Focused on ' + p.name + '. Change person' : 'Focus on a person');
   $('#person-btn').classList.toggle('primary', !!p);
@@ -372,7 +353,7 @@ function setupShell() {
   document.addEventListener('toggle', e => {
     const d = e.target;
     if (d.tagName === 'DETAILS' && d.open && d.dataset.lazy && !d.dataset.done) {
-      const fn = App.lazy.get(d.dataset.lazy);
+      const fn = VIEW.fns.get(d.dataset.lazy);
       if (fn) {
         const body = d.querySelector(':scope > .blk-body');
         body.insertAdjacentHTML('beforeend', fn());
@@ -382,12 +363,6 @@ function setupShell() {
       }
     }
   }, true);
-}
-
-function lazyKey(fn) {
-  const k = 'L' + App.lazy.size + '_' + Math.random().toString(36).slice(2, 7);
-  App.lazy.set(k, fn);
-  return k;
 }
 
 /* ---------- Boot ---------- */

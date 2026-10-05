@@ -1500,6 +1500,41 @@ function mimeFor(name) { return MIME[fileExt(name)] || 'application/octet-stream
 function isTextExt(ext) { return /^(html?|css|m?js|jsx|tsx?|json|md|markdown|txt|csv|svg|xml|ya?ml|py|sh|sql|java|go|rb|rs|c|h|cpp|cs|kt|swift|php|toml|ini|log|tsv)$/.test(ext); }
 
 </script>
+<script>/* src/ui.js */
+/* App state, DOM shortcuts, and the lifetime of one drawn page (a "view"). */
+'use strict';
+
+const App = {
+  focus: null,          // Person id that scopes every list, or null
+  route: { path: [], query: {} },
+  lastHash: '',
+};
+
+const $ = (sel, root) => (root || document).querySelector(sel);
+const $$ = (sel, root) => Array.from((root || document).querySelectorAll(sel));
+
+const focusPerson = () => (App.focus ? DB.people.get(App.focus) || null : null);
+
+/* Everything that lives exactly as long as one drawn page. onRoute() aborts the old view and
+ * starts a new one: listeners added with its signal go away, and async drawers stop at their
+ * next `if (signal.aborted) return;`. */
+const newView = () => ({ ac: new AbortController(), fns: new Map(), n: 0, mounts: [] });
+let VIEW = newView();
+
+// Runs fn once, right after the view's HTML is in the page.
+const after = fn => VIEW.mounts.push(fn);
+
+// Keeps fn for this view only and returns a short key to put into the markup.
+const viewKey = fn => { const k = 'v' + ++VIEW.n; VIEW.fns.set(k, fn); return k; };
+
+function mountView(v) {
+  while (v.mounts.length) {
+    const fn = v.mounts.shift();
+    try { const r = fn(); if (r && r.catch) r.catch(e => console.error(e)); } catch (e) { console.error(e); }
+  }
+}
+
+</script>
 <script>/* src/model.js */
 /* In-memory model of a Claude export: people and everything they own.
  * importExport() classifies files, parses them, and links every item to a Person. */
@@ -2330,19 +2365,12 @@ function notFound(msg) {
   return `<div class="page narrow"><div class="empty"><h2>Not found</h2><p>${esc(msg)}</p><p><a href="#/">Go to the start page</a></p></div></div>`;
 }
 
-const AFTER = [];
-function after(fn) { AFTER.push(fn); }
-function afterRender() {
-  const fns = AFTER.splice(0);
-  for (const fn of fns) { try { fn(); } catch (e) { console.error(e); } }
-}
-
 /* ---------- Sidebar ---------- */
 
 function renderSidebar() {
   const r = App.route.path;
   const sec = r[0] || '';
-  const fp = App.focus ? DB.people.get(App.focus) : null;
+  const fp = focusPerson();
   const n = {
     conv: fp ? fp.convCount() : DB.conversations.filter(c => !c.empty).length,
     proj: fp ? fp.projects.length : DB.projects.length,
@@ -2480,7 +2508,7 @@ const COL = {
 /* ---------- Home ---------- */
 
 function viewHome() {
-  const fp = App.focus ? DB.people.get(App.focus) : null;
+  const fp = focusPerson();
   if (fp) return viewPerson(fp.id, 'overview');
   const people = peopleSorted().filter(p => !p.system);
   const active = people.filter(p => p.total() > 0);
@@ -2832,7 +2860,7 @@ function convTable(list, key, showOwner) {
 }
 
 function viewConversations() {
-  const fp = App.focus ? DB.people.get(App.focus) : null;
+  const fp = focusPerson();
   const list = fp ? fp.conversations : DB.conversations;
   return `<div class="page">
     <div class="page-head"><div class="grow"><h1>Conversations</h1>
@@ -2935,7 +2963,12 @@ function viewConversation(id) {
   const offBranch = totalMsgs - path.length;
   const outputs = collectOutputs(conv);
 
-  after(() => drawThread(conv, { q, target }));
+  after(() => {
+    drawThread(conv, { q, target });
+    // drawThread runs again on branch switches, so the sticky toolbar is wired here, once.
+    const main = $('#main'), tb = $('#conv-toolbar');
+    if (tb) main.addEventListener('scroll', () => tb.classList.toggle('stuck', main.scrollTop > 120), { passive: true, signal: VIEW.ac.signal });
+  });
 
   return `<div class="page narrow">
     <div class="crumbs"><a href="#/conversations">Conversations</a><span>›</span>${p && !p.system ? `${personLink(p)}<span>›</span>` : ''}<span class="ellipsis" style="max-width:420px" dir="auto">${esc(conv.title || 'Untitled')}</span></div>
@@ -2987,12 +3020,15 @@ function threadAnchor() {
   return null;
 }
 
+// Counts thread draws; a newer draw (branch switch, option change) stops the batches of an older one.
+let threadSeq = 0;
+
 /* opts: q (highlight), target (message to scroll to and flash),
  *       anchor {id, top} (keep this message at the same screen position after a redraw). */
 function drawThread(conv, opts) {
   const thread = $('#thread');
   if (!thread) return;
-  const tok = thread._tok = (thread._tok || 0) + 1;
+  const tok = ++threadSeq;
   const path = currentPath(conv);
   const terms = opts.q ? searchTerms(opts.q) : [];
   const ctx = { conv, created: createdFilesIndex(conv) };
@@ -3022,10 +3058,9 @@ function drawThread(conv, opts) {
       if (hc) hc.textContent = hits ? `${hits} match${hits === 1 ? '' : 'es'} shown` : 'no visible matches (they may be inside collapsed blocks)';
     }
   };
-  // Render the rest in small slices so long chats open instantly. A newer draw
-  // (branch switch, toggle) bumps the token and stops this one.
+  // Render the rest in small slices so long chats open instantly.
   const pump = () => {
-    if (!thread.isConnected || thread._tok !== tok) return;
+    if (!thread.isConnected || threadSeq !== tok) return;
     if (i < path.length) { renderBatch(25); setTimeout(pump, 16); } else finish();
   };
   if (i < path.length) setTimeout(pump, 30); else finish();
@@ -3042,13 +3077,6 @@ function drawThread(conv, opts) {
       const firstMark = el.querySelector('mark');
       if (firstMark) firstMark.scrollIntoView({ block: 'center' });
     }
-  }
-  if (!thread._scrollBound) {
-    thread._scrollBound = true;
-    const tb = $('#conv-toolbar');
-    const onScroll = () => { if (tb) tb.classList.toggle('stuck', main.scrollTop > 120); };
-    main.addEventListener('scroll', onScroll, { passive: true });
-    App.cleanup.push(() => main.removeEventListener('scroll', onScroll));
   }
 }
 
@@ -3097,7 +3125,7 @@ function humanBody(m, ctx) {
   for (const t of texts) {
     if (t.length > HUMAN_FOLD) {
       // The preview stays; opening the box adds only the rest of the text.
-      const k = lazyKey(() => `<div dir="auto" style="white-space:pre-wrap">${plainTextHtml(t.slice(HUMAN_FOLD))}</div>`);
+      const k = viewKey(() => `<div dir="auto" style="white-space:pre-wrap">${plainTextHtml(t.slice(HUMAN_FOLD))}</div>`);
       parts.push(`<div dir="auto" style="white-space:pre-wrap">${plainTextHtml(t.slice(0, HUMAN_FOLD))}</div>
         <details class="blk" data-lazy="${k}"><summary><span class="lbl">Show the rest of the message</span><span class="meta">${fmtBytes(t.length - HUMAN_FOLD)} more</span></summary><div class="blk-body"></div></details>`);
     } else {
@@ -3107,7 +3135,7 @@ function humanBody(m, ctx) {
   if (CONV_OPTS.showSystem) {
     for (const b of blocks) {
       if (b && b.type === 'injected_prompt_block') {
-        const k = lazyKey(() => preHtml(b.prompt || '', { wrap: true }));
+        const k = viewKey(() => preHtml(b.prompt || '', { wrap: true }));
         parts.push(`<details class="blk thinking" data-lazy="${k}"><summary><span class="lbl">System note</span><span class="desc">${esc(b.injection_source || '')} — added by the platform, not typed by the person</span><span class="meta">${fmtBytes((b.prompt || '').length)}</span></summary><div class="blk-body"></div></details>`);
       }
     }
@@ -3126,7 +3154,7 @@ function filesHtml(m) {
   for (const a of atts) {
     const name = a.file_name || 'Pasted text';
     const content = a.extracted_content || '';
-    const k = lazyKey(() => /\.(md|markdown)$/i.test(a.file_name || '') || /markdown/.test(a.file_type || '')
+    const k = viewKey(() => /\.(md|markdown)$/i.test(a.file_name || '') || /markdown/.test(a.file_type || '')
       ? `<div class="row" style="margin-bottom:6px"><span class="muted" style="font-size:12.5px">Rendered Markdown</span></div>${mdBlock(content)}`
       : preHtml(content, { wrap: true }));
     out.push(`<details class="blk attach" data-lazy="${k}"><summary><span class="lbl" dir="auto">${esc(name)}</span><span class="desc">${esc(a.file_type || '')}</span><span class="meta">${fmtBytes(a.file_size || content.length)}</span></summary><div class="blk-body"></div></details>`);
@@ -3200,7 +3228,7 @@ function assistantBody(m, ctx) {
     } else if (b.type === 'token_budget') {
       continue;
     } else if (b.type !== 'injected_prompt_block') {
-      const k = lazyKey(() => preHtml(jsonPretty(b)));
+      const k = viewKey(() => preHtml(jsonPretty(b)));
       out.push(`<details class="blk" data-lazy="${k}"><summary><span class="lbl">${esc(b.type || 'block')}</span></summary><div class="blk-body"></div></details>`);
     }
   }
@@ -3242,7 +3270,7 @@ function thinkingHtml(b) {
   const dur = t0 && t1 && t1 > t0 ? fmtDuration(t1 - t0) : '';
   const label = sums.length ? sums[sums.length - 1] : (b.thinking ? truncate(oneLine(b.thinking), 120) : 'Thinking');
   const hidden = b.thinking_hidden || !b.thinking;
-  const k = lazyKey(() => {
+  const k = viewKey(() => {
     let h = '';
     if (b.thinking) h += `<div class="md" dir="auto">${mdToHtml(b.thinking)}</div>`;
     else h += `<p class="faint">The thinking text itself is not in the export${sums.length ? '; only these summaries remain' : ''}.</p>`;
@@ -3286,7 +3314,7 @@ function toolCallHtml(use, res, ctx) {
   if (special) return special;
 
   const desc = toolInputSummary(name, input) || use.message || '';
-  const k = lazyKey(() => toolBodyHtml(use, res, ctx));
+  const k = viewKey(() => toolBodyHtml(use, res, ctx));
   return `<details class="blk tool${error ? ' result error' : ''}" data-lazy="${k}" id="t-${esc(use.id || '')}">
     <summary><span class="lbl">${esc(toolLabel(name))}</span>${integ ? `<span class="faint" style="flex:none">${esc(integ)}</span>` : ''}<span class="desc" dir="auto">${esc(truncate(oneLine(desc), 160))}</span>
     <span class="meta">${error ? `<b style="color:var(--err)">failed${errType ? ' · ' + esc(errType) : ''}</b> ` : ''}${!res ? 'no result ' : ''}${dur}</span></summary>
@@ -3363,7 +3391,7 @@ function toolResultHtml(res, ctx) {
       out.push(linkifyChats(preHtml(prettyMaybeJson(t), { wrap: true })));
     } else if (it.type === 'knowledge') {
       // The page text Claude read is in the export: show it on demand.
-      const k = lazyKey(() => `<p style="margin:0 0 6px"><a href="${esc(safeUrl(it.url))}" target="_blank" rel="noopener noreferrer">${esc(it.url || '')}</a></p>` + preHtml(it.text || '', { wrap: true }));
+      const k = viewKey(() => `<p style="margin:0 0 6px"><a href="${esc(safeUrl(it.url))}" target="_blank" rel="noopener noreferrer">${esc(it.url || '')}</a></p>` + preHtml(it.text || '', { wrap: true }));
       out.push(`<details class="blk" data-lazy="${k}"><summary><span class="lbl" dir="auto">${esc(it.title || it.url || 'Web page')}</span>
         <span class="desc">${esc((it.metadata && (it.metadata.site_name || it.metadata.site_domain)) || '')}${it.prompt_context_metadata && it.prompt_context_metadata.age ? ' · ' + esc(it.prompt_context_metadata.age) : ''}</span>
         <span class="meta">${fmtBytes((it.text || '').length)} of page text</span></summary><div class="blk-body"></div></details>`);
@@ -3439,7 +3467,7 @@ function specialToolHtml(name, input, res, ctx, use) {
     const type = input.type || '';
     const title = input.title || input.id || 'Artifact';
     const content = input.content || '';
-    const k = lazyKey(() => {
+    const k = viewKey(() => {
       if (/markdown/.test(type)) return mdBlock(content);
       if (/html/.test(type)) return `${sandboxFrame(content, 520)}<details class="blk" style="margin-top:8px"><summary><span class="lbl">Source</span></summary><div class="blk-body">${preHtml(content)}</div></details>`;
       return `<p class="muted" style="margin:0 0 6px">${esc(type)} source (React components cannot run offline)</p>${preHtml(content)}`;
@@ -3449,7 +3477,7 @@ function specialToolHtml(name, input, res, ctx, use) {
   if (name === 'create_file' && input.file_text != null) {
     const path = input.path || '';
     const ext = codeLangFromPath(path);
-    const k = lazyKey(() => {
+    const k = viewKey(() => {
       if (ext === 'md' || ext === 'markdown') return `<div class="row" style="margin-bottom:8px"><span class="muted" style="font-size:12.5px">${esc(path)}</span><button class="btn small" type="button" data-action="dl-text" data-name="${esc(path.split('/').pop())}" data-stash="${stashText(input.file_text)}">Download</button></div>${mdBlock(input.file_text)}<details class="blk" style="margin-top:8px"><summary><span class="lbl">Source</span></summary><div class="blk-body">${preHtml(input.file_text)}</div></details>`;
       if (ext === 'html' || ext === 'htm' || ext === 'svg') return `<div class="row" style="margin-bottom:8px"><span class="muted" style="font-size:12.5px">${esc(path)}</span><button class="btn small" type="button" data-action="dl-text" data-name="${esc(path.split('/').pop())}" data-stash="${stashText(input.file_text)}">Download</button></div>${sandboxFrame(input.file_text, 520)}<details class="blk" style="margin-top:8px"><summary><span class="lbl">Source</span></summary><div class="blk-body">${preHtml(input.file_text)}</div></details>`;
       return `<div class="row" style="margin-bottom:8px"><span class="muted" style="font-size:12.5px">${esc(path)}</span><button class="btn small" type="button" data-action="dl-text" data-name="${esc(path.split('/').pop())}" data-stash="${stashText(input.file_text)}">Download</button></div>${preHtml(input.file_text)}`;
@@ -3457,7 +3485,7 @@ function specialToolHtml(name, input, res, ctx, use) {
     return `<details class="blk artifact" data-lazy="${k}" id="t-${id}"><summary><span class="lbl">📄 Created file</span><span class="desc mono" dir="auto">${esc(path.split('/').pop())}</span><span class="meta">${fmtBytes(input.file_text.length)}</span></summary><div class="blk-body"></div></details>`;
   }
   if (name === 'visualize:show_widget' && input.widget_code) {
-    const k = lazyKey(() => `${sandboxFrame(`<!doctype html><html><head><meta charset="utf-8"><style>${WIDGET_CSS}</style></head><body>${input.widget_code}</body></html>`, 460)}<details class="blk" style="margin-top:8px"><summary><span class="lbl">Source</span></summary><div class="blk-body">${preHtml(input.widget_code)}</div></details>`);
+    const k = viewKey(() => `${sandboxFrame(`<!doctype html><html><head><meta charset="utf-8"><style>${WIDGET_CSS}</style></head><body>${input.widget_code}</body></html>`, 460)}<details class="blk" style="margin-top:8px"><summary><span class="lbl">Source</span></summary><div class="blk-body">${preHtml(input.widget_code)}</div></details>`);
     return `<details class="blk artifact" data-lazy="${k}" id="t-${id}"><summary><span class="lbl">▦ Widget</span><span class="desc" dir="auto">${esc(input.title || 'Interactive widget')}</span><span class="meta">open to render</span></summary><div class="blk-body"></div></details>`;
   }
   if (name === 'message_compose_v1') {
@@ -3773,7 +3801,7 @@ function artifactTable(list, key, showOwner) {
 }
 
 function viewArtifacts() {
-  const fp = App.focus ? DB.people.get(App.focus) : null;
+  const fp = focusPerson();
   const list = fp ? fp.artifacts : DB.artifacts;
   const byType = new Map();
   for (const a of list) byType.set(a.contentType, (byType.get(a.contentType) || 0) + 1);
@@ -3802,8 +3830,14 @@ function viewArtifact(id, vid) {
   const nComments = artifactCommentCount(a);
 
   after(() => {
-    if (isPage) drawPage(a);
-    else drawVersion(a, selected, App.route.query.view || 'preview');
+    if (isPage) return drawPage(a);
+    // A Design board link clicked inside the preview: switch the board picker to it.
+    addEventListener('message', e => {
+      const f = document.getElementById('art-frame');
+      if (!f || e.source !== f.contentWindow || !e.data || typeof e.data.cerBoard !== 'string') return;
+      navigate('#/a/' + encodeURIComponent(id) + (vid ? '/' + encodeURIComponent(vid) : '') + '?board=' + encodeURIComponent(e.data.cerBoard), true);
+    }, { signal: VIEW.ac.signal });
+    return drawVersion(a, selected, App.route.query.view || 'preview');
   });
 
   const versionList = versions.map(v => {
@@ -3882,7 +3916,7 @@ async function drawVersion(a, vid, view) {
       <button class="btn small" type="button" data-action="art-download" data-art="${esc(a.id)}" data-vid="${esc(vid)}" title="Download this version">⇩</button>
     </div>`;
   box.innerHTML = `<div class="frame-box">${bar()}<div class="empty">Opening ${esc(info.type)}…</div></div>`;
-  const token = (drawVersion.token = (drawVersion.token || 0) + 1);
+  const { signal } = VIEW.ac;
   try {
     if (!info.slot) { box.innerHTML = `<div class="frame-box">${bar()}<div class="empty">This version has no files in the loaded export.</div></div>`; return; }
     if (view === 'files') {
@@ -3891,19 +3925,19 @@ async function drawVersion(a, vid, view) {
     }
     if (view === 'source') {
       const src = await versionSource(info);
-      if (token !== drawVersion.token) return;
+      if (signal.aborted) return;
       box.innerHTML = `<div class="frame-box">${bar()}<div class="card-pad">${src != null ? preHtml(src) : '<p class="faint">No single source file. See the Files tab.</p>'}</div></div>`;
       return;
     }
     const built = await getBuilt(a, vid, info, board);
-    if (token !== drawVersion.token) return;
+    if (signal.aborted) return;
     const notes = built.notes.length ? `<div class="notice" style="border-radius:0;border-width:0 0 1px">${built.notes.map(esc).join('<br>')}</div>` : '';
     if (built.html == null) {
       box.innerHTML = `<div class="frame-box">${bar()}${notes}<div class="empty">${esc(built.empty || 'Nothing to preview.')}</div></div>`;
       return;
     }
     box.innerHTML = `<div class="frame-box" id="art-frame-box">${bar(built.extra)}${notes}<iframe class="preview" id="art-frame" sandbox="allow-scripts allow-popups allow-forms allow-modals allow-downloads" referrerpolicy="no-referrer" title="${esc(a.title)}"></iframe></div>`;
-    $('#art-frame').srcdoc = built.html;
+    box.querySelector('iframe').srcdoc = built.html;
   } catch (err) {
     console.error(err);
     box.innerHTML = `<div class="frame-box">${bar()}<div class="notice warn">Could not open this version: ${esc(err.message || err)}</div></div>`;
@@ -4140,15 +4174,21 @@ async function openArtifactFile(a, vid, path) {
   else node = s.folder.get(path);
   const box = $('#art-file-view');
   if (!node || !box) return;
+  const { signal } = VIEW.ac;
   const ext = fileExt(path);
   box.innerHTML = '<p class="muted">Opening…</p>';
   const head = `<div class="row" style="margin-bottom:8px"><b class="mono" dir="auto">${esc(path)}</b><span class="grow"></span><button class="btn small" type="button" data-action="art-file-dl" data-art="${esc(a.id)}" data-vid="${esc(vid)}" data-path="${esc(path)}">Download</button></div>`;
   if (/^(png|jpe?g|gif|webp|svg|avif|ico|bmp)$/.test(ext)) {
-    box.innerHTML = head + `<img alt="" style="max-width:100%;border:1px solid var(--border);border-radius:6px" src="${await dataUrl(node, path)}">`;
+    const src = await dataUrl(node, path);
+    if (signal.aborted) return;
+    box.innerHTML = head + `<img alt="" style="max-width:100%;border:1px solid var(--border);border-radius:6px" src="${src}">`;
   } else if (/^(mp4|webm)$/.test(ext)) {
-    box.innerHTML = head + `<video controls style="max-width:100%" src="${URL.createObjectURL(await node.blob(mimeFor(path)))}"></video>`;
+    const blob = await node.blob(mimeFor(path));
+    if (signal.aborted) return;
+    box.innerHTML = head + `<video controls style="max-width:100%" src="${URL.createObjectURL(blob)}"></video>`;
   } else if (isTextExt(ext) || node.size < 2e6) {
     const t = await node.text();
+    if (signal.aborted) return;
     box.innerHTML = head + (ext === 'md' ? mdBlock(t, { frontmatter: true }) : preHtml(ext === 'json' ? prettyMaybeJson(t) : t));
   } else {
     box.innerHTML = head + '<p class="muted">Binary file; use Download.</p>';
@@ -4162,7 +4202,9 @@ async function drawPage(a) {
   const box = $('#art-main');
   if (!box) return;
   if (!a.pageNode) { box.innerHTML = '<div class="card empty">This doc has no page.md in the loaded files.</div>'; return; }
+  const { signal } = VIEW.ac;
   const md = await a.pageNode.text();
+  if (signal.aborted) return;
   const tabs = splitTabs(md);
   const want = App.route.query.tab;
   const idx = Math.max(0, tabs.findIndex(t => t.title === want));
@@ -4180,7 +4222,7 @@ async function drawPage(a) {
   ${(a.comments || []).length ? `<h2 class="section-title">Comments${tabs.length > 1 ? ' on this tab' : ''} <span class="badge">${threads.reduce((n, t) => n + (t.comments || []).length, 0)}</span></h2><div class="card card-pad">${threads.length ? pageCommentsHtml(a, threads) : '<p class="faint">No comments on this tab.</p>'}</div>` : ''}`;
   // Highlight the text each comment thread points at.
   const quotes = threads.map(t => t.quoted_text).filter(q => q && q.replace(/\s/g, '').length >= 3);
-  if (quotes.length) highlightIn($('#page-body'), quotes, { firstOnly: true });
+  if (quotes.length) highlightIn(box.querySelector('#page-body'), quotes, { firstOnly: true });
 }
 
 function splitTabs(md) {
@@ -4283,15 +4325,6 @@ function artAction(action, el) {
   return false;
 }
 
-// A Design board link clicked inside the preview: switch the board picker to it.
-window.addEventListener('message', e => {
-  const f = document.getElementById('art-frame');
-  if (!f || e.source !== f.contentWindow || !e.data || typeof e.data.cerBoard !== 'string') return;
-  const r = App.route;
-  if (r.path[0] !== 'a') return;
-  navigate('#/a/' + encodeURIComponent(r.path[1]) + (r.path[2] ? '/' + encodeURIComponent(r.path[2]) : '') + '?board=' + encodeURIComponent(e.data.cerBoard), true);
-});
-
 document.addEventListener('change', e => {
   const el = e.target.closest('[data-action-change="pick-board"]');
   if (!el) return;
@@ -4326,7 +4359,7 @@ function projectTable(list, key, showOwner) {
 }
 
 function viewProjects() {
-  const fp = App.focus ? DB.people.get(App.focus) : null;
+  const fp = focusPerson();
   const list = fp ? fp.projects : DB.projects;
   return `<div class="page"><div class="page-head"><div class="grow"><h1>Projects</h1>
     <div class="sub">${fp ? `<span>Only ${personLink(fp)}’s</span>` : ''}<span>${plural(list.length, 'project')}</span><span>${fmtNum(list.reduce((a, x) => a + x.docs.length, 0))} docs</span></div></div></div>
@@ -4370,7 +4403,7 @@ function viewProject(id) {
 
 function docHtml(d) {
   const ext = fileExt(d.filename);
-  const k = lazyKey(() => {
+  const k = viewKey(() => {
     const dl = `<div class="row" style="margin-bottom:8px"><span class="faint" style="font-size:12.5px">Added ${esc(fmtDateTime(d.created))}</span><span class="grow"></span><button class="btn small" type="button" data-action="dl-text" data-name="${esc(d.filename.split('/').pop())}" data-stash="${stashText(d.content)}">Download</button></div>`;
     if (ext === 'md' || ext === 'markdown' || ext === 'pptx' || ext === 'docx' || ext === 'pdf') {
       return dl + (ext !== 'md' && ext !== 'markdown' ? `<p class="notice" style="margin:0 0 8px">Text extracted from the ${esc(ext)} file. The original file is not in the export.</p>` : '') + mdBlock(d.content) +
@@ -4389,7 +4422,7 @@ function docHtml(d) {
 /* ======================= Memory ======================= */
 
 function viewMemories() {
-  const fp = App.focus ? DB.people.get(App.focus) : null;
+  const fp = focusPerson();
   if (fp) {
     return `<div class="page narrow"><div class="page-head"><div class="grow"><h1>Memory</h1><div class="sub"><span>Only ${personLink(fp)}</span></div></div></div>
       ${fp.memory ? memoryBody(fp.memory) : '<div class="card empty">No memory for this person in this export.</div>'}</div>`;
@@ -4475,7 +4508,7 @@ function memoryFileCard(f, mem, i) {
   const title = String(name).replace(/[-_]+/g, ' ');
   const sources = Array.isArray(f.meta.sources) ? f.meta.sources : [];
   const aliases = Array.isArray(f.meta.aliases) ? f.meta.aliases : [];
-  const k = lazyKey(() => (f.body.trim() ? memoryText(f.body, mem) : '<p class="faint">(empty)</p>') + `<details class="blk" style="margin-top:10px"><summary><span class="lbl">Raw file</span><span class="desc mono">${esc(f.path)}</span></summary><div class="blk-body">${preHtml(f.content, { wrap: true })}</div></details>`);
+  const k = viewKey(() => (f.body.trim() ? memoryText(f.body, mem) : '<p class="faint">(empty)</p>') + `<details class="blk" style="margin-top:10px"><summary><span class="lbl">Raw file</span><span class="desc mono">${esc(f.path)}</span></summary><div class="blk-body">${preHtml(f.content, { wrap: true })}</div></details>`);
   return `<details class="blk mem-file" data-lazy="${k}" id="${memSlugId(mem, f.path)}"><summary>
     <span class="lbl" dir="auto">${esc(title)}</span><span class="desc" dir="auto">${esc(f.meta.description || '')}</span>
     <span class="meta">${sources.map(s => `<span class="chip" style="font-size:11px" title="${esc(SOURCE_HELP[s] || '')}">${esc(s)}</span>`).join(' ')} ${f.updated ? esc(fmtDate(f.updated)) : ''}</span></summary>
@@ -4512,7 +4545,7 @@ function designTable(list, key, showOwner) {
 }
 
 function viewDesignChats() {
-  const fp = App.focus ? DB.people.get(App.focus) : null;
+  const fp = focusPerson();
   const list = fp ? fp.designChats : DB.designChats;
   return `<div class="page"><div class="page-head"><div class="grow"><h1>Design chats</h1>
     <div class="sub">${fp ? `<span>Only ${personLink(fp)}’s</span>` : ''}<span>${plural(list.length, 'chat')} from Claude Design</span><span>${new Set(list.map(d => d.project.id)).size} design projects</span></div></div></div>
@@ -4555,7 +4588,7 @@ function designUserContent(text) {
   const injected = raw.length - cleaned.length > 20;
   let h = cleaned ? `<div class="md" dir="auto">${mdToHtml(cleaned, { breaks: true })}</div>` : '';
   if (injected) {
-    const k = lazyKey(() => preHtml(raw, { wrap: true }));
+    const k = viewKey(() => preHtml(raw, { wrap: true }));
     h += `<details class="blk thinking" data-lazy="${k}"><summary><span class="lbl">Context added by the app</span></summary><div class="blk-body"></div></details>`;
   }
   return h;
@@ -4569,7 +4602,7 @@ function designAttachments(atts, showHidden) {
     if (a.hidden && !showHidden) continue;
     const name = a.name || a.type || 'attachment';
     if (a.type === 'skill' || a.type === 'text' || (a.type === 'image' && a.content)) {
-      const k = lazyKey(() => preHtml(a.content || '', { wrap: true }));
+      const k = viewKey(() => preHtml(a.content || '', { wrap: true }));
       out.push(`<details class="blk attach" data-lazy="${k}"><summary><span class="lbl" dir="auto">${a.type === 'skill' ? 'skill: ' : ''}${esc(name)}</span><span class="meta">${fmtBytes((a.content || '').length)}</span></summary><div class="blk-body"></div></details>`);
     } else if (a.type === 'comment') {
       const content = String(a.content || '');
@@ -4577,7 +4610,7 @@ function designAttachments(atts, showHidden) {
       const onFile = a.filePath || ((/^File:\s*(.+)$/m.exec(content) || [])[1] || '').trim();
       out.push(`<div class="card card-pad" style="padding:8px 12px"><div class="row wrap" style="font-size:12.5px;color:var(--muted)"><span class="chip">🗨 comment on the design</span>${onFile ? `<span class="mono">${esc(onFile)}</span>` : ''}</div><div class="md" dir="auto">${mdToHtml(fb.replace(/^\s*Feedback:\s*/, '').trim())}</div></div>`);
     } else if (a.type === 'fig-file') {
-      const k = lazyKey(() => (Array.isArray(a.selectedFrames) ? `<ul>${a.selectedFrames.map(f => `<li class="mono">${esc(f)}</li>`).join('')}</ul>` : '') + (a.figOutline ? preHtml(a.figOutline, { wrap: true }) : ''));
+      const k = viewKey(() => (Array.isArray(a.selectedFrames) ? `<ul>${a.selectedFrames.map(f => `<li class="mono">${esc(f)}</li>`).join('')}</ul>` : '') + (a.figOutline ? preHtml(a.figOutline, { wrap: true }) : ''));
       out.push(`<details class="blk attach" data-lazy="${k}"><summary><span class="lbl">Figma: ${esc(name)}</span></summary><div class="blk-body"></div></details>`);
     } else {
       const ico = a.type === 'image' ? '🖼' : a.type === 'folder' ? '📁' : '📄';
@@ -4673,7 +4706,7 @@ function designToolHtml(t) {
   const i = t.input && typeof t.input === 'object' ? t.input : {};
   const desc = i.path || i.a_filename || i.query || i.purpose || i.title || i.pattern || i.label || i.filename || (i.from_id ? i.from_id + '→' + i.to_id : '') || '';
   const out = typeof t.output === 'string' ? t.output : null;
-  const k = lazyKey(() => {
+  const k = viewKey(() => {
     let h = '<div class="blk-sub">Input</div>';
     if ((t.name === 'questions_v2' || t.name === 'ask_user') && Array.isArray(i.questions)) {
       h += designQuestionCard(i, null).replace(/<p class="faint"[^>]*>No answer recorded\.<\/p>/, '') + '<p class="faint" style="font-size:12.5px">The answers are in the next message from the person.</p>';
@@ -4746,14 +4779,12 @@ function countHits(hay, terms) {
   return n;
 }
 
-const SEARCH_STATE = { token: 0, cache: null };
-
-async function runSearch(q, deep, onProgress) {
+// Returns null when `signal` aborts (the page changed) before the search ends.
+async function runSearch(q, deep, signal, onProgress) {
   const terms = searchTerms(q);
-  const token = ++SEARCH_STATE.token;
   const res = { conversations: [], artifacts: [], projects: [], design: [], memory: [], people: [], terms };
   if (!terms.length) return res;
-  const fp = App.focus ? DB.people.get(App.focus) : null;
+  const fp = focusPerson();
   const inScope = x => !fp || x.ownerId === fp.id || (x.authorIds && x.authorIds.includes(fp.id)) || (x.owner && x.owner.id === fp.id);
   const all = terms;
   const has = s => { const l = String(s || '').toLowerCase(); return all.every(t => l.includes(t)); };
@@ -4780,7 +4811,7 @@ async function runSearch(q, deep, onProgress) {
     if (ci % 40 === 39) {
       onProgress && onProgress(`Searching conversations… ${ci + 1} / ${convs.length}`);
       await new Promise(r => setTimeout(r, 0));
-      if (token !== SEARCH_STATE.token) return null;
+      if (signal.aborted) return null;
     }
   }
   res.conversations.sort((a, b) => b.score - a.score || b.c.lastTs - a.c.lastTs);
@@ -4825,7 +4856,7 @@ async function runSearch(q, deep, onProgress) {
   const arts = fp ? fp.artifacts : DB.artifacts;
   const needPages = arts.filter(a => a.pageNode && a._pageText == null);
   await mapLimit(needPages, 8, async a => { try { a._pageText = await a.pageNode.text(); } catch (e) { a._pageText = ''; } });
-  if (token !== SEARCH_STATE.token) return null;
+  if (signal.aborted) return null;
   if (deep) {
     // Read each artifact's current version once (text only) so its content is searchable too.
     const todo = arts.filter(a => a._contentLc == null);
@@ -4835,7 +4866,7 @@ async function runSearch(q, deep, onProgress) {
       a._contentLc = a._contentText.toLowerCase();
       if (++done % 25 === 0) onProgress && onProgress(`Reading artifact content… ${done} / ${todo.length}`);
     });
-    if (token !== SEARCH_STATE.token) return null;
+    if (signal.aborted) return null;
   }
   for (const a of arts) {
     if (!a._lc) {
@@ -4885,14 +4916,14 @@ const SEARCH_TYPES = [
 
 function viewSearch(q, t) {
   const deep = App.route.query.deep === '1';
-  const fp = App.focus ? DB.people.get(App.focus) : null;
+  const fp = focusPerson();
   after(async () => {
     const box = $('#search-results');
     if (!box) return;
     if (!q.trim()) { box.innerHTML = '<div class="empty">Type in the search box above. Use quotes for exact phrases, e.g. <code>"design system"</code>.</div>'; return; }
     box.innerHTML = '<div class="empty" id="search-progress">Searching…</div>';
-    const res = await runSearch(q, deep, msg => { const p = $('#search-progress'); if (p) p.textContent = msg; });
-    if (!res || !$('#search-results')) return;
+    const res = await runSearch(q, deep, VIEW.ac.signal, msg => { const p = $('#search-progress'); if (p) p.textContent = msg; });
+    if (!res) return;
     drawSearchResults(res, q, t, deep);
   });
   return `<div class="page narrow">
@@ -7238,16 +7269,6 @@ async function demoExportFiles() {
 /* App bootstrap: loading screen, routing, global events. */
 'use strict';
 
-const App = {
-  focus: null,          // Person id that scopes every list, or null
-  route: { path: [], query: {} },
-  lazy: new Map(),      // per-view lazy renderers for collapsed blocks
-  cleanup: [],          // per-view teardown callbacks
-};
-
-const $ = (sel, root) => (root || document).querySelector(sel);
-const $$ = (sel, root) => Array.from((root || document).querySelectorAll(sel));
-
 /* ---------- Theme ---------- */
 
 function applyTheme(t) {
@@ -7341,12 +7362,8 @@ function showApp() {
   if (App.focus && !DB.people.has(App.focus)) App.focus = null;
   updateFocusButton();
   renderSidebar();
-  if (!location.hash || location.hash === '#' || location.hash === '#/') navigate(defaultRoute(), true);
+  if (!location.hash || location.hash === '#' || location.hash === '#/') navigate('#/', true);
   else onRoute();
-}
-
-function defaultRoute() {
-  return '#/';
 }
 
 async function pickFiles() {
@@ -7458,19 +7475,14 @@ function onRoute() {
   if ($('#shell').hidden) return;
   App.route = parseHash();
   App.lastHash = location.hash;
-  App.lazy.clear();
-  App.cleanup.forEach(fn => { try { fn(); } catch (e) { /* ignore */ } });
-  App.cleanup = [];
+  VIEW.ac.abort();
+  VIEW = newView();
   $('#shell').classList.remove('nav-open');
   closePicker();
   const main = $('#main');
-  const html = renderRoute(App.route);
-  if (typeof html === 'string') main.innerHTML = html;
+  main.innerHTML = renderRoute(App.route);
   main.scrollTop = 0;
-  afterRender(App.route);
-  hydrateFrames(main);
-  // Lazy blocks that start open (e.g. artifacts in a chat) render right away.
-  main.querySelectorAll('details[data-lazy][open]').forEach(d => d.dispatchEvent(new Event('toggle')));
+  mountView(VIEW);
   renderSidebar();
   const q = App.route.path[0] === 'search' ? (App.route.query.q || '') : '';
   if (document.activeElement !== $('#q')) $('#q').value = q;
@@ -7491,7 +7503,7 @@ function setFocus(id) {
 }
 
 function updateFocusButton() {
-  const p = App.focus ? DB.people.get(App.focus) : null;
+  const p = focusPerson();
   $('#person-btn-label').textContent = p ? p.name : 'Focus on a person';
   $('#person-btn').setAttribute('aria-label', p ? 'Focused on ' + p.name + '. Change person' : 'Focus on a person');
   $('#person-btn').classList.toggle('primary', !!p);
@@ -7609,7 +7621,7 @@ function setupShell() {
   document.addEventListener('toggle', e => {
     const d = e.target;
     if (d.tagName === 'DETAILS' && d.open && d.dataset.lazy && !d.dataset.done) {
-      const fn = App.lazy.get(d.dataset.lazy);
+      const fn = VIEW.fns.get(d.dataset.lazy);
       if (fn) {
         const body = d.querySelector(':scope > .blk-body');
         body.insertAdjacentHTML('beforeend', fn());
@@ -7619,12 +7631,6 @@ function setupShell() {
       }
     }
   }, true);
-}
-
-function lazyKey(fn) {
-  const k = 'L' + App.lazy.size + '_' + Math.random().toString(36).slice(2, 7);
-  App.lazy.set(k, fn);
-  return k;
 }
 
 /* ---------- Boot ---------- */
