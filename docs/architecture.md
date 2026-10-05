@@ -75,19 +75,19 @@ For the format of the export itself, see [export-format.md](export-format.md).
 
 ### The model
 
-`DB` holds arrays and id maps for conversations, projects, design chats, memories and artifacts, plus `people`, `manifests`, `sources`, `warnings` and `ignored` files.
+`DB` holds arrays and id maps for conversations, projects, design chats, memories and artifacts, plus `people`, `manifests`, `sources`, `warnings` and `ignored` files. During an import, the `add…()` functions write only the id maps. `finalize()` builds the sorted arrays from them.
 
 Each record keeps the fields the views need, plus `raw` (the original JSON) and `source` (where it came from). Large content is **not** copied into the model: artifact files stay as `ZipNode`s and are read when they are opened.
 
 When the same item is loaded twice (two exports), the `add…()` functions keep the newer copy (see [export-format.md, section 12](export-format.md#12-older-export-formats)).
 
-`finalize()` rebuilds every link from scratch, so loading more files later never counts anything twice. It:
+`finalize()` rebuilds every link from scratch (`Person.resetLinks()`), so loading more files later never counts anything twice. It:
 
 - attaches each item to a `Person` (creating placeholder people for unknown ids, and a "No owner" person for items without one)
 - attributes thread comments and page comments
 - builds the reverse "mentioned in conversations" links for artifacts
 - picks display names and adds the email local part when two people share a name
-- sorts everything newest first
+- sorts everything newest first, and puts the conversation, project, design chat and memory maps in the same order, so a later load starts from it
 
 `Person` has one definition of each count (`convCount()`, `memoryCount()`, `total()`), so every card, tile, tab and badge shows the same number.
 

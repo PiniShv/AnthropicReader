@@ -65,9 +65,7 @@ async function startLoad(files, handles) {
       $('#continue-anyway').addEventListener('click', showApp);
       return;
     }
-    const hasData = DB.conversations.length || DB.projects.length || DB.artifacts.length ||
-      DB.designChats.length || DB.memories.length || DB.people.size;
-    if (!hasData && DB.manifests.length) { showManifestOnly(); return; }
+    if (!hasRecords() && DB.manifests.length) { showManifestOnly(); return; }
     showApp();
   } catch (err) {
     console.error(err);

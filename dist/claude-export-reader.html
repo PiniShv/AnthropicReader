@@ -1591,6 +1591,10 @@ class Person {
     this.phone = '';
     this.hints = [];             // names seen in the data (creator.full_name, authorName, …)
     this.name = '';              // display name, set in finalize()
+    this.resetLinks();
+  }
+  // Everything finalize() links to a person. It runs again on every load, so it starts here.
+  resetLinks() {
     this.conversations = [];
     this.projects = [];
     this.designChats = [];
@@ -1620,6 +1624,7 @@ class Person {
   emailLocal() { return (this.email || '').split('@')[0]; }
 }
 
+// An import writes only the id Maps. finalize() builds the sorted lists from them.
 const DB = {
   people: new Map(),
   conversations: [], convById: new Map(),
@@ -1707,9 +1712,9 @@ function addConversation(c, source, rawText) {
   const updated = parseTime(c.updated_at);
   const prev = DB.convById.get(c.uuid);
   if (prev) {
-    // Same chat in two exports: keep the newer / longer copy.
+    // Same chat in two exports: keep the newer / longer copy. It moves to the end, like a new chat.
     if (updated < prev.updated || (updated === prev.updated && msgs.length <= prev.msgCount)) return;
-    DB.conversations[prev.index] = null;
+    DB.convById.delete(c.uuid);
   }
   let human = 0, firstTs = 0, lastTs = 0, contentful = 0, files = 0, outputs = 0, tools = 0, firstHuman = '', firstReply = '';
   const childCount = new Map();
@@ -1760,9 +1765,7 @@ function addConversation(c, source, rawText) {
     artRefs,
     raw: c,
     source,
-    index: DB.conversations.length,
   };
-  DB.conversations.push(conv);
   DB.convById.set(conv.id, conv);
 }
 
@@ -1793,8 +1796,7 @@ function addProject(p, source) {
     raw: p,
     source,
   };
-  if (prev) DB.projects[DB.projects.indexOf(prev)] = proj; else DB.projects.push(proj);
-  DB.projectById.set(proj.id, proj);
+  DB.projectById.set(proj.id, proj);   // a newer copy keeps the old one's place
 }
 
 // Frontmatter is parsed line by line: some values contain ": " which breaks strict YAML.
@@ -1857,7 +1859,7 @@ function addMemory(m, source) {
   }
   mem.files.sort((a, b) => a.path.localeCompare(b.path));
   mem.sources.push(source);
-  if (!prev) { DB.memories.push(mem); DB.memoryByPerson.set(mem.id, mem); }
+  if (!prev) DB.memoryByPerson.set(mem.id, mem);
 }
 
 // Strip platform-injected context blocks from a design-chat prompt.
@@ -1946,8 +1948,7 @@ function addDesignChat(d, source) {
     source,
   };
   chat.ownerId = ownerId;
-  if (prev) DB.designChats[DB.designChats.indexOf(prev)] = chat; else DB.designChats.push(chat);
-  DB.designById.set(chat.id, chat);
+  DB.designById.set(chat.id, chat);   // a newer copy keeps the old one's place
 }
 
 function artifactFor(id) {
@@ -1956,7 +1957,8 @@ function artifactFor(id) {
     a = {
       type: 'artifact', id, kind: 'artifact', visibility: '', versions: [], activeVersion: '',
       ownerId: null, createdByAgent: false, sharedWith: null, updated: 0, created: 0,
-      title: '', description: '', files: new Map(), meta: null, comments: [], threads: [], pageNode: null,
+      // comments and threads stay null until a file gives them: the first file read wins.
+      title: '', description: '', files: new Map(), meta: null, comments: null, threads: null, pageNode: null,
     };
     DB.artifactById.set(id, a);
   }
@@ -2052,6 +2054,16 @@ async function readJson(node) {
   return JSON.parse(text.charCodeAt(0) === 0xfeff ? text.slice(1) : text);
 }
 
+// Many small files: how to add one parsed file of each kind, in the order they are read.
+const SMALL_INGEST = new Map([
+  ['project', addProject],
+  ['projects-array', (v, src) => (Array.isArray(v) ? v : [v]).forEach(p => addProject(p, src))],
+  ['memory', addMemory],
+  ['memories-array', (v, src) => (Array.isArray(v) ? v : [v]).forEach(m => addMemory(m, src))],
+  ['design', addDesignChat],
+  ['manifest', addManifest],
+]);
+
 async function importExport(files, ui) {
   const t0 = performance.now();
   ui.set('scan', 'Reading ' + plural(files.length, 'file') + '…', 0.02, '');
@@ -2115,34 +2127,22 @@ async function importExport(files, ui) {
   if (convNodes.length || DB.convById.size) ui.set('conv', 'Conversations', 1, fmtNum(DB.convById.size) + ' chats', 'done');
 
   // 3. Projects, memories, design chats: many small files.
-  const small = [
-    ...groups.project.map(n => ['project', n]),
-    ...groups['projects-array'].map(n => ['projects-array', n]),
-    ...groups.memory.map(n => ['memory', n]),
-    ...groups['memories-array'].map(n => ['memories-array', n]),
-    ...groups.design.map(n => ['design', n]),
-    ...groups.manifest.map(n => ['manifest', n]),
-  ];
+  const small = [...SMALL_INGEST.keys()].flatMap(kind => groups[kind].map(n => [kind, n]));
   let smallDone = 0;
-  const ingest = (kind, v, src) => {
-    if (kind === 'project') addProject(v, src);
-    else if (kind === 'projects-array') (Array.isArray(v) ? v : [v]).forEach(p => addProject(p, src));
-    else if (kind === 'memory') addMemory(v, src);
-    else if (kind === 'memories-array') (Array.isArray(v) ? v : [v]).forEach(m => addMemory(m, src));
-    else if (kind === 'design') addDesignChat(v, src);
-    else if (kind === 'manifest') addManifest(v, src);
-  };
   await mapLimit(small, 8, async ([kind, n]) => {
-    try { ingest(kind, await readJson(n), n.container); }
+    try { SMALL_INGEST.get(kind)(await readJson(n), n.container); }
     catch (e) { DB.warnings.push(n.path + ': ' + e.message); }
     smallDone++;
     if (smallDone % 10 === 0 || smallDone === small.length) {
       ui.set('small', 'Projects, memories, design chats', smallDone / small.length, smallDone + ' / ' + small.length + ' files');
     }
   });
-  for (const [n, s] of sniffed) ingest(s.kind, s.value, n.container);
+  for (const [n, s] of sniffed) {
+    const add = SMALL_INGEST.get(s.kind);   // users and conversations were added above
+    if (add) add(s.value, n.container);
+  }
   if (small.length) ui.set('small', 'Projects, memories, design chats', 1,
-    `${DB.projects.length} projects · ${DB.memories.length} memories · ${DB.designChats.length} design chats`, 'done');
+    `${DB.projectById.size} projects · ${DB.memoryByPerson.size} memories · ${DB.designById.size} design chats`, 'done');
 
   // 4. Artifacts: index files, read the small metadata files only.
   for (const n of artifactNodes) {
@@ -2156,18 +2156,17 @@ async function importExport(files, ui) {
     try {
       const v = await readJson(n);
       if (n.rel === 'artifact.json') applyArtifactMeta(a, v);
-      else if (n.rel === 'comments.json') { if (Array.isArray(v) && !a._commentsSeen) { a.comments = v; a._commentsSeen = true; } }
-      else if (n.rel === 'artifact_comments.json') { if (v && Array.isArray(v.threads) && !a._threadsSeen) { a.threads = v.threads; a._threadsSeen = true; } }
+      else if (n.rel === 'comments.json') { if (a.comments === null && Array.isArray(v)) a.comments = v; }
+      else if (n.rel === 'artifact_comments.json') { if (a.threads === null && v && Array.isArray(v.threads)) a.threads = v.threads; }
     } catch (e) { DB.warnings.push(n.container + ': ' + n.path + ': ' + e.message); }
     metaDone++;
     if (metaDone % 50 === 0 || metaDone === metaNodes.length) ui.set('art', 'Artifacts', metaDone / metaNodes.length, fmtNum(metaDone) + ' / ' + fmtNum(metaNodes.length) + ' metadata files');
   });
-  DB.artifacts = Array.from(DB.artifactById.values());
-  if (artifactNodes.length) ui.set('art', 'Artifacts', 1, fmtNum(DB.artifacts.length) + ' artifacts · ' + fmtNum(artifactNodes.length) + ' files indexed', 'done');
+  if (artifactNodes.length) ui.set('art', 'Artifacts', 1, fmtNum(DB.artifactById.size) + ' artifacts · ' + fmtNum(artifactNodes.length) + ' files indexed', 'done');
 
   finalize();
   ui.set('done', 'Ready in ' + fmtDuration(performance.now() - t0), 1, '', 'done');
-  if (!DB.conversations.length && !DB.projects.length && !DB.artifacts.length && !DB.designChats.length && !DB.memories.length && DB.people.size === 0 && !DB.manifests.length) {
+  if (!hasRecords() && !DB.manifests.length) {
     throw new Error('No Claude export data found in what you picked. Choose the .zip files from the export, or the folder they were unpacked into.');
   }
 }
@@ -2189,6 +2188,12 @@ function addManifest(v, source) {
   });
 }
 
+// Any record or person loaded? A manifest alone does not count.
+function hasRecords() {
+  return !!(DB.conversations.length || DB.projects.length || DB.artifacts.length ||
+    DB.designChats.length || DB.memories.length || DB.people.size);
+}
+
 // The newest manifest that was loaded, or null.
 function latestManifest() {
   return DB.manifests.slice().sort((a, b) => b.createdAt - a.createdAt)[0] || null;
@@ -2197,13 +2202,13 @@ function latestManifest() {
 /* ---------- Linking & derived data ---------- */
 
 function finalize() {
-  DB.conversations = DB.conversations.filter(Boolean);
-  DB.conversations.forEach((c, i) => { c.index = i; });
+  DB.conversations = Array.from(DB.convById.values());
+  DB.projects = Array.from(DB.projectById.values());
+  DB.designChats = Array.from(DB.designById.values());
+  DB.memories = Array.from(DB.memoryByPerson.values());
+  DB.artifacts = Array.from(DB.artifactById.values());
   // Rebuild every link from scratch, so loading more files later never double-counts.
-  for (const p of DB.people.values()) {
-    p.conversations = []; p.projects = []; p.designChats = []; p.artifacts = []; p.comments = [];
-    p.memory = null; p.messageCount = 0; p.first = 0; p.last = 0;
-  }
+  for (const p of DB.people.values()) p.resetLinks();
 
   for (const c of DB.conversations) {
     const p = personFor(c.ownerId);
@@ -2230,7 +2235,6 @@ function finalize() {
     if (!d.authors.length) { d.owner.designChats.push(d); d.owner.touch(d.created); d.owner.touch(d.lastTs); }
     for (const p of d.authors) { p.designChats.push(d); p.touch(d.created); p.touch(d.lastTs); }
   }
-  DB.artifacts = DB.artifacts.filter(a => a.meta || a.files.size);
   for (const a of DB.artifacts) {
     if (!a.meta) {
       // Files without artifact.json (partial export): still show them.
@@ -2248,7 +2252,7 @@ function finalize() {
     a.owner.artifacts.push(a);
     a.owner.touch(a.updated);
     // Page comments carry real author uuids.
-    for (const th of a.comments) {
+    for (const th of a.comments || []) {
       for (const cm of (th && th.comments) || []) {
         const au = cm.author || null;
         const who = au && au.uuid ? personFor(au.uuid, au.full_name) : null;
@@ -2256,7 +2260,7 @@ function finalize() {
       }
     }
     // Thread comments are anonymous; only the owner's own (non-Claude) comments are attributable.
-    for (const th of a.threads) {
+    for (const th of a.threads || []) {
       for (const cm of (th && th.comments) || []) {
         if (isDuplicateThreadComment(a, cm)) continue;
         if (cm.author_is_artifact_owner && cm.author_role !== 'assistant' && a.ownerId) {
@@ -2266,12 +2270,12 @@ function finalize() {
     }
   }
 
-  // Reverse links: which conversations mention a published artifact.
+  // Reverse links: which conversations mention a published artifact (artRefs is a Set).
   for (const a of DB.artifacts) a.mentionedIn = [];
   for (const c of DB.conversations) {
     for (const id of c.artRefs) {
       const a = DB.artifactById.get(id);
-      if (a && a.mentionedIn && !a.mentionedIn.includes(c)) a.mentionedIn.push(c);
+      if (a) a.mentionedIn.push(c);
     }
   }
 
@@ -2295,7 +2299,6 @@ function finalize() {
 
   const byNewest = (a, b) => (b.updated || b.created || 0) - (a.updated || a.created || 0);
   DB.conversations.sort((a, b) => b.lastTs - a.lastTs);
-  DB.conversations.forEach((c, i) => { c.index = i; });
   const byLast = (a, b) => b.lastTs - a.lastTs;
   DB.projects.sort(byNewest);
   DB.designChats.sort(byLast);
@@ -2307,6 +2310,12 @@ function finalize() {
     p.designChats.sort(byLast);
     p.artifacts.sort(byNewest);
     p.comments.sort((a, b) => parseTime(b.comment.created_at) - parseTime(a.comment.created_at));
+  }
+  // Put each id Map in list order, so the next load starts from the order the lists have now.
+  // artifactById keeps first-seen order: the artifact list was always built from it.
+  for (const [byId, list] of [[DB.convById, DB.conversations], [DB.projectById, DB.projects], [DB.designById, DB.designChats], [DB.memoryByPerson, DB.memories]]) {
+    byId.clear();
+    for (const x of list) byId.set(x.id, x);
   }
   DB.generation++;
 }
@@ -7276,9 +7285,7 @@ async function startLoad(files, handles) {
       $('#continue-anyway').addEventListener('click', showApp);
       return;
     }
-    const hasData = DB.conversations.length || DB.projects.length || DB.artifacts.length ||
-      DB.designChats.length || DB.memories.length || DB.people.size;
-    if (!hasData && DB.manifests.length) { showManifestOnly(); return; }
+    if (!hasRecords() && DB.manifests.length) { showManifestOnly(); return; }
     showApp();
   } catch (err) {
     console.error(err);

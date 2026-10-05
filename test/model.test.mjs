@@ -100,7 +100,8 @@ test('links conversations to people from users.json', async () => {
   assert.equal(byId(conv(6)).title, 'Here is a short summary of the plan.');
 
   // Newest first.
-  assert.deepEqual(Array.from(DB.conversations, c => c.index), [0, 1, 2, 3, 4, 5]);
+  const times = Array.from(DB.conversations, c => c.lastTs);
+  assert.deepEqual(times, times.slice().sort((a, b) => b - a));
 });
 
 test('the same conversation in two exports: the newer copy wins', async () => {
