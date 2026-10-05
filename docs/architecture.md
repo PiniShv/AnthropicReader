@@ -24,11 +24,11 @@ For the format of the export itself, see [export-format.md](export-format.md).
 | `src/load.js` | `FileNode`: a loose file with the same interface as a `ZipEntry` (`path`, `size`, `container`, `stream()`, `bytes()`, `text()`, `blob()`). File and folder picking, drag and drop, remembered file handles (`HandleStore`), and `parseJsonArrayStream()`. |
 | `src/render.js` | Escaping (`esc`), formatting of dates, numbers and sizes, Markdown (`mdToHtml`, `mdBlock`), sanitizing, search highlighting, the sandbox frame shim, small helpers (toast, copy, download, MIME types). |
 | `src/ui.js` | `App` (route and focus), `focusPerson()` / `focusScope()`, the `$` / `$$` shortcuts, and the lifetime of one drawn page: `VIEW`, `after()`, `viewKey()`, `on()` for click behaviour, and `blk()` for collapsible blocks. |
-| `src/model.js` | The in-memory model: `Person`, the `DB` object, `classify()`, one `add…()` function per record type, `importExport()` (the import pipeline), `finalize()` (links and derived data) and small queries such as `scopeOf()`. |
+| `src/model.js` | The in-memory model: `Person`, the `DB` object, `classify()`, one `add…()` function per record type, `importExport()` (the import pipeline), `finalize()` (links and derived data), `versionInfo()` (what an artifact version holds) and small queries (`scopeOf()`, `peopleMatching()`, `latestManifest()`, `missingFiles()`, `hasRecords()`). |
 | `src/conversation.js` | Conversations as data: the message tree and branches (`buildTree()`, `currentPath()`, `selectBranchFor()`), tool names and inputs, and the outputs Claude produced (`collectOutputs()`). |
 | `src/search.js` | The search engine (`runSearch()`), the searchable text of each record and the search index. No DOM. |
 | `src/export.js` | Files made for download: a conversation as Markdown (`convToMarkdown()`) and the per-person zip (`buildPersonZip()`). |
-| `src/preview.js` | Artifact previews: turns a version's files into one HTML document for a sandboxed frame (multi-file HTML, Slides, Design), with a small cache of built previews. |
+| `src/preview.js` | Artifact previews: `buildVersionHtml()` turns a version's files into one HTML document for a sandboxed frame (multi-file HTML, `buildSlides()`, `buildDesign()`), with file inlining (`inlineRefs()`, `assetLookup()`) and a small cache of built previews (`getBuilt()`). |
 | `src/views.js` | The kind registry (`KINDS`: routes, labels, icons, counts and views of the five record kinds), router dispatch (`renderRoute`), sidebar, the shared sortable table, start page, people list and person page. |
 | `src/views-conv.js` | Conversation list and thread: message and tool rendering, branch arrows, the "What Claude produced here" box. |
 | `src/views-art.js` | Artifact list and page, version viewer (Preview, Source and Files tabs), Claude Docs pages, artifact comments. |
@@ -38,6 +38,21 @@ For the format of the export itself, see [export-format.md](export-format.md).
 | `src/app.js` | Start-up: theme, loading screen, file pickers, hash routing, focus mode, global events. |
 
 `src/template.html` holds the landing screen and the empty app shell (top bar, sidebar, main area). `src/styles.css` holds all styles, with light and dark themes as CSS custom properties.
+
+### Building blocks
+
+A few small pieces carry most of the app. When you add something, reach for these first.
+
+| Piece | Where | What it is for |
+|---|---|---|
+| `VIEW`, `after(fn)` | `ui.js` | Everything that lives as long as one drawn page: its `AbortController`, its handlers, and hooks that run once its HTML is in the page. |
+| `on(fn)`, `on.change(fn)` | `ui.js` | Bind click (or change) behaviour where the markup is made. The markup gets only a short key. |
+| `blk({ summary }, render)` | `ui.js` | A collapsible block whose body is drawn the first time it opens. |
+| `tableHtml(spec)` | `views.js` | The sortable, filterable, paged table, with optional type chips (`spec.facet`). It keeps its own state per table key. |
+| `KINDS` | `views.js` | The five record kinds (conversations, artifacts, projects, design chats, memory): routes, labels, icons, counts, list and person views. |
+| `scopeOf(p)`, `focusScope()` | `model.js`, `ui.js` | The records in view: one person's, or everyone's. Lists, sidebar counts and search use it. |
+| `DB.generation` | `model.js` | Goes up on every `finalize()`, so caches of derived data (the search index) start again. |
+| `getBuilt()` | `preview.js` | A built artifact preview. The last 4 (per version and board) are kept, so switching tabs does not rebuild them. |
 
 ## Data flow
 
@@ -58,7 +73,7 @@ For the format of the export itself, see [export-format.md](export-format.md).
         │                   comments.json and artifact_comments.json (16 at a time)
         ▼
  finalize()              link every item to a Person, reverse links, display names,
-        │                name clashes, sorting
+        │                name clashes, sorting, derived values (comment counts, project memory)
         ▼
  showApp() → router → views   pages are drawn from DB on demand
 ```
@@ -122,7 +137,7 @@ Progress is reported in bytes, so the loading bar moves smoothly.
 
 Views are plain functions that return HTML strings built with template literals. The router puts the string into `#main`. Behaviour is bound where the markup is made: `<button ${on(() => copyText(p.id))}>` keeps the function for the current view and writes only a short key (`data-on`) into the markup. One delegated `click` listener and one `change` listener on `document` call it. Parts that need wiring after insertion (tables, filters, the conversation thread) use `after(fn)` hooks.
 
-Everything that belongs to one drawn page lives in `VIEW` (`src/ui.js`): its `after()` hooks, its lazy renderers and an `AbortController`. When the route changes, `onRoute()` aborts the old view and starts a new one. Listeners added with the view's `signal` are removed, and async drawers (artifact versions, docs, search) check `signal.aborted` after each `await`, so a slow draw never writes into a newer page.
+Everything that belongs to one drawn page lives in `VIEW` (`src/ui.js`): its `after()` hooks, the functions behind its `on()` keys and lazy blocks (`viewKey()`), and an `AbortController`. When the route changes, `onRoute()` aborts the old view and starts a new one. Listeners added with the view's `signal` are removed, and async drawers (artifact versions, docs, search) check `signal.aborted` after each `await`, so a slow draw never writes into a newer page.
 
 Rules that keep this safe:
 
@@ -143,7 +158,7 @@ Size limits keep the tab responsive:
 ## Lazy rendering
 
 - **Collapsed blocks** (tool calls, thinking, attachments, docs, memory files) are made with `blk({ summary }, render)`. The block starts with an empty body, and `render` is kept in the current view under a key (`data-lazy`). A capturing `toggle` listener draws the body the first time the block is opened. A block that starts open (`open: true`) draws its body right away.
-- **Long conversations** are drawn in batches: the first 30 messages (or enough to reach a linked message) at once, then 25 more every few milliseconds. A token stops an old batch run when the thread is redrawn (for example after a branch switch).
+- **Long conversations** are drawn in batches: the first 30 messages (or enough to reach a linked message) at once, then 25 more every few milliseconds. A sequence number (`threadSeq`) stops an old batch run when the thread is redrawn (for example after a branch switch).
 - **Tables** show 200 rows at a time with a **Show more** button.
 - **Artifact metadata** is read at load time, but version files are read only when a version is opened.
 
@@ -216,7 +231,8 @@ The app uses hash routes, so it works from `file://` and a reload keeps your pla
 - Read many small files in parallel with a concurrency limit (`mapLimit`).
 - Keep big content as file nodes, not strings, until it is shown.
 - Render lazily: collapsed blocks, message batches, paged tables.
-- Cache built previews and search text; cap everything that could grow without limit.
+- Cache built previews and search text, and encode each preview file only once per build; cap everything that could grow without limit.
+- Work out values that only change on load (comment counts, project memory) once, in `finalize()`.
 
 ## Testing hook
 
