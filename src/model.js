@@ -69,8 +69,7 @@ const DB = {
   sources: [],
   warnings: [],
   ignored: [],
-  loadedAt: 0,
-  searchReady: false,
+  generation: 0,   // goes up on every finalize(), so caches of derived data know to start again
 };
 
 function personFor(id, hint) {
@@ -599,7 +598,6 @@ async function importExport(files, ui) {
   if (artifactNodes.length) ui.set('art', 'Artifacts', 1, fmtNum(DB.artifacts.length) + ' artifacts · ' + fmtNum(artifactNodes.length) + ' files indexed', 'done');
 
   finalize();
-  DB.loadedAt = Date.now();
   ui.set('done', 'Ready in ' + fmtDuration(performance.now() - t0), 1, '', 'done');
   if (!DB.conversations.length && !DB.projects.length && !DB.artifacts.length && !DB.designChats.length && !DB.memories.length && DB.people.size === 0 && !DB.manifests.length) {
     throw new Error('No Claude export data found in what you picked. Choose the .zip files from the export, or the folder they were unpacked into.');
@@ -742,6 +740,7 @@ function finalize() {
     p.artifacts.sort(byNewest);
     p.comments.sort((a, b) => parseTime(b.comment.created_at) - parseTime(a.comment.created_at));
   }
+  DB.generation++;
 }
 
 // artifact_comments.json repeats doc questions (author_role "page") that comments.json already has.

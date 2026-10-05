@@ -1,4 +1,4 @@
-/* Projects, memory, design chats, search, about, per-person export. */
+/* Projects, memory, design chats, the search page, about, per-person export. */
 'use strict';
 
 /* ======================= Projects ======================= */
@@ -385,210 +385,32 @@ function designToolHtml(t) {
   });
 }
 
-/* ======================= Search ======================= */
+/* ======================= Search page ======================= */
 
-function searchTerms(q) {
-  const terms = [];
-  String(q || '').replace(/"([^"]+)"|(\S+)/g, (all, phrase, word) => {
-    // An unmatched quote is not part of the word.
-    const t = (phrase != null ? phrase : String(word || '').replace(/"/g, '')).trim().toLowerCase();
-    if (t) terms.push(t);
-    return all;
-  });
-  return terms;
-}
-
-function msgProse(m) {
-  const blocks = Array.isArray(m.content) ? m.content : [];
-  let s = '';
-  for (const b of blocks) if (b && b.type === 'text' && b.text) s += b.text + '\n';
-  if (!blocks.length && m.text) s += m.text + '\n';
-  for (const a of (m.attachments || [])) if (a.file_name) s += a.file_name + '\n';
-  for (const f of (m.files || [])) if (f.file_name) s += f.file_name + '\n';
-  return s;
-}
-
-function msgDeep(m) {
-  let s = '';
-  for (const b of (Array.isArray(m.content) ? m.content : [])) {
-    if (!b) continue;
-    if (b.type === 'thinking') { s += (b.thinking || '') + '\n'; for (const x of (b.summaries || [])) s += (x && x.summary || '') + '\n'; }
-    else if (b.type === 'tool_use') { try { s += JSON.stringify(b.input || {}) + '\n'; } catch (e) { /* ignore */ } }
-    else if (b.type === 'tool_result') {
-      for (const it of (Array.isArray(b.content) ? b.content : [])) if (it) s += (it.text || '') + ' ' + (it.title || '') + '\n';
-      // Oversized results keep their real payload only in structured_content.
-      const sc = b.structured_content;
-      if (sc && typeof sc === 'object' && Object.keys(sc).length) {
-        try { s += JSON.stringify(sc).slice(0, 2000000) + '\n'; } catch (e) { /* ignore */ }
-      }
-    }
-  }
-  for (const a of (m.attachments || [])) s += (a.extracted_content || '') + '\n';
-  return s;
-}
-
-function countHits(hay, terms) {
-  let n = 0;
-  for (const t of terms) {
-    let i = hay.indexOf(t);
-    if (i < 0) return -1;
-    let k = 0;
-    while (i >= 0 && k < 50) { k++; i = hay.indexOf(t, i + t.length); }
-    n += k;
-  }
-  return n;
-}
-
-// Returns null when `signal` aborts (the page changed) before the search ends.
-async function runSearch(q, deep, signal, onProgress) {
-  const terms = searchTerms(q);
-  const res = { conversations: [], artifacts: [], projects: [], design: [], memory: [], people: [], terms };
-  if (!terms.length) return res;
-  const fp = focusPerson();
-  const inScope = x => !fp || x.ownerId === fp.id || (x.authorIds && x.authorIds.includes(fp.id)) || (x.owner && x.owner.id === fp.id);
-  const all = terms;
-  const has = s => { const l = String(s || '').toLowerCase(); return all.every(t => l.includes(t)); };
-
-  // People
-  for (const p of DB.people.values()) if (!p.system && has(p.name + ' ' + p.email + ' ' + p.id)) res.people.push({ p });
-
-  // Conversations (chunked to keep the tab responsive)
-  const convs = fp ? fp.conversations : DB.conversations;
-  for (let ci = 0; ci < convs.length; ci++) {
-    const c = convs[ci];
-    if (!c._lcMsgs) c._lcMsgs = (c.raw.chat_messages || []).map(m => msgProse(m).toLowerCase());
-    if (deep && !c._lcDeep) c._lcDeep = (c.raw.chat_messages || []).map(m => msgDeep(m).toLowerCase());
-    const head = (c.title + '\n' + c.summary).toLowerCase();
-    let msgs = c._lcMsgs;
-    const joined = head + '\n' + msgs.join('\n') + (deep ? '\n' + c._lcDeep.join('\n') : '');
-    const score = countHits(joined, terms);
-    if (score >= 0) {
-      let hitIdx = msgs.findIndex(x => x.includes(terms[0]));
-      let hitDeep = false;
-      if (hitIdx < 0 && deep) { hitIdx = c._lcDeep.findIndex(x => x.includes(terms[0])); hitDeep = hitIdx >= 0; }
-      res.conversations.push({ c, score: score + (countHits(head, terms) >= 0 ? 20 : 0), hitIdx, hitDeep });
-    }
-    if (ci % 40 === 39) {
-      onProgress && onProgress(`Searching conversations… ${ci + 1} / ${convs.length}`);
-      await new Promise(r => setTimeout(r, 0));
-      if (signal.aborted) return null;
-    }
-  }
-  res.conversations.sort((a, b) => b.score - a.score || b.c.lastTs - a.c.lastTs);
-
-  // Projects
-  for (const x of DB.projects) {
-    if (!inScope(x)) continue;
-    if (!x._lc) x._lc = [x.name, x.description, x.promptTemplate, ...x.docs.map(d => d.filename + '\n' + d.content)].join('\n').toLowerCase();
-    if (all.every(t => x._lc.includes(t))) res.projects.push({ x });
-  }
-  // Design chats
-  for (const d of DB.designChats) {
-    if (!inScope(d)) continue;
-    if (!d._lc) {
-      const commentText = atts => (Array.isArray(atts) ? atts : []).filter(a => a && a.type === 'comment').map(a => String(a.content || '')).join('\n');
-      d._text = [d.title, d.project.name, ...d.messages.map(m => {
-        const c = m.content || {};
-        const parts = [typeof c.content === 'string' ? c.content : '', commentText(c.attachments)];
-        for (const b of (Array.isArray(c.contentBlocks) ? c.contentBlocks : [])) {
-          if (!b) continue;
-          if (b.type === 'text') parts.push(b.text || '');
-          // Messages typed while Claude was working exist only inside these blocks.
-          else if (b.type === 'user_interjection' && b.message) parts.push(String(b.message.content || ''), commentText(b.message.attachments));
-        }
-        return parts.join('\n');
-      })].join('\n');
-      d._lc = d._text.toLowerCase();
-    }
-    if (all.every(t => d._lc.includes(t))) res.design.push({ d });
-  }
-  // Memory
-  for (const mem of DB.memories) {
-    if (fp && mem.id !== fp.id) continue;
-    if (!mem._lc) {
-      mem._text = [mem.conversationsMemory, ...mem.projectMemories.map(x => x.text), ...mem.files.map(f => f.content)].join('\n');
-      mem._lc = mem._text.toLowerCase();
-    }
-    if (all.every(t => mem._lc.includes(t))) res.memory.push({ mem });
-  }
-  // Artifacts: titles, descriptions, docs text, comments
-  onProgress && onProgress('Searching artifacts…');
-  const arts = fp ? fp.artifacts : DB.artifacts;
-  const needPages = arts.filter(a => a.pageNode && a._pageText == null);
-  await mapLimit(needPages, 8, async a => { try { a._pageText = await a.pageNode.text(); } catch (e) { a._pageText = ''; } });
-  if (signal.aborted) return null;
-  if (deep) {
-    // Read each artifact's current version once (text only) so its content is searchable too.
-    const todo = arts.filter(a => a._contentLc == null);
-    let done = 0;
-    await mapLimit(todo, 6, async a => {
-      try { a._contentText = await artifactPlainText(a); } catch (e) { a._contentText = ''; }
-      a._contentLc = a._contentText.toLowerCase();
-      if (++done % 25 === 0) onProgress && onProgress(`Reading artifact content… ${done} / ${todo.length}`);
-    });
-    if (signal.aborted) return null;
-  }
-  for (const a of arts) {
-    if (!a._lc) {
-      a._lc = [a.title, a.description, a.contentType, ...a.versions.map(v => v.title + ' ' + v.description), a._pageText || '',
-        ...(a.comments || []).flatMap(t => [t.quoted_text, ...(t.comments || []).map(c => c.body)]),
-        ...(a.threads || []).flatMap(t => (t.comments || []).map(c => c.text))].join('\n').toLowerCase();
-    }
-    if (all.every(t => a._lc.includes(t))) res.artifacts.push({ a });
-    else if (deep && a._contentLc && all.every(t => a._lc.includes(t) || a._contentLc.includes(t))) res.artifacts.push({ a, inContent: true });
-  }
-  return res;
-}
-
-const ARTIFACT_TEXT_CAP = 2 * 1024 * 1024;
-
-// Visible text (plus inline script data) of an artifact's current version, without markup.
-async function artifactPlainText(a) {
-  const info = versionInfo(a, a.activeVersion);
-  const s = info.slot;
-  if (!s) return '';
-  const nodes = [];
-  if (s.single) nodes.push(s.single);
-  else {
-    for (const [p, node] of s.folder) {
-      if (p === 'index.html' && !info.typedEmpty) nodes.push(node);
-      else if (/^project\/(slides\/[^/]+\.html|[^/]+\.dc\.html|deck\.json|canvas\.json)$/.test(p)) nodes.push(node);
-    }
-  }
-  let out = '';
-  for (const node of nodes) {
-    if (out.length > ARTIFACT_TEXT_CAP) break;
-    const html = await node.text();
-    out += ' ' + html
-      .replace(/data:[a-z0-9.+\/-]+;base64,[A-Za-z0-9+\/=]+/gi, ' ')   // embedded images and fonts
-      .replace(/<style[\s\S]*?<\/style>/gi, ' ')
-      .replace(/<[^>]+>/g, ' ')
-      .replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;/g, "'")
-      .replace(/\s+/g, ' ');
-  }
-  return out.slice(0, ARTIFACT_TEXT_CAP);
-}
+// Every search URL is made here, with its parameters in this order. t is not encoded: the app
+// writes only type names, and a t typed into the URL is passed on as it is.
+const searchHref = ({ q, deep, t }) => '#/search?q=' + encodeURIComponent(q) + (deep ? '&deep=1' : '') + (t ? '&t=' + t : '');
 
 function viewSearch(q, t) {
   const deep = App.route.query.deep === '1';
   // The type as it is in the URL: the default 'all' must not be added to it.
   const urlType = App.route.query.t;
-  const setDeep = el => navigate('#/search?q=' + encodeURIComponent(q) + (el.checked ? '&deep=1' : '') + (urlType ? '&t=' + urlType : ''), true);
-  const fp = focusPerson();
+  const s = focusScope();
   after(async () => {
     const box = $('#search-results');
     if (!box) return;
     if (!q.trim()) { box.innerHTML = '<div class="empty">Type in the search box above. Use quotes for exact phrases, e.g. <code>"design system"</code>.</div>'; return; }
     box.innerHTML = '<div class="empty" id="search-progress">Searching…</div>';
-    const res = await runSearch(q, deep, VIEW.ac.signal, msg => { const p = $('#search-progress'); if (p) p.textContent = msg; });
+    const onProgress = msg => { const p = $('#search-progress'); if (p) p.textContent = msg; };
+    const res = await runSearch(q, { deep, scope: s, signal: VIEW.ac.signal, onProgress });
     if (!res) return;
     drawSearchResults(res, q, t, deep);
   });
   return `<div class="page narrow">
     <div class="page-head"><div class="grow"><h1>Search</h1>
-      <div class="sub">${fp ? `<span>Only ${personLink(fp)}’s data · <a href="#" ${on(() => setFocus(null))}>search everyone</a></span>` : '<span>All people</span>'}</div></div></div>
+      <div class="sub">${s.person ? `<span>Only ${personLink(s.person)}’s data · <a href="#" ${on(() => setFocus(null))}>search everyone</a></span>` : '<span>All people</span>'}</div></div></div>
     <div class="toolbar">
-      <label class="row muted" style="font-size:14px"><input type="checkbox" ${on(setDeep)}${deep ? ' checked' : ''}> Deep search: also look inside tool calls, thinking, attached files and artifact content (slower the first time)</label>
+      <label class="row muted" style="font-size:14px"><input type="checkbox" ${on(el => navigate(searchHref({ q, deep: el.checked, t: urlType }), true))}${deep ? ' checked' : ''}> Deep search: also look inside tool calls, thinking, attached files and artifact content (slower the first time)</label>
     </div>
     <div id="search-tabs" class="search-tabs"></div>
     <div id="search-results"></div>
@@ -599,46 +421,45 @@ function drawSearchResults(res, q, t, deep) {
   const terms = res.terms;
   // Result lists are keyed like the kinds (res.conversations … res.memory), plus res.people.
   const total = KINDS.reduce((n, k) => n + res[k.key].length, res.people.length);
-  const base = '#/search?q=' + encodeURIComponent(q) + (deep ? '&deep=1' : '');
-  const tab = (k, label, n) => `<a class="chip${t === k ? ' on' : ''}" href="${base}&t=${k}">${label} <b>${fmtNum(n)}</b></a>`;
+  const tab = (k, label, n) => `<a class="chip${t === k ? ' on' : ''}" href="${searchHref({ q, deep, t: k })}">${label} <b>${fmtNum(n)}</b></a>`;
   $('#search-tabs').innerHTML = tab('all', 'Everything', total) + KINDS.map(k => tab(k.key, esc(k.searchTab || k.label), res[k.key].length)).join('') + tab('people', 'People', res.people.length);
   const limit = t === 'all' ? 5 : 200;
   const qs = '?q=' + encodeURIComponent(q);
   const sec = (k, title, items, fn) => {
     if (t !== 'all' && t !== k) return '';
     if (!items.length) return t === k ? '<div class="card empty">No matches.</div>' : '';
-    return `${t === 'all' ? `<h2 class="section-title">${title} <span class="badge">${fmtNum(items.length)}</span>${items.length > limit ? ` <a class="chip" href="${base}&t=${k}">see all</a>` : ''}</h2>` : ''}
+    return `${t === 'all' ? `<h2 class="section-title">${title} <span class="badge">${fmtNum(items.length)}</span>${items.length > limit ? ` <a class="chip" href="${searchHref({ q, deep, t: k })}">see all</a>` : ''}</h2>` : ''}
       <div class="card">${items.slice(0, limit).map(fn).join('')}</div>
       ${t !== 'all' && items.length > limit ? `<p class="muted">Showing the first ${limit}. Add more words to narrow it down.</p>` : ''}`;
   };
-  const conv = r => {
-    const c = r.c;
+  // Each renderer reads only its hit: { item } plus what runSearch found (see search.js).
+  const conv = ({ item: c, hitIdx, hitDeep }) => {
     const msgs = c.raw.chat_messages || [];
-    const m = r.hitIdx >= 0 ? msgs[r.hitIdx] : null;
-    const text = m ? (r.hitDeep ? msgDeep(m) : msgProse(m)) : (c.summary || '');
+    const m = hitIdx >= 0 ? msgs[hitIdx] : null;
+    const text = m ? (hitDeep ? msgDeep(m) : msgProse(m)) : (c.summary || '');
     return `<a class="result" href="#/c/${encodeURIComponent(c.id)}${qs}${m ? '&m=' + encodeURIComponent(m.uuid) : ''}">
       <div class="r-title"><span dir="auto">${esc(c.title || 'Untitled conversation')}</span></div>
       <div class="r-snip" dir="auto">${snippetHtml(text, terms)}</div>
-      <div class="r-meta">${avatarHtml(c.owner, 'sm')}<span>${esc(c.owner.name)}</span><span>${esc(fmtDate(c.lastTs))}</span><span>${plural(c.msgCount, 'message')}</span>${r.hitDeep ? '<span class="chip">in a tool call or file</span>' : ''}</div></a>`;
+      <div class="r-meta">${avatarHtml(c.owner, 'sm')}<span>${esc(c.owner.name)}</span><span>${esc(fmtDate(c.lastTs))}</span><span>${plural(c.msgCount, 'message')}</span>${hitDeep ? '<span class="chip">in a tool call or file</span>' : ''}</div></a>`;
   };
-  const art = r => `<a class="result" href="#/a/${encodeURIComponent(r.a.id)}"><div class="r-title"><span dir="auto">${esc(r.a.title)}</span><span class="chip">${esc(r.a.contentType)}</span></div>
-    <div class="r-snip" dir="auto">${snippetHtml(r.inContent ? r.a._contentText : [r.a.title, r.a.description, r.a._pageText].join(' — '), terms)}</div>
-    <div class="r-meta">${avatarHtml(r.a.owner, 'sm')}<span>${esc(r.a.owner.name)}</span><span>${esc(fmtDate(r.a.updated))}</span>${r.inContent ? '<span class="chip">inside the artifact</span>' : ''}</div></a>`;
-  const proj = r => {
-    const d = r.x.docs.find(dd => terms.every(tt => (dd.filename + dd.content).toLowerCase().includes(tt)));
-    return `<a class="result" href="#/p/${encodeURIComponent(r.x.id)}"><div class="r-title"><span dir="auto">${esc(r.x.name || 'Untitled project')}</span></div>
-      <div class="r-snip" dir="auto">${d ? '<b>' + esc(d.filename) + ':</b> ' + snippetHtml(d.content, terms) : snippetHtml(r.x.description || r.x.name, terms)}</div>
-      <div class="r-meta">${avatarHtml(r.x.owner, 'sm')}<span>${esc(r.x.owner.name)}</span></div></a>`;
+  const art = ({ item: a, text, inContent }) => `<a class="result" href="#/a/${encodeURIComponent(a.id)}"><div class="r-title"><span dir="auto">${esc(a.title)}</span><span class="chip">${esc(a.contentType)}</span></div>
+    <div class="r-snip" dir="auto">${snippetHtml(text, terms)}</div>
+    <div class="r-meta">${avatarHtml(a.owner, 'sm')}<span>${esc(a.owner.name)}</span><span>${esc(fmtDate(a.updated))}</span>${inContent ? '<span class="chip">inside the artifact</span>' : ''}</div></a>`;
+  const proj = ({ item: x }) => {
+    const d = x.docs.find(dd => terms.every(tt => (dd.filename + dd.content).toLowerCase().includes(tt)));
+    return `<a class="result" href="#/p/${encodeURIComponent(x.id)}"><div class="r-title"><span dir="auto">${esc(x.name || 'Untitled project')}</span></div>
+      <div class="r-snip" dir="auto">${d ? '<b>' + esc(d.filename) + ':</b> ' + snippetHtml(d.content, terms) : snippetHtml(x.description || x.name, terms)}</div>
+      <div class="r-meta">${avatarHtml(x.owner, 'sm')}<span>${esc(x.owner.name)}</span></div></a>`;
   };
-  const des = r => `<a class="result" href="#/d/${encodeURIComponent(r.d.id)}${qs}"><div class="r-title"><span dir="auto">${esc(r.d.title)}</span><span class="chip">✎ ${esc(r.d.project.name)}</span></div>
-    <div class="r-snip" dir="auto">${snippetHtml(r.d._text, terms)}</div>
-    <div class="r-meta">${avatarHtml(r.d.owner, 'sm')}<span>${esc(r.d.owner.name)}</span><span>${esc(fmtDate(r.d.lastTs))}</span></div></a>`;
-  const mem = r => {
-    const f = r.mem.files.find(ff => terms.every(tt => ff.content.toLowerCase().includes(tt)));
-    return `<a class="result" href="#/memory/${encodeURIComponent(r.mem.id)}"><div class="r-title">${avatarHtml(r.mem.owner, 'sm')}<span>${esc(r.mem.owner.name)}</span>${f ? `<span class="chip mono">${esc(f.path)}</span>` : ''}</div>
-      <div class="r-snip" dir="auto">${snippetHtml(f ? f.body : r.mem._text, terms)}</div></a>`;
+  const des = ({ item: d, text }) => `<a class="result" href="#/d/${encodeURIComponent(d.id)}${qs}"><div class="r-title"><span dir="auto">${esc(d.title)}</span><span class="chip">✎ ${esc(d.project.name)}</span></div>
+    <div class="r-snip" dir="auto">${snippetHtml(text, terms)}</div>
+    <div class="r-meta">${avatarHtml(d.owner, 'sm')}<span>${esc(d.owner.name)}</span><span>${esc(fmtDate(d.lastTs))}</span></div></a>`;
+  const mem = ({ item: m, text }) => {
+    const f = m.files.find(ff => terms.every(tt => ff.content.toLowerCase().includes(tt)));
+    return `<a class="result" href="#/memory/${encodeURIComponent(m.id)}"><div class="r-title">${avatarHtml(m.owner, 'sm')}<span>${esc(m.owner.name)}</span>${f ? `<span class="chip mono">${esc(f.path)}</span>` : ''}</div>
+      <div class="r-snip" dir="auto">${snippetHtml(f ? f.body : text, terms)}</div></a>`;
   };
-  const ppl = r => `<a class="result" href="#/person/${encodeURIComponent(r.p.id)}"><div class="r-title">${avatarHtml(r.p, 'sm')}<span>${esc(r.p.name)}</span></div><div class="r-meta"><span>${esc(r.p.email || '')}</span><span>${plural(r.p.total(), 'item')}</span></div></a>`;
+  const ppl = ({ item: p }) => `<a class="result" href="#/person/${encodeURIComponent(p.id)}"><div class="r-title">${avatarHtml(p, 'sm')}<span>${esc(p.name)}</span></div><div class="r-meta"><span>${esc(p.email || '')}</span><span>${plural(p.total(), 'item')}</span></div></a>`;
   const resultHtml = { conversations: conv, artifacts: art, projects: proj, design: des, memory: mem };
   $('#search-results').innerHTML = (total ? '' : `<div class="card empty">Nothing found for “${esc(q)}”.${deep ? '' : ' Try ticking “Deep search”.'}</div>`) +
     sec('people', 'People', res.people, ppl) + KINDS.map(k => sec(k.key, esc(k.label), res[k.key], resultHtml[k.key])).join('');

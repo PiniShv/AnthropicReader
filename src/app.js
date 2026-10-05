@@ -308,8 +308,7 @@ function setupShell() {
 
   $('#topsearch').addEventListener('submit', e => {
     e.preventDefault();
-    const q = $('#q').value.trim();
-    navigate('#/search?q=' + encodeURIComponent(q));
+    navigate(searchHref({ q: $('#q').value.trim() }));
   });
   let searchTimer = null;
   $('#q').addEventListener('input', () => {
@@ -317,7 +316,7 @@ function setupShell() {
     searchTimer = setTimeout(() => {
       const q = $('#q').value.trim();
       if (q.length >= 2 || (q === '' && App.route.path[0] === 'search')) {
-        const hash = '#/search?q=' + encodeURIComponent(q) + (App.route.query.t ? '&t=' + App.route.query.t : '');
+        const hash = searchHref({ q, t: App.route.query.t });
         if (App.route.path[0] === 'search') navigate(hash, true); else navigate(hash);
       }
     }, 280);

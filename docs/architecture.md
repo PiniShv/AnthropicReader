@@ -25,10 +25,11 @@ For the format of the export itself, see [export-format.md](export-format.md).
 | `src/render.js` | Escaping (`esc`), formatting of dates, numbers and sizes, Markdown (`mdToHtml`, `mdBlock`), sanitizing, search highlighting, the sandbox frame shim, small helpers (toast, copy, download, MIME types). |
 | `src/ui.js` | `App` (route and focus), `focusPerson()` / `focusScope()`, the `$` / `$$` shortcuts, and the lifetime of one drawn page: `VIEW`, `after()`, `viewKey()`, `on()` for click behaviour, and `blk()` for collapsible blocks. |
 | `src/model.js` | The in-memory model: `Person`, the `DB` object, `classify()`, one `add…()` function per record type, `importExport()` (the import pipeline), `finalize()` (links and derived data) and small queries such as `scopeOf()`. |
+| `src/search.js` | The search engine (`runSearch()`), the searchable text of each record and the search index. No DOM. |
 | `src/views.js` | The kind registry (`KINDS`: routes, labels, icons, counts and views of the five record kinds), router dispatch (`renderRoute`), sidebar, the shared sortable table, start page, people list and person page. |
 | `src/views-conv.js` | Conversation list, message tree and branches, message and tool rendering, the "What Claude produced here" box, Markdown export. |
 | `src/views-art.js` | Artifact list and page, version viewer, asset inlining, Slides, Design, Claude Docs pages, artifact comments. |
-| `src/views-misc.js` | Projects, memory, design chats, search, "About this export", manifest download links, and the per-person zip. |
+| `src/views-misc.js` | Projects, memory, design chats, the search page, "About this export", manifest download links, and the per-person zip. |
 | `src/demo.js` | The made-up sample export ("Try it with sample data"). |
 | `src/app.js` | Start-up: theme, loading screen, file pickers, hash routing, focus mode, global events. |
 
@@ -187,13 +188,14 @@ The app uses hash routes, so it works from `file://` and a reload keeps your pla
 
 `navigate()` uses `history.pushState` / `replaceState` and draws the page. `onRoute()` ends the old view, draws the new one, runs its `after()` hooks and redraws the sidebar. Because a link click fires both `popstate` and `hashchange`, the app draws only when the hash really changed.
 
-**Focus mode** keeps the focused person's id in `App.focus` (and in `sessionStorage` for this tab). Only `setFocus()` changes it. Lists and sidebar counts read `focusScope()`: the focused person's records, which `finalize()` linked to them, or everyone's (`scopeOf()`). Search reads the focused person too.
+**Focus mode** keeps the focused person's id in `App.focus` (and in `sessionStorage` for this tab). Only `setFocus()` changes it. Lists, sidebar counts and search read `focusScope()`: the focused person's records, which `finalize()` linked to them, or everyone's (`scopeOf()`).
 
 ## Search
 
-`runSearch()` matches every search term (words, or phrases in quotes) case-insensitively:
+`runSearch()` in `src/search.js` matches every search term (words, or phrases in quotes) case-insensitively, in the records of one scope (`scopeOf()`). People are always searched in full.
 
-- Each item keeps a lower-cased text cache (`_lcMsgs`, `_lc`, …) built the first time it is searched, so later searches are fast.
+- The search index (`searchEntry()`) keeps the lower-cased text of each item, built the first time it is searched, so later searches are fast. Adding files to an open export can change records in place, so `finalize()` raises `DB.generation` and the index starts again.
+- Every hit is `{ item, … }` and carries the text its snippet needs, so the search page never reads the index.
 - Normal search covers titles, summaries, message text and file names. **Deep search** adds tool inputs and results, thinking, attachment text and artifact content (the visible text of each artifact's current version, read from the zip once and capped at 2 MB).
 - The conversation loop yields to the browser every 40 conversations and reports progress. Leaving the page aborts the view's signal, which stops the search at its next pause.
 - A result links to the matching message (switching to its branch if needed) with the words highlighted.

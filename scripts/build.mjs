@@ -16,7 +16,7 @@ const OUT = join(ROOT, 'dist', 'claude-export-reader.html');
 const VENDOR = ['vendor/marked.min.js', 'vendor/purify.min.js'];
 export const APP_SCRIPTS = [
   'src/zip.js', 'src/load.js', 'src/render.js', 'src/ui.js', 'src/model.js',
-  'src/views.js', 'src/views-conv.js', 'src/views-art.js', 'src/views-misc.js',
+  'src/search.js', 'src/views.js', 'src/views-conv.js', 'src/views-art.js', 'src/views-misc.js',
   'src/demo.js', 'src/app.js',
 ];
 

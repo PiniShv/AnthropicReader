@@ -206,6 +206,23 @@ test('memory from two exports: the newer copy wins, the older one only fills gap
   }
 });
 
+test('search finds text from files added to an open export', async () => {
+  const first = looseFile('old/memories.json', [{ account_uuid: ADA, conversations_memory: 'Ada runs operations.', project_memories: {} }]);
+  const second = looseFile('new/memories/' + ADA + '.json', {
+    account_uuid: ADA, conversations_memory: '', project_memories: {},
+    memory_files: [{ path: '/topics/zebra.md', content: 'The zebra crossing project.', updated_at: '2026-05-01T08:00:00Z' }],
+  });
+  const { api } = await importFiles([first]);
+  const search = q => api.runSearch(q, { scope: api.scopeOf(null), signal: new AbortController().signal });
+  assert.equal((await search('operations')).memory.length, 1, 'the first search fills the index');
+  assert.equal((await search('zebra')).memory.length, 0);
+  // The second file is merged into the same memory object, so the index must start again.
+  await api.importExport([second], { set() {} });
+  const res = await search('zebra');
+  assert.equal(res.memory.length, 1);
+  assert.match(res.memory[0].text, /zebra crossing/);
+});
+
 /* ---------- Paths, junk, shape sniffing ---------- */
 
 test('Finder-style folder names ("artifacts 2", "design_chats 2") are recognised', async () => {
