@@ -758,8 +758,8 @@ Older exports can hold data the newest one lacks (deleted projects, chats of peo
 |---|---|
 | conversation | newer `updated_at`; on a tie, the one with more messages |
 | project, design chat | newer `updated_at` |
-| artifact metadata | newer `updated_at` |
-| artifact files | merged by path |
+| artifact metadata, `page.md` and comments | the copy whose `artifact.json` is newer (its `updated_at` or its newest version, whichever is later); on a tie, the one loaded later |
+| artifact version files | merged by path (a version's files never change) |
 | memory | merged: newer files win, and older text fills gaps |
 | person (`users.json`) | the file loaded last fills in the fields it has |
 

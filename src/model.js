@@ -386,7 +386,7 @@ function artifactFor(id) {
     a = {
       type: 'artifact', id, kind: 'artifact', visibility: '', versions: [], activeVersion: '',
       ownerId: null, createdByAgent: false, sharedWith: null, updated: 0, created: 0,
-      // comments and threads stay null until a file gives them: the first file read wins.
+      // comments and threads stay null until a file gives them (see importExport, step 4).
       title: '', description: '', files: new Map(), meta: null, comments: null, threads: null, pageNode: null,
     };
     DB.artifactById.set(id, a);
@@ -394,24 +394,21 @@ function artifactFor(id) {
   return a;
 }
 
-function applyArtifactMeta(a, j) {
-  if (!j || typeof j !== 'object') return;
-  const updated = parseTime(j.updated_at);
-  if (a.meta && updated < a.updated) return;
-  a.meta = j;
-  a.kind = j.kind || 'artifact';
-  a.visibility = j.visibility || '';
-  a.versions = (Array.isArray(j.versions) ? j.versions : []).map(v => ({
+// The artifact fields that one artifact.json gives, or null when it is not an object.
+function artifactMeta(j) {
+  if (!j || typeof j !== 'object') return null;
+  const versions = (Array.isArray(j.versions) ? j.versions : []).map(v => ({
     id: v.id || '', title: decodeEntities(v.title || ''), description: v.description || '', created: parseTime(v.created_at), raw: v,
   }));
-  a.activeVersion = j.active_version || (a.versions[0] && a.versions[0].id) || '';
-  a.ownerId = j.owner_account || null;
-  a.createdByAgent = !!j.created_by_agent;
-  a.sharedWith = j.shared_with || null;
-  const active = a.versions.find(v => v.id === a.activeVersion) || a.versions[0];
-  a.title = (active && active.title) || '';
-  a.description = decodeEntities((active && active.description) || '');
-  setArtifactDates(a, updated);
+  const activeVersion = j.active_version || (versions[0] && versions[0].id) || '';
+  const active = versions.find(v => v.id === activeVersion) || versions[0];
+  const m = {
+    meta: j, kind: j.kind || 'artifact', visibility: j.visibility || '', versions, activeVersion,
+    ownerId: j.owner_account || null, createdByAgent: !!j.created_by_agent, sharedWith: j.shared_with || null,
+    title: (active && active.title) || '', description: decodeEntities((active && active.description) || ''),
+  };
+  setArtifactDates(m, parseTime(j.updated_at));
+  return m;
 }
 
 // Created is the oldest version. Updated is the newest version, or `updated` (artifact.json's
@@ -488,6 +485,9 @@ async function readJson(node) {
   const text = await node.text();
   return JSON.parse(text.charCodeAt(0) === 0xfeff ? text.slice(1) : text);
 }
+
+// An artifact's files that a newer export can change (a version's files never change).
+const BUNDLE_FILES = new Set(['artifact.json', 'comments.json', 'artifact_comments.json', 'page.md']);
 
 // Many small files: how to add one parsed file of each kind, in the order they are read.
 const SMALL_INGEST = new Map([
@@ -579,24 +579,43 @@ async function importExport(files, ui) {
   if (small.length) ui.set('small', 'Projects, memories, design chats', 1,
     `${DB.projectById.size} projects · ${DB.memoryByPerson.size} memories · ${DB.designById.size} design chats`, 'done');
 
-  // 4. Artifacts: index files, read the small metadata files only.
+  // 4. Artifacts: index files, read the small metadata files only. A version's files never
+  // change, so the first copy of each path is kept. The files a newer export can change
+  // (BUNDLE_FILES) form one bundle per artifact folder and container: the bundle with the
+  // newest artifact.json gives all of them, and the others only fill gaps.
+  const bundles = new Map();
   for (const { n, id, rel } of artifactNodes) {
     const a = artifactFor(id);
     if (!a.files.has(rel)) a.files.set(rel, n);
+    if (!BUNDLE_FILES.has(rel)) continue;
+    const key = n.container + '\n' + n.path.slice(0, -rel.length);
+    if (!bundles.has(key)) bundles.set(key, { a, files: new Map(), meta: null, comments: null, threads: null });
+    const b = bundles.get(key);
+    if (!b.files.has(rel)) b.files.set(rel, n);
   }
-  const metaNodes = artifactNodes.filter(x => x.rel === 'artifact.json' || x.rel === 'comments.json' || x.rel === 'artifact_comments.json');
+  const reads = [...bundles.values()].flatMap(b => [...b.files].filter(([rel]) => rel !== 'page.md').map(([rel, n]) => ({ b, rel, n })));
   let metaDone = 0;
-  await mapLimit(metaNodes, 16, async ({ n, id, rel }) => {
-    const a = DB.artifactById.get(id);
+  await mapLimit(reads, 16, async ({ b, rel, n }) => {
     try {
       const v = await readJson(n);
-      if (rel === 'artifact.json') applyArtifactMeta(a, v);
-      else if (rel === 'comments.json') { if (a.comments === null && Array.isArray(v)) a.comments = v; }
-      else if (rel === 'artifact_comments.json') { if (a.threads === null && v && Array.isArray(v.threads)) a.threads = v.threads; }
+      if (rel === 'artifact.json') b.meta = artifactMeta(v);
+      else if (rel === 'comments.json') { if (Array.isArray(v)) b.comments = v; }
+      else if (v && Array.isArray(v.threads)) b.threads = v.threads;
     } catch (e) { DB.warnings.push(n.container + ': ' + n.path + ': ' + e.message); }
     metaDone++;
-    if (metaDone % 50 === 0 || metaDone === metaNodes.length) ui.set('art', 'Artifacts', metaDone / metaNodes.length, fmtNum(metaDone) + ' / ' + fmtNum(metaNodes.length) + ' metadata files');
+    if (metaDone % 50 === 0 || metaDone === reads.length) ui.set('art', 'Artifacts', metaDone / reads.length, fmtNum(metaDone) + ' / ' + fmtNum(reads.length) + ' metadata files');
   });
+  // Bundles in node order. On a tie (one export split across two zips) the later one wins.
+  for (const b of bundles.values()) {
+    const a = b.a;
+    const wins = !!b.meta && (!a.meta || b.meta.updated >= a.updated);
+    if (wins) {
+      Object.assign(a, b.meta);
+      for (const [rel, n] of b.files) a.files.set(rel, n);
+    }
+    if (b.comments && (wins || a.comments === null)) a.comments = b.comments;
+    if (b.threads && (wins || a.threads === null)) a.threads = b.threads;
+  }
   if (artifactNodes.length) ui.set('art', 'Artifacts', 1, fmtNum(DB.artifactById.size) + ' artifacts · ' + fmtNum(artifactNodes.length) + ' files indexed', 'done');
 
   finalize();

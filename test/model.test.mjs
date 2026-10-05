@@ -527,6 +527,33 @@ test('an artifact split across two zips is merged by path', async () => {
   assert.equal(a.contentType, 'HTML + files');
 });
 
+test('a newer export of an artifact brings its title, versions, page and comments, in any order', async () => {
+  const doc = (title, versions, updated, page, comment) => zip(`export-${title}.zip`, {
+    [`artifacts/${art(1)}/artifact.json`]: artifactJson(ADA, versions.map(([id, at]) => ({ id, title, created_at: at })), { kind: 'page', updated_at: updated }),
+    [`artifacts/${art(1)}/page.md`]: page,
+    [`artifacts/${art(1)}/comments.json`]: [{ comments: [{ author: { uuid: BRAM }, body: comment, created_at: updated }] }],
+  });
+  // The old artifact.json has an updated_at older than its own version, so the newest time
+  // of each copy (its version or its updated_at) decides which copy is newer.
+  const older = await doc('Old', [[V(1), '2026-03-01T00:00:00Z']], '2026-01-10T00:00:00Z', 'OLD PAGE', 'Old comment');
+  const newer = await doc('New', [[V(1), '2026-03-01T00:00:00Z'], [V(2), '2026-04-01T00:00:00Z']], '2026-02-10T00:00:00Z', 'NEW PAGE', 'New comment');
+  const check = async (api, how) => {
+    const a = api.DB.artifactById.get(art(1));
+    assert.equal(a.title, 'New', how);
+    assert.deepEqual(Array.from(a.versions, v => v.id), [V(1), V(2)], how);
+    assert.equal(await a.pageNode.text(), 'NEW PAGE', how);
+    assert.deepEqual(Array.from(a.comments, t => t.comments[0].body), ['New comment'], how);
+    assert.deepEqual(Array.from(person(api, BRAM).comments, c => c.comment.body), ['New comment'], how);
+  };
+  for (const [first, second] of [[older, newer], [newer, older]]) {
+    const how = first === older ? 'old first' : 'new first';
+    const { api } = await importFiles([first]);
+    await api.importExport([second], { set() {} });
+    await check(api, how + ', two loads');
+    await check((await importFiles([first, second])).api, how + ', one load');
+  }
+});
+
 /* ---------- Comments ---------- */
 
 function pageWithComments() {

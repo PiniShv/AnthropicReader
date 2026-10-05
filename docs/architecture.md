@@ -95,7 +95,7 @@ A few small pieces carry most of the app. When you add something, reach for thes
 
 Each record keeps the fields the views need, plus `raw` (the original JSON) and `source` (where it came from). Large content is **not** copied into the model: artifact files stay as file nodes (`ZipEntry` or `FileNode`) and are read when they are opened.
 
-When the same item is loaded twice (two exports), the `add…()` functions keep the newer copy (see [export-format.md, section 12](export-format.md#12-older-export-formats)).
+When the same item is loaded twice (two exports), the `add…()` functions keep the newer copy (see [export-format.md, section 12](export-format.md#12-older-export-formats)). For an artifact, the files a newer export can change (`artifact.json`, the comment files and `page.md`) are grouped per artifact folder and container. The group with the newest `artifact.json` gives all of them; version files are merged by path.
 
 `finalize()` rebuilds every link from scratch (`Person.resetLinks()`), so loading more files later never counts anything twice. It:
 
