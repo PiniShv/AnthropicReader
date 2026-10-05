@@ -14,7 +14,7 @@ test('every script loads without a DOM, with app.js, the vendored libraries and 
 });
 const {
   decodeEntities, searchTerms, snippetHtml, safeUrl, withFrameShim, composeVariants, cpToUnits,
-  splitTabs, parseFrontmatter, classify, parseTime, esc, truncate, fmtBytes,
+  splitTabs, parseFrontmatter, classify, parseTime, toDate, fmtDate, fmtDateTime, esc, truncate, fmtBytes,
 } = api;
 
 /* ---------- Text ---------- */
@@ -54,6 +54,20 @@ test('parseTime accepts long fractions, offsets and Unix seconds', () => {
   assert.equal(parseTime(''), 0);
   assert.equal(parseTime(null), 0);
   assert.equal(parseTime('not a date'), 0);
+});
+
+test('toDate reads times like parseTime, and an unknown time (0) is no date, not 1 Jan 1970', () => {
+  assert.equal(toDate('2026-03-01T09:00:00.123456Z').getTime(), Date.parse('2026-03-01T09:00:00.123Z'));
+  assert.equal(toDate(1767225600).getTime(), 1767225600 * 1000);
+  assert.equal(toDate(1767225600000).getTime(), 1767225600000);
+  for (const v of [0, '', null, undefined, 'not a date', 1e20]) {
+    assert.equal(toDate(v), null, String(v));
+    assert.equal(fmtDate(v), '', String(v));
+    assert.equal(fmtDateTime(v), '', String(v));
+  }
+  const d = new api.Date(5000);
+  assert.equal(toDate(d), d, 'a Date is used as it is');
+  assert.equal(toDate(new api.Date(NaN)), null);
 });
 
 /* ---------- Search ---------- */

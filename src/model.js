@@ -10,15 +10,6 @@ const RE_MEMORY = /(?:^|\/)memories[^/]*\/[^/]+\.json$/i;
 const RE_JUNK = /(^|\/)(__MACOSX\/|\.DS_Store$|\._)|Thumbs\.db$/i;
 const NO_OWNER = '__none__';
 
-// Accepts ISO strings with 0-9 fraction digits and either Z or +00:00.
-function parseTime(v) {
-  if (v == null || v === '') return 0;
-  if (typeof v === 'number') return v < 1e12 ? v * 1000 : v;
-  const s = String(v).replace(/(\.\d{3})\d+/, '$1');
-  const t = Date.parse(s);
-  return isNaN(t) ? 0 : t;
-}
-
 class Person {
   constructor(id) {
     this.id = id;
@@ -417,11 +408,16 @@ function applyArtifactMeta(a, j) {
   a.ownerId = j.owner_account || null;
   a.createdByAgent = !!j.created_by_agent;
   a.sharedWith = j.shared_with || null;
-  // updated_at can be older than the newest version, so take the later of the two.
-  a.updated = Math.max(updated, ...a.versions.map(v => v.created || 0));
   const active = a.versions.find(v => v.id === a.activeVersion) || a.versions[0];
   a.title = (active && active.title) || '';
   a.description = decodeEntities((active && active.description) || '');
+  setArtifactDates(a, updated);
+}
+
+// Created is the oldest version. Updated is the newest version, or `updated` (artifact.json's
+// updated_at, which can be older than the newest version) when that is later.
+function setArtifactDates(a, updated) {
+  a.updated = Math.max(updated, ...a.versions.map(v => v.created || 0));
   a.created = a.versions.reduce((min, v) => (v.created && (!min || v.created < min) ? v.created : min), 0) || updated;
 }
 
@@ -692,11 +688,12 @@ function finalize() {
   }
   for (const a of DB.artifacts) {
     if (!a.meta) {
-      // Files without artifact.json (partial export): still show them.
+      // Files without artifact.json (partial export): still show them, dated by their version ids.
       const vids = new Set();
       for (const rel of a.files.keys()) { const m = /^versions\/([^/]+?)(?:\.files\.json|\.[a-z0-9]+|\/.*)$/i.exec(rel); if (m) vids.add(m[1]); }
       a.versions = Array.from(vids).sort().reverse().map(id => ({ id, title: '', description: '', created: parseTime(Number(id.split('-')[0]) || 0), raw: {} }));
       a.activeVersion = a.versions[0] ? a.versions[0].id : '';
+      setArtifactDates(a, 0);
       if (a.files.has('page.md')) a.kind = 'page';
     }
     a.pageNode = a.files.get('page.md') || null;

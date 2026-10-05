@@ -11,11 +11,19 @@ const DATETIME_FMT = new Intl.DateTimeFormat(undefined, { year: 'numeric', month
 const MONTH_FMT = new Intl.DateTimeFormat(undefined, { year: 'numeric', month: 'short' });
 const NUM_FMT = new Intl.NumberFormat();
 
+// A time in ms, or 0 when unknown. Takes Unix seconds or ms, and ISO strings with 0-9
+// fraction digits and either Z or +00:00. Safari rejects more than 3 fraction digits
+// ("…58.888842Z"), so they are cut first.
+function parseTime(v) {
+  if (v == null || v === '') return 0;
+  if (typeof v === 'number') return v < 1e12 ? v * 1000 : v;
+  const s = String(v).replace(/(\.\d{3})\d+/, '$1');
+  const t = Date.parse(s);
+  return isNaN(t) ? 0 : t;
+}
+// Same rule as parseTime, so an unknown time (0) shows as nothing, not as 1 Jan 1970.
 function toDate(v) {
-  if (v == null || v === '') return null;
-  if (v instanceof Date) return isNaN(v) ? null : v;
-  // Safari rejects more than 3 fraction digits ("…58.888842Z"), so trim them first.
-  const d = typeof v === 'number' ? new Date(v < 1e12 ? v * 1000 : v) : new Date(String(v).replace(/(\.\d{3})\d+/, '$1'));
+  const d = v instanceof Date ? v : new Date(parseTime(v) || NaN);
   return isNaN(d) ? null : d;
 }
 function fmtDate(v) { const d = toDate(v); return d ? DATE_FMT.format(d) : ''; }

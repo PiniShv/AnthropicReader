@@ -497,6 +497,10 @@ test('artifact content type is detected from the active version', async () => {
   assert.equal(partial.versions[0].created, 1767312000 * 1000);
   assert.equal(partial.title, 'Untitled artifact');
   assert.equal(partial.owner.system, true);
+  // Its dates come from its versions, so it sorts in its real place (second), not last.
+  assert.equal(partial.created, 1767225600 * 1000);
+  assert.equal(partial.updated, 1767312000 * 1000);
+  assert.deepEqual(plain(DB.artifacts.slice(0, 2).map(x => x.id)), [art(7), art(8)]);
 
   assert.equal(person(api, ADA).artifacts.length, 5);
   assert.equal(person(api, BRAM).artifacts.length, 2);
