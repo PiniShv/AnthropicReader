@@ -4560,200 +4560,9 @@ async function downloadVersion(a, vid) {
 }
 
 </script>
-<script>/* src/views-misc.js */
-/* Projects, memory, design chats, the search page, about, per-person export. */
+<script>/* src/views-design.js */
+/* Claude Design chats: list and thread (prompts, tool calls, questions, attachments). */
 'use strict';
-
-/* ======================= Projects ======================= */
-
-function projectTable(list, key, showOwner) {
-  const columns = [{
-    id: 'name', label: 'Project', cls: 'title', link: true, asc: true, sortVal: x => (x.name || '').toLowerCase(),
-    html: x => `<div dir="auto">${x.name ? esc(x.name) : '<i class="faint">Untitled project</i>'}</div>
-      ${x.description ? `<div class="snip" dir="auto">${esc(truncate(x.description, 200))}</div>` : ''}
-      <div class="row wrap" style="margin-top:5px;gap:4px">${x.isStarter ? '<span class="chip">Starter</span>' : ''}${!x.isPrivate ? '<span class="chip on">Shared</span>' : ''}${projectMemoryOf(x).length ? '<span class="chip">🧠 memory</span>' : ''}</div>`,
-  }];
-  if (showOwner) columns.push(COL.owner);
-  columns.push(COL.num('docs', 'Docs', x => x.docs.length));
-  columns.push(Object.assign(COL.date('created', 'Created', x => x.created), { cls: 'date hide-sm' }));
-  columns.push(COL.date('updated', 'Updated', x => x.updated));
-  return tableHtml({
-    key, rows: list, columns, sort: 'updated', dir: -1, noun: 'project',
-    href: x => '#/p/' + encodeURIComponent(x.id),
-    text: x => [x.name, x.description, x.owner && x.owner.name, x.owner && x.owner.email, ...x.docs.map(d => d.filename)].join(' '),
-    placeholder: 'Filter by name, doc name or person…', empty: 'No projects.',
-  });
-}
-
-function viewProjects() {
-  const s = focusScope();
-  const list = s.projects;
-  return `<div class="page"><div class="page-head"><div class="grow"><h1>Projects</h1>
-    <div class="sub">${s.person ? `<span>Only ${personLink(s.person)}’s</span>` : ''}<span>${plural(list.length, 'project')}</span><span>${fmtNum(list.reduce((a, x) => a + x.docs.length, 0))} docs</span></div></div></div>
-    <p class="muted" style="font-size:13.5px;margin:-6px 0 14px">The export does not say which conversations belong to a project, so chats are not listed here.</p>
-    ${projectTable(list, 'proj-' + s.key, !s.person)}</div>`;
-}
-
-// Memory about a project: the owner's project_memories entry and /projects/<id>/ memory files.
-function projectMemoryOf(x) {
-  const out = [];
-  for (const mem of DB.memories) {
-    for (const pm of mem.projectMemories) if (pm.projectId === x.id) out.push({ mem, kind: 'summary', text: pm.text });
-    for (const f of mem.files) if (f.path.startsWith('/projects/' + x.id + '/')) out.push({ mem, kind: 'file', file: f });
-  }
-  return out;
-}
-
-function viewProject(id) {
-  const x = DB.projectById.get(id);
-  if (!x) return notFound('No project with this id in the loaded export.');
-  const p = x.owner;
-  const pm = projectMemoryOf(x);
-  return `<div class="page narrow">
-    <div class="crumbs"><a href="#/projects">Projects</a><span>›</span>${p && !p.system ? `${personLink(p)}<span>›</span>` : ''}<span dir="auto">${esc(x.name || 'Untitled project')}</span></div>
-    <div class="page-head"><div class="grow">
-      <h1 dir="auto">${x.name ? esc(x.name) : '<i class="faint">Untitled project</i>'}</h1>
-      <div class="sub">${p ? `<span class="row" style="gap:6px">${avatarHtml(p, 'sm')}${personLink(p)}</span>` : ''}
-        <span>Created ${esc(fmtDateTime(x.created))}</span><span>Updated ${esc(fmtDateTime(x.updated))}</span>
-        ${x.isStarter ? '<span class="chip">Starter project</span>' : ''}<span class="chip${x.isPrivate ? '' : ' on'}">${x.isPrivate ? 'Private' : 'Shared'}</span>
-        <a href="https://claude.ai/project/${encodeURIComponent(x.id)}" target="_blank" rel="noopener noreferrer">claude.ai ↗</a></div>
-      ${x.description ? `<p dir="auto" style="margin:10px 0 0">${esc(x.description)}</p>` : ''}
-    </div></div>
-    ${x.promptTemplate ? `<h2 class="section-title">Project instructions</h2><div class="card card-pad">${mdBlock(x.promptTemplate)}</div>` : ''}
-    <h2 class="section-title">Knowledge files <span class="badge">${x.docs.length}</span></h2>
-    ${x.docs.length ? `<div class="doc-list">${x.docs.map(docHtml).join('')}</div>` : '<div class="card empty">No files in this project.</div>'}
-    ${pm.length ? `<h2 class="section-title">What Claude remembers about this project</h2>${pm.map(e => e.kind === 'summary'
-      ? `<div class="card card-pad" style="margin-bottom:10px">${memoryText(e.text, e.mem)}</div>`
-      : memoryFileCard(e.file, e.mem, 0)).join('')}` : ''}
-  </div>`;
-}
-
-function docHtml(d) {
-  const ext = fileExt(d.filename);
-  const parts = d.filename.split('/');
-  const file = parts.pop();
-  return blk({ summary: `<span class="lbl" dir="auto">${esc(file)}</span>${parts.length ? `<span class="desc faint mono">${esc(parts.join('/'))}/</span>` : ''}<span class="meta">${fmtBytes(d.content.length)}</span>` }, () => {
-    const dl = `<div class="row" style="margin-bottom:8px"><span class="faint" style="font-size:12.5px">Added ${esc(fmtDateTime(d.created))}</span><span class="grow"></span><button class="btn small" type="button" ${on(() => downloadText(d.filename.split('/').pop(), d.content))}>Download</button></div>`;
-    if (ext === 'md' || ext === 'markdown' || ext === 'pptx' || ext === 'docx' || ext === 'pdf') {
-      return dl + (ext !== 'md' && ext !== 'markdown' ? `<p class="notice" style="margin:0 0 8px">Text extracted from the ${esc(ext)} file. The original file is not in the export.</p>` : '') + mdBlock(d.content) +
-        `<details class="blk" style="margin-top:10px"><summary><span class="lbl">Raw text</span></summary><div class="blk-body">${preHtml(d.content, { wrap: true })}</div></details>`;
-    }
-    if (ext === 'html' || ext === 'htm') {
-      return dl + sandboxFrame(d.content, 520) + `<details class="blk" style="margin-top:10px"><summary><span class="lbl">Source</span></summary><div class="blk-body">${preHtml(d.content)}</div></details>`;
-    }
-    return dl + preHtml(d.content);
-  });
-}
-
-/* ======================= Memory ======================= */
-
-function viewMemories() {
-  const fp = focusPerson();
-  if (fp) {
-    return `<div class="page narrow"><div class="page-head"><div class="grow"><h1>Memory</h1><div class="sub"><span>Only ${personLink(fp)}</span></div></div></div>
-      ${KIND.memory.personTab(fp)}</div>`;
-  }
-  return `<div class="page"><div class="page-head"><div class="grow"><h1>Memory</h1>
-    <div class="sub"><span>What Claude remembers about each person: ${plural(DB.memories.length, 'person', 'people')}</span></div></div></div>
-    ${tableHtml({
-      key: 'mem-all', rows: DB.memories, sort: 'updated', dir: -1, noun: 'person', nounPlural: 'people', placeholder: 'Filter by person or memory text…', empty: 'No memory in this export.',
-      href: m => '#/memory/' + encodeURIComponent(m.id),
-      text: m => [m.owner && m.owner.name, m.owner && m.owner.email, m.conversationsMemory, ...m.projectMemories.map(x => x.text), ...m.files.map(f => f.path + ' ' + f.content)].join(' '),
-      columns: [
-        { id: 'owner', label: 'Person', asc: true, sortVal: m => m.owner.name.toLowerCase(), html: m => whoCell(m.owner) },
-        { id: 'profile', label: 'Profile', cls: 'title', html: m => { const pf = m.files.find(f => f.path === '/profile.md'); const t = pf ? pf.body : m.conversationsMemory; return `<div class="snip" dir="auto" style="font-weight:400">${esc(truncate(oneLine(stripMd(String(t || '').replace(/- \[stated\]/g, ''))), 220))}</div>`; } },
-        COL.num('files', 'Files', m => m.files.length),
-        { id: 'chat', label: 'Chat memory', html: m => m.conversationsMemory ? '✓' : '<span class="faint">—</span>', sortVal: m => (m.conversationsMemory ? 1 : 0), cls: 'num' },
-        COL.date('updated', 'Updated', m => m.updated),
-      ],
-    })}</div>`;
-}
-
-function viewMemory(personId) {
-  const mem = DB.memoryByPerson.get(personId);
-  const p = DB.people.get(personId);
-  if (!mem || !p) return notFound('No memory for this person.');
-  const want = App.route.query.f;
-  if (want) {
-    after(() => {
-      const f = mem.files.find(x => x.stem === want || x.meta.name === want || (Array.isArray(x.meta.aliases) && x.meta.aliases.includes(want)));
-      const el = f && document.getElementById(memSlugId(mem, f.path));
-      if (!el) { toast('No memory file named “' + want + '”'); return; }
-      el.open = true;
-      el.scrollIntoView({ block: 'start' });
-      el.classList.add('flash');
-    });
-  }
-  return `<div class="page narrow">
-    <div class="crumbs"><a href="#/memories">Memory</a><span>›</span>${personLink(p)}</div>
-    <div class="page-head">${avatarHtml(p, 'lg')}<div class="grow"><h1>What Claude remembers about ${esc(p.name)}</h1>
-      <div class="sub"><span>${plural(mem.files.length, 'memory file')}</span>${mem.updated ? `<span>Updated ${esc(fmtDateTime(mem.updated))}</span>` : ''}<a href="#/person/${encodeURIComponent(p.id)}">Open profile</a></div></div></div>
-    ${memoryBody(mem)}
-  </div>`;
-}
-
-const MEM_FOLDERS = { '': 'Profile', people: 'People', areas: 'Work areas', topics: 'Topics', projects: 'Projects' };
-
-function memoryBody(mem) {
-  const groups = new Map();
-  for (const f of mem.files) {
-    const segs = f.path.replace(/^\//, '').split('/');
-    let g = segs.length > 1 ? segs[0] : '';
-    if (g === 'projects' && segs[1]) g = 'projects/' + segs[1];
-    if (!groups.has(g)) groups.set(g, []);
-    groups.get(g).push(f);
-  }
-  const order = ['', 'people', 'areas', 'topics'];
-  const keys = Array.from(groups.keys()).sort((a, b) => {
-    const ia = order.indexOf(a), ib = order.indexOf(b);
-    return (ia < 0 ? 9 : ia) - (ib < 0 ? 9 : ib) || a.localeCompare(b);
-  });
-  const label = g => {
-    if (g.startsWith('projects/')) {
-      const pid = g.slice(9);
-      const idx = mem.files.find(f => f.path === '/projects/' + pid + '/index.md');
-      return 'Project: ' + (projectName(pid) || (idx && idx.meta.name) || pid.slice(0, 8));
-    }
-    return MEM_FOLDERS[g] || g;
-  };
-  let i = 0;
-  const filesHtml = keys.map(g => `<h3 class="section-title" style="font-size:14.5px">${esc(label(g))} <span class="badge">${groups.get(g).length}</span></h3>
-    <div class="doc-list">${groups.get(g).map(f => memoryFileCard(f, mem, i++)).join('')}</div>`).join('');
-  return `
-    ${mem.files.length ? `<div class="row wrap" style="margin:4px 0 0"><span class="muted" style="font-size:13.5px">Memory files Claude keeps. Each fact is tagged with where it came from.</span><span class="grow"></span><button class="btn small" type="button" ${on(() => $$('.mem-file').forEach(d => { d.open = true; }))}>Expand all</button></div>${filesHtml}` : ''}
-    ${mem.conversationsMemory ? `<h2 class="section-title">Chat memory summary</h2><div class="card card-pad">${memoryText(mem.conversationsMemory, mem)}</div>` : ''}
-    ${mem.projectMemories.length ? `<h2 class="section-title">Project memories</h2>${mem.projectMemories.map(pm => `<div class="card card-pad" style="margin-bottom:10px"><h3 style="margin-bottom:8px">${DB.projectById.has(pm.projectId) ? `<a href="#/p/${encodeURIComponent(pm.projectId)}">${esc(projectName(pm.projectId))}</a>` : esc(pm.projectId)}</h3>${memoryText(pm.text, mem)}</div>`).join('')}` : ''}
-    ${!mem.files.length && !mem.conversationsMemory && !mem.projectMemories.length ? '<div class="card empty">Empty memory.</div>' : ''}`;
-}
-
-// DOM id for a memory file, unique per path (same file name can sit in two folders).
-function memSlugId(mem, path) { return 'mf-' + hashHue(mem.id) + '-' + String(path).replace(/[^a-z0-9_-]/gi, '_'); }
-
-function memoryFileCard(f, mem, i) {
-  const name = f.meta.name || f.stem;
-  const title = String(name).replace(/[-_]+/g, ' ');
-  const sources = Array.isArray(f.meta.sources) ? f.meta.sources : [];
-  const aliases = Array.isArray(f.meta.aliases) ? f.meta.aliases : [];
-  return blk({
-    cls: 'mem-file', id: memSlugId(mem, f.path),
-    summary: `<span class="lbl" dir="auto">${esc(title)}</span><span class="desc" dir="auto">${esc(f.meta.description || '')}</span>
-      <span class="meta">${sources.map(s => `<span class="chip" style="font-size:11px" title="${esc(SOURCE_HELP[s] || '')}">${esc(s)}</span>`).join(' ')} ${f.updated ? esc(fmtDate(f.updated)) : ''}</span>`,
-    body: aliases.length ? `<p class="faint" style="font-size:12.5px;margin:0 0 6px">Also called: ${aliases.map(esc).join(', ')}</p>` : '',
-  }, () => (f.body.trim() ? memoryText(f.body, mem) : '<p class="faint">(empty)</p>') + `<details class="blk" style="margin-top:10px"><summary><span class="lbl">Raw file</span><span class="desc mono">${esc(f.path)}</span></summary><div class="blk-body">${preHtml(f.content, { wrap: true })}</div></details>`);
-}
-
-const SOURCE_HELP = { backfill: 'Seeded from older chat history', chat: 'Learned in a claude.ai chat', cowork: 'Learned in Cowork' };
-
-// Memory markdown: "[stated]" becomes a small tag, [[slug]] becomes a link to that memory file.
-function memoryText(text, mem) {
-  let t = String(text || '');
-  t = t.replace(/^(\s*[-*]\s+)\[(stated|inferred|observed|[a-z]+)\]\s*/gim, (all, lead, tag) => `${lead}<span class="mtag">${tag}</span> `);
-  // Plain in-app links: the sanitizer keeps href, and the memory page opens the file named in ?f=.
-  t = t.replace(/\[\[([^\]\n]+)\]\]/g, (all, slug) => `[${slug.trim().replace(/[[\]]/g, '')}](#/memory/${encodeURIComponent(mem.id)}?f=${encodeURIComponent(slug.trim())})`);
-  return `<div class="md">${mdToHtml(t)}</div>`;
-}
-
-/* ======================= Design chats ======================= */
 
 function designTable(list, key, showOwner) {
   const columns = [{
@@ -4946,6 +4755,200 @@ function designToolHtml(t) {
     else h += preHtml(out, { wrap: true }) + (out.length === 200 ? '<p class="faint" style="font-size:12.5px">The export cuts tool output at 200 characters.</p>' : '');
     return h;
   });
+}
+
+</script>
+<script>/* src/views-misc.js */
+/* Projects, memory, the search page, about, the per-person download dialog. */
+'use strict';
+
+/* ======================= Projects ======================= */
+
+function projectTable(list, key, showOwner) {
+  const columns = [{
+    id: 'name', label: 'Project', cls: 'title', link: true, asc: true, sortVal: x => (x.name || '').toLowerCase(),
+    html: x => `<div dir="auto">${x.name ? esc(x.name) : '<i class="faint">Untitled project</i>'}</div>
+      ${x.description ? `<div class="snip" dir="auto">${esc(truncate(x.description, 200))}</div>` : ''}
+      <div class="row wrap" style="margin-top:5px;gap:4px">${x.isStarter ? '<span class="chip">Starter</span>' : ''}${!x.isPrivate ? '<span class="chip on">Shared</span>' : ''}${projectMemoryOf(x).length ? '<span class="chip">🧠 memory</span>' : ''}</div>`,
+  }];
+  if (showOwner) columns.push(COL.owner);
+  columns.push(COL.num('docs', 'Docs', x => x.docs.length));
+  columns.push(Object.assign(COL.date('created', 'Created', x => x.created), { cls: 'date hide-sm' }));
+  columns.push(COL.date('updated', 'Updated', x => x.updated));
+  return tableHtml({
+    key, rows: list, columns, sort: 'updated', dir: -1, noun: 'project',
+    href: x => '#/p/' + encodeURIComponent(x.id),
+    text: x => [x.name, x.description, x.owner && x.owner.name, x.owner && x.owner.email, ...x.docs.map(d => d.filename)].join(' '),
+    placeholder: 'Filter by name, doc name or person…', empty: 'No projects.',
+  });
+}
+
+function viewProjects() {
+  const s = focusScope();
+  const list = s.projects;
+  return `<div class="page"><div class="page-head"><div class="grow"><h1>Projects</h1>
+    <div class="sub">${s.person ? `<span>Only ${personLink(s.person)}’s</span>` : ''}<span>${plural(list.length, 'project')}</span><span>${fmtNum(list.reduce((a, x) => a + x.docs.length, 0))} docs</span></div></div></div>
+    <p class="muted" style="font-size:13.5px;margin:-6px 0 14px">The export does not say which conversations belong to a project, so chats are not listed here.</p>
+    ${projectTable(list, 'proj-' + s.key, !s.person)}</div>`;
+}
+
+// Memory about a project: the owner's project_memories entry and /projects/<id>/ memory files.
+function projectMemoryOf(x) {
+  const out = [];
+  for (const mem of DB.memories) {
+    for (const pm of mem.projectMemories) if (pm.projectId === x.id) out.push({ mem, kind: 'summary', text: pm.text });
+    for (const f of mem.files) if (f.path.startsWith('/projects/' + x.id + '/')) out.push({ mem, kind: 'file', file: f });
+  }
+  return out;
+}
+
+function viewProject(id) {
+  const x = DB.projectById.get(id);
+  if (!x) return notFound('No project with this id in the loaded export.');
+  const p = x.owner;
+  const pm = projectMemoryOf(x);
+  return `<div class="page narrow">
+    <div class="crumbs"><a href="#/projects">Projects</a><span>›</span>${p && !p.system ? `${personLink(p)}<span>›</span>` : ''}<span dir="auto">${esc(x.name || 'Untitled project')}</span></div>
+    <div class="page-head"><div class="grow">
+      <h1 dir="auto">${x.name ? esc(x.name) : '<i class="faint">Untitled project</i>'}</h1>
+      <div class="sub">${p ? `<span class="row" style="gap:6px">${avatarHtml(p, 'sm')}${personLink(p)}</span>` : ''}
+        <span>Created ${esc(fmtDateTime(x.created))}</span><span>Updated ${esc(fmtDateTime(x.updated))}</span>
+        ${x.isStarter ? '<span class="chip">Starter project</span>' : ''}<span class="chip${x.isPrivate ? '' : ' on'}">${x.isPrivate ? 'Private' : 'Shared'}</span>
+        <a href="https://claude.ai/project/${encodeURIComponent(x.id)}" target="_blank" rel="noopener noreferrer">claude.ai ↗</a></div>
+      ${x.description ? `<p dir="auto" style="margin:10px 0 0">${esc(x.description)}</p>` : ''}
+    </div></div>
+    ${x.promptTemplate ? `<h2 class="section-title">Project instructions</h2><div class="card card-pad">${mdBlock(x.promptTemplate)}</div>` : ''}
+    <h2 class="section-title">Knowledge files <span class="badge">${x.docs.length}</span></h2>
+    ${x.docs.length ? `<div class="doc-list">${x.docs.map(docHtml).join('')}</div>` : '<div class="card empty">No files in this project.</div>'}
+    ${pm.length ? `<h2 class="section-title">What Claude remembers about this project</h2>${pm.map(e => e.kind === 'summary'
+      ? `<div class="card card-pad" style="margin-bottom:10px">${memoryText(e.text, e.mem)}</div>`
+      : memoryFileCard(e.file, e.mem, 0)).join('')}` : ''}
+  </div>`;
+}
+
+function docHtml(d) {
+  const ext = fileExt(d.filename);
+  const parts = d.filename.split('/');
+  const file = parts.pop();
+  return blk({ summary: `<span class="lbl" dir="auto">${esc(file)}</span>${parts.length ? `<span class="desc faint mono">${esc(parts.join('/'))}/</span>` : ''}<span class="meta">${fmtBytes(d.content.length)}</span>` }, () => {
+    const dl = `<div class="row" style="margin-bottom:8px"><span class="faint" style="font-size:12.5px">Added ${esc(fmtDateTime(d.created))}</span><span class="grow"></span><button class="btn small" type="button" ${on(() => downloadText(d.filename.split('/').pop(), d.content))}>Download</button></div>`;
+    if (ext === 'md' || ext === 'markdown' || ext === 'pptx' || ext === 'docx' || ext === 'pdf') {
+      return dl + (ext !== 'md' && ext !== 'markdown' ? `<p class="notice" style="margin:0 0 8px">Text extracted from the ${esc(ext)} file. The original file is not in the export.</p>` : '') + mdBlock(d.content) +
+        `<details class="blk" style="margin-top:10px"><summary><span class="lbl">Raw text</span></summary><div class="blk-body">${preHtml(d.content, { wrap: true })}</div></details>`;
+    }
+    if (ext === 'html' || ext === 'htm') {
+      return dl + sandboxFrame(d.content, 520) + `<details class="blk" style="margin-top:10px"><summary><span class="lbl">Source</span></summary><div class="blk-body">${preHtml(d.content)}</div></details>`;
+    }
+    return dl + preHtml(d.content);
+  });
+}
+
+/* ======================= Memory ======================= */
+
+function viewMemories() {
+  const fp = focusPerson();
+  if (fp) {
+    return `<div class="page narrow"><div class="page-head"><div class="grow"><h1>Memory</h1><div class="sub"><span>Only ${personLink(fp)}</span></div></div></div>
+      ${KIND.memory.personTab(fp)}</div>`;
+  }
+  return `<div class="page"><div class="page-head"><div class="grow"><h1>Memory</h1>
+    <div class="sub"><span>What Claude remembers about each person: ${plural(DB.memories.length, 'person', 'people')}</span></div></div></div>
+    ${tableHtml({
+      key: 'mem-all', rows: DB.memories, sort: 'updated', dir: -1, noun: 'person', nounPlural: 'people', placeholder: 'Filter by person or memory text…', empty: 'No memory in this export.',
+      href: m => '#/memory/' + encodeURIComponent(m.id),
+      text: m => [m.owner && m.owner.name, m.owner && m.owner.email, m.conversationsMemory, ...m.projectMemories.map(x => x.text), ...m.files.map(f => f.path + ' ' + f.content)].join(' '),
+      columns: [
+        { id: 'owner', label: 'Person', asc: true, sortVal: m => m.owner.name.toLowerCase(), html: m => whoCell(m.owner) },
+        { id: 'profile', label: 'Profile', cls: 'title', html: m => { const pf = m.files.find(f => f.path === '/profile.md'); const t = pf ? pf.body : m.conversationsMemory; return `<div class="snip" dir="auto" style="font-weight:400">${esc(truncate(oneLine(stripMd(String(t || '').replace(/- \[stated\]/g, ''))), 220))}</div>`; } },
+        COL.num('files', 'Files', m => m.files.length),
+        { id: 'chat', label: 'Chat memory', html: m => m.conversationsMemory ? '✓' : '<span class="faint">—</span>', sortVal: m => (m.conversationsMemory ? 1 : 0), cls: 'num' },
+        COL.date('updated', 'Updated', m => m.updated),
+      ],
+    })}</div>`;
+}
+
+function viewMemory(personId) {
+  const mem = DB.memoryByPerson.get(personId);
+  const p = DB.people.get(personId);
+  if (!mem || !p) return notFound('No memory for this person.');
+  const want = App.route.query.f;
+  if (want) {
+    after(() => {
+      const f = mem.files.find(x => x.stem === want || x.meta.name === want || (Array.isArray(x.meta.aliases) && x.meta.aliases.includes(want)));
+      const el = f && document.getElementById(memSlugId(mem, f.path));
+      if (!el) { toast('No memory file named “' + want + '”'); return; }
+      el.open = true;
+      el.scrollIntoView({ block: 'start' });
+      el.classList.add('flash');
+    });
+  }
+  return `<div class="page narrow">
+    <div class="crumbs"><a href="#/memories">Memory</a><span>›</span>${personLink(p)}</div>
+    <div class="page-head">${avatarHtml(p, 'lg')}<div class="grow"><h1>What Claude remembers about ${esc(p.name)}</h1>
+      <div class="sub"><span>${plural(mem.files.length, 'memory file')}</span>${mem.updated ? `<span>Updated ${esc(fmtDateTime(mem.updated))}</span>` : ''}<a href="#/person/${encodeURIComponent(p.id)}">Open profile</a></div></div></div>
+    ${memoryBody(mem)}
+  </div>`;
+}
+
+const MEM_FOLDERS = { '': 'Profile', people: 'People', areas: 'Work areas', topics: 'Topics', projects: 'Projects' };
+
+function memoryBody(mem) {
+  const groups = new Map();
+  for (const f of mem.files) {
+    const segs = f.path.replace(/^\//, '').split('/');
+    let g = segs.length > 1 ? segs[0] : '';
+    if (g === 'projects' && segs[1]) g = 'projects/' + segs[1];
+    if (!groups.has(g)) groups.set(g, []);
+    groups.get(g).push(f);
+  }
+  const order = ['', 'people', 'areas', 'topics'];
+  const keys = Array.from(groups.keys()).sort((a, b) => {
+    const ia = order.indexOf(a), ib = order.indexOf(b);
+    return (ia < 0 ? 9 : ia) - (ib < 0 ? 9 : ib) || a.localeCompare(b);
+  });
+  const label = g => {
+    if (g.startsWith('projects/')) {
+      const pid = g.slice(9);
+      const idx = mem.files.find(f => f.path === '/projects/' + pid + '/index.md');
+      return 'Project: ' + (projectName(pid) || (idx && idx.meta.name) || pid.slice(0, 8));
+    }
+    return MEM_FOLDERS[g] || g;
+  };
+  let i = 0;
+  const groupsHtml = keys.map(g => `<h3 class="section-title" style="font-size:14.5px">${esc(label(g))} <span class="badge">${groups.get(g).length}</span></h3>
+    <div class="doc-list">${groups.get(g).map(f => memoryFileCard(f, mem, i++)).join('')}</div>`).join('');
+  return `
+    ${mem.files.length ? `<div class="row wrap" style="margin:4px 0 0"><span class="muted" style="font-size:13.5px">Memory files Claude keeps. Each fact is tagged with where it came from.</span><span class="grow"></span><button class="btn small" type="button" ${on(() => $$('.mem-file').forEach(d => { d.open = true; }))}>Expand all</button></div>${groupsHtml}` : ''}
+    ${mem.conversationsMemory ? `<h2 class="section-title">Chat memory summary</h2><div class="card card-pad">${memoryText(mem.conversationsMemory, mem)}</div>` : ''}
+    ${mem.projectMemories.length ? `<h2 class="section-title">Project memories</h2>${mem.projectMemories.map(pm => `<div class="card card-pad" style="margin-bottom:10px"><h3 style="margin-bottom:8px">${DB.projectById.has(pm.projectId) ? `<a href="#/p/${encodeURIComponent(pm.projectId)}">${esc(projectName(pm.projectId))}</a>` : esc(pm.projectId)}</h3>${memoryText(pm.text, mem)}</div>`).join('')}` : ''}
+    ${!mem.files.length && !mem.conversationsMemory && !mem.projectMemories.length ? '<div class="card empty">Empty memory.</div>' : ''}`;
+}
+
+// DOM id for a memory file, unique per path (same file name can sit in two folders).
+function memSlugId(mem, path) { return 'mf-' + hashHue(mem.id) + '-' + String(path).replace(/[^a-z0-9_-]/gi, '_'); }
+
+function memoryFileCard(f, mem, i) {
+  const name = f.meta.name || f.stem;
+  const title = String(name).replace(/[-_]+/g, ' ');
+  const sources = Array.isArray(f.meta.sources) ? f.meta.sources : [];
+  const aliases = Array.isArray(f.meta.aliases) ? f.meta.aliases : [];
+  return blk({
+    cls: 'mem-file', id: memSlugId(mem, f.path),
+    summary: `<span class="lbl" dir="auto">${esc(title)}</span><span class="desc" dir="auto">${esc(f.meta.description || '')}</span>
+      <span class="meta">${sources.map(s => `<span class="chip" style="font-size:11px" title="${esc(SOURCE_HELP[s] || '')}">${esc(s)}</span>`).join(' ')} ${f.updated ? esc(fmtDate(f.updated)) : ''}</span>`,
+    body: aliases.length ? `<p class="faint" style="font-size:12.5px;margin:0 0 6px">Also called: ${aliases.map(esc).join(', ')}</p>` : '',
+  }, () => (f.body.trim() ? memoryText(f.body, mem) : '<p class="faint">(empty)</p>') + `<details class="blk" style="margin-top:10px"><summary><span class="lbl">Raw file</span><span class="desc mono">${esc(f.path)}</span></summary><div class="blk-body">${preHtml(f.content, { wrap: true })}</div></details>`);
+}
+
+const SOURCE_HELP = { backfill: 'Seeded from older chat history', chat: 'Learned in a claude.ai chat', cowork: 'Learned in Cowork' };
+
+// Memory markdown: "[stated]" becomes a small tag, [[slug]] becomes a link to that memory file.
+function memoryText(text, mem) {
+  let t = String(text || '');
+  t = t.replace(/^(\s*[-*]\s+)\[(stated|inferred|observed|[a-z]+)\]\s*/gim, (all, lead, tag) => `${lead}<span class="mtag">${tag}</span> `);
+  // Plain in-app links: the sanitizer keeps href, and the memory page opens the file named in ?f=.
+  t = t.replace(/\[\[([^\]\n]+)\]\]/g, (all, slug) => `[${slug.trim().replace(/[[\]]/g, '')}](#/memory/${encodeURIComponent(mem.id)}?f=${encodeURIComponent(slug.trim())})`);
+  return `<div class="md">${mdToHtml(t)}</div>`;
 }
 
 /* ======================= Search page ======================= */

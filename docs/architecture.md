@@ -31,7 +31,8 @@ For the format of the export itself, see [export-format.md](export-format.md).
 | `src/views.js` | The kind registry (`KINDS`: routes, labels, icons, counts and views of the five record kinds), router dispatch (`renderRoute`), sidebar, the shared sortable table, start page, people list and person page. |
 | `src/views-conv.js` | Conversation list and thread: message and tool rendering, branch arrows, the "What Claude produced here" box. |
 | `src/views-art.js` | Artifact list and page, version viewer, asset inlining, Slides, Design, Claude Docs pages, artifact comments. |
-| `src/views-misc.js` | Projects, memory, design chats, the search page, "About this export", manifest download links, and the per-person download dialog. |
+| `src/views-design.js` | Claude Design chats: list and thread (prompts, tool calls, questions, attachments). |
+| `src/views-misc.js` | Projects, memory, the search page, "About this export", manifest download links, and the per-person download dialog. |
 | `src/demo.js` | The made-up sample export ("Try it with sample data"). |
 | `src/app.js` | Start-up: theme, loading screen, file pickers, hash routing, focus mode, global events. |
 

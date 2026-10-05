@@ -152,11 +152,16 @@ src/
   zip.js             zip reader (and the small zip writer for downloads)
   load.js            file picking, drag and drop, streaming JSON parser
   render.js          escaping, Markdown, sanitizing, formatting helpers
+  ui.js              app state, the lifetime of one drawn page, on() and blk()
   model.js           classifies files and builds the in-memory model
-  views.js           router, sidebar, tables, start page, people, person page
+  conversation.js    message tree, branches, tool helpers, outputs
+  search.js          search engine and its index
+  export.js          Markdown export and the per-person zip
+  views.js           kind registry, router, sidebar, tables, start page, people, person page
   views-conv.js      conversation list and thread view
   views-art.js       artifacts, versions, Slides, Design, Docs pages
-  views-misc.js      projects, memory, design chats, search, about, per-person zip
+  views-design.js    design chat list and thread
+  views-misc.js      projects, memory, search page, about, download dialog
   demo.js            the made-up sample export
   app.js             start-up, loading screen, routing, global events
 vendor/              marked and DOMPurify, vendored (see THIRD_PARTY_NOTICES.md)
