@@ -146,13 +146,20 @@ function finishMarkdown(html) {
     const b = document.createElement('button');
     b.className = 'btn small copy-code';
     b.type = 'button';
-    b.dataset.action = 'copy-pre';
+    b.dataset.on = viewKey(copyPre);
     b.textContent = 'Copy';
     pre.appendChild(b);
   });
   const div = document.createElement('div');
   div.appendChild(root);
   return div.innerHTML;
+}
+
+// The Copy button of a code block: copy the code without the button's own label.
+function copyPre(el) {
+  const pre = el.closest('pre');
+  const code = pre && pre.querySelector('code');
+  copyText((code || pre).innerText.replace(/\nCopy$/, ''));
 }
 
 const MD_LIMIT = 400000;
@@ -193,10 +200,15 @@ function preHtml(text, opts) {
   text = String(text == null ? '' : text);
   const wrap = opts && opts.wrap ? ' wrap' : '';
   if (text.length <= PRE_LIMIT) return `<pre class="code${wrap}">${esc(text)}</pre>`;
-  const id = stashText(text);
+  // Show all: the full text replaces the cut one in the <pre> right before the button's row.
+  const showAll = el => {
+    const row = el.closest('.row');
+    const pre = row && row.previousElementSibling;
+    if (pre) { pre.textContent = text; row.remove(); }
+  };
   return `<pre class="code${wrap}">${esc(text.slice(0, PRE_LIMIT))}</pre>
     <div class="row" style="margin-top:6px"><span class="muted" style="font-size:13px">Showing ${fmtBytes(PRE_LIMIT)} of ${fmtBytes(text.length)}.</span>
-    <button class="btn small" type="button" data-action="expand-pre" data-stash="${id}">Show all</button></div>`;
+    <button class="btn small" type="button" ${on(showAll)}>Show all</button></div>`;
 }
 
 function jsonPretty(v) {
@@ -340,6 +352,11 @@ function downloadBlob(blob, filename) {
   a.href = url; a.download = filename;
   document.body.appendChild(a); a.click(); a.remove();
   setTimeout(() => URL.revokeObjectURL(url), 60000);
+}
+
+// Text the export holds (created files, project docs), saved as a file with a type from its name.
+function downloadText(name, text) {
+  downloadBlob(new Blob([text], { type: mimeFor(name) }), name || 'file.txt');
 }
 
 function safeFilename(s, fallback) {

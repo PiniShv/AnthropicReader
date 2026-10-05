@@ -336,18 +336,24 @@ function setupShell() {
     }
   });
 
-  // Delegated actions inside the main view.
+  // Controls in the view run the function bound in their markup with on() (ui.js).
   document.addEventListener('click', e => {
-    const el = e.target.closest('[data-action]');
+    const el = e.target.closest('[data-on]');
     if (el) {
       // Action links are buttons in disguise: never also follow their href.
       if (el.tagName === 'A') e.preventDefault();
-      handleAction(el.dataset.action, el, e);
+      const fn = VIEW.fns.get(el.dataset.on);
+      if (fn) fn(el, e);
       return;
     }
     // A new tab would not have the export loaded, so rows always open here.
     const row = e.target.closest('tr[data-href]');
     if (row && !e.target.closest('a,button,input,label')) navigate(row.dataset.href);
+  });
+  document.addEventListener('change', e => {
+    const el = e.target.closest('[data-on-change]');
+    const fn = el && VIEW.fns.get(el.dataset.onChange);
+    if (fn) fn(el, e);
   });
   // Lazy bodies for collapsed blocks.
   document.addEventListener('toggle', e => {

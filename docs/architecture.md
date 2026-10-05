@@ -23,9 +23,9 @@ For the format of the export itself, see [export-format.md](export-format.md).
 | `src/zip.js` | `ZipArchive` / `ZipEntry`: random-access zip reader. `ZipWriter`: small zip writer for downloads. |
 | `src/load.js` | `FileNode` / `ZipNode`: one interface for loose files and zip entries. File and folder picking, drag and drop, remembered file handles (`HandleStore`), and `parseJsonArrayStream()`. |
 | `src/render.js` | Escaping (`esc`), formatting of dates, numbers and sizes, Markdown (`mdToHtml`, `mdBlock`), sanitizing, search highlighting, the sandbox frame shim, small helpers (toast, copy, download, MIME types). |
-| `src/ui.js` | `App` (route and focus), the `$` / `$$` shortcuts, and the lifetime of one drawn page: `VIEW`, `after()`, `viewKey()`. |
+| `src/ui.js` | `App` (route and focus), the `$` / `$$` shortcuts, and the lifetime of one drawn page: `VIEW`, `after()`, `viewKey()`, and `on()` for click behaviour. |
 | `src/model.js` | The in-memory model: `Person`, the `DB` object, `classify()`, one `add…()` function per record type, `importExport()` (the import pipeline) and `finalize()` (links and derived data). |
-| `src/views.js` | Router dispatch (`renderRoute`), sidebar, the shared sortable table, start page, people list, person page, and click actions. |
+| `src/views.js` | Router dispatch (`renderRoute`), sidebar, the shared sortable table, start page, people list and person page. |
 | `src/views-conv.js` | Conversation list, message tree and branches, message and tool rendering, the "What Claude produced here" box, Markdown export. |
 | `src/views-art.js` | Artifact list and page, version viewer, asset inlining, Slides, Design, Claude Docs pages, artifact comments. |
 | `src/views-misc.js` | Projects, memory, design chats, search, "About this export", manifest download links, and the per-person zip. |
@@ -115,7 +115,7 @@ Progress is reported in bytes, so the loading bar moves smoothly.
 
 ## Rendering and sanitizing
 
-Views are plain functions that return HTML strings built with template literals. The router puts the string into `#main`. Interactive parts are wired after insertion through `after(fn)` hooks and a few delegated listeners on `document` (`data-action` attributes).
+Views are plain functions that return HTML strings built with template literals. The router puts the string into `#main`. Behaviour is bound where the markup is made: `<button ${on(() => copyText(p.id))}>` keeps the function for the current view and writes only a short key (`data-on`) into the markup. One delegated `click` listener and one `change` listener on `document` call it. Parts that need wiring after insertion (tables, filters, the conversation thread) use `after(fn)` hooks.
 
 Everything that belongs to one drawn page lives in `VIEW` (`src/ui.js`): its `after()` hooks, its lazy renderers and an `AbortController`. When the route changes, `onRoute()` aborts the old view and starts a new one. Listeners added with the view's `signal` are removed, and async drawers (artifact versions, docs, search) check `signal.aborted` after each `await`, so a slow draw never writes into a newer page.
 
@@ -132,7 +132,7 @@ Rules that keep this safe:
 Size limits keep the tab responsive:
 
 - Markdown longer than 400,000 characters is shown as plain text.
-- `preHtml()` shows the first 60,000 characters of long text with a **Show all** button. The full text waits in `TEXT_STASH`, a small bounded map, so it is not put into the page twice.
+- `preHtml()` shows the first 60,000 characters of long text with a **Show all** button. The button keeps the full text, so it is not put into the page twice.
 - Search highlighting walks text nodes only (`highlightIn()`), so it never breaks markup.
 
 ## Lazy rendering
@@ -215,4 +215,4 @@ The app uses hash routes, so it works from `file://` and a reload keeps your pla
 
 `app.js` exposes `window.ExportReader = { load(files), DB() }` for scripted use. The tests in `test/` do not use a browser: `test/harness.mjs` runs the same scripts in a Node `vm` context with small stubs, and tests the zip reader, the parser and the import pipeline directly.
 
-The tests cannot check the HTML the views draw. For that, `scripts/snapshot.mjs` opens the built page with the sample data in headless Chrome. It visits every page (also with focus on one person), opens every collapsed block, and saves the HTML of the main area and the sidebar, and the `srcdoc` of every preview frame. Attributes that only carry click data (`data-action`, ids in `data-*`, lazy keys) are left out, so a refactor that keeps the pages the same gives the same files. `scripts/lib/chrome.mjs` is the small DevTools-protocol driver it shares with `scripts/screenshots.mjs`.
+The tests cannot check the HTML the views draw. For that, `scripts/snapshot.mjs` opens the built page with the sample data in headless Chrome. It visits every page (also with focus on one person), opens every collapsed block, and saves the HTML of the main area and the sidebar, and the `srcdoc` of every preview frame. Attributes that only carry click data (`data-on` and lazy keys, other `data-*` values) are left out, so a refactor that keeps the pages the same gives the same files. `scripts/lib/chrome.mjs` is the small DevTools-protocol driver it shares with `scripts/screenshots.mjs`.

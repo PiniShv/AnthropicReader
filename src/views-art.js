@@ -61,21 +61,22 @@ function viewArtifact(id, vid) {
   const isPage = a.kind === 'page';
   const nComments = artifactCommentCount(a);
 
+  // Design boards: the board picker and links between boards. The URL keeps its version part as is.
+  const pickBoard = board => navigate('#/a/' + encodeURIComponent(id) + (vid ? '/' + encodeURIComponent(vid) : '') + '?board=' + encodeURIComponent(board), true);
   after(() => {
     if (isPage) return drawPage(a);
-    // A Design board link clicked inside the preview: switch the board picker to it.
     addEventListener('message', e => {
       const f = document.getElementById('art-frame');
       if (!f || e.source !== f.contentWindow || !e.data || typeof e.data.cerBoard !== 'string') return;
-      navigate('#/a/' + encodeURIComponent(id) + (vid ? '/' + encodeURIComponent(vid) : '') + '?board=' + encodeURIComponent(e.data.cerBoard), true);
+      pickBoard(e.data.cerBoard);
     }, { signal: VIEW.ac.signal });
-    return drawVersion(a, selected, App.route.query.view || 'preview');
+    return drawVersion(a, selected, App.route.query.view || 'preview', pickBoard);
   });
 
   const versionList = versions.map(v => {
     const has = isPage || (a.vfiles && a.vfiles.has(v.id));
     const desc = v.description && !TYPE_BLURB.test(v.description) && v.description !== v.title ? decodeEntities(v.description) : '';
-    return `<li class="${v.id === selected ? 'sel' : ''}${has ? '' : ' missing'}" ${has && !isPage ? `data-action="pick-version" data-art="${esc(a.id)}" data-vid="${esc(v.id)}"` : ''} title="${esc(v.id)}">
+    return `<li class="${v.id === selected ? 'sel' : ''}${has ? '' : ' missing'}" ${has && !isPage ? on(() => navigate('#/a/' + encodeURIComponent(a.id) + '/' + encodeURIComponent(v.id), true)) : ''} title="${esc(v.id)}">
       <div class="vt" dir="auto">${esc(v.title || 'Untitled')}${v.id === a.activeVersion ? ' <span class="chip ok" style="font-size:11px">current</span>' : ''}</div>
       <div class="vd">${esc(fmtDateTime(v.created))}${!isPage ? ' · ' + esc(versionInfo(a, v.id).type) : ''}</div>
       ${desc ? `<div class="vd" dir="auto">${esc(truncate(desc, 140))}</div>` : ''}
@@ -134,25 +135,25 @@ async function versionSource(info) {
   return null;
 }
 
-async function drawVersion(a, vid, view) {
+async function drawVersion(a, vid, view, pickBoard) {
   const box = $('#art-main');
   if (!box) return;
   const info = versionInfo(a, vid);
   const board = App.route.query.board || '';
   const tabs = [['preview', 'Preview'], ['source', 'Source'], ['files', 'Files']];
   const bar = (extra) => `<div class="frame-bar">
-      ${tabs.map(([k, l]) => `<button class="btn small${view === k ? ' primary' : ''}" type="button" data-action="art-view" data-art="${esc(a.id)}" data-vid="${esc(vid)}" data-view="${k}">${l}</button>`).join('')}
+      ${tabs.map(([k, l]) => `<button class="btn small${view === k ? ' primary' : ''}" type="button" ${on(() => navigate('#/a/' + encodeURIComponent(a.id) + '/' + encodeURIComponent(vid) + '?view=' + k, true))}>${l}</button>`).join('')}
       <span class="grow"></span>${extra || ''}
-      <button class="btn small" type="button" data-action="art-newtab" data-art="${esc(a.id)}" data-vid="${esc(vid)}" title="Open the preview in a new tab">↗ New tab</button>
-      <button class="btn small" type="button" data-action="art-full" title="Full screen (Esc to leave)">⤢</button>
-      <button class="btn small" type="button" data-action="art-download" data-art="${esc(a.id)}" data-vid="${esc(vid)}" title="Download this version">⇩</button>
+      <button class="btn small" type="button" ${on(() => openPreviewTab(a, vid))} title="Open the preview in a new tab">↗ New tab</button>
+      <button class="btn small" type="button" ${on(el => el.closest('.frame-box').classList.toggle('full'))} title="Full screen (Esc to leave)">⤢</button>
+      <button class="btn small" type="button" ${on(() => downloadVersion(a, vid))} title="Download this version">⇩</button>
     </div>`;
   box.innerHTML = `<div class="frame-box">${bar()}<div class="empty">Opening ${esc(info.type)}…</div></div>`;
   const { signal } = VIEW.ac;
   try {
     if (!info.slot) { box.innerHTML = `<div class="frame-box">${bar()}<div class="empty">This version has no files in the loaded export.</div></div>`; return; }
     if (view === 'files') {
-      box.innerHTML = `<div class="frame-box">${bar()}<div class="card-pad">${versionFilesHtml(a, vid, info)}</div></div>`;
+      box.innerHTML = `<div class="frame-box">${bar()}<div class="card-pad">${versionFilesHtml(vid, info)}</div></div>`;
       return;
     }
     if (view === 'source') {
@@ -168,10 +169,12 @@ async function drawVersion(a, vid, view) {
       box.innerHTML = `<div class="frame-box">${bar()}${notes}<div class="empty">${esc(built.empty || 'Nothing to preview.')}</div></div>`;
       return;
     }
-    box.innerHTML = `<div class="frame-box" id="art-frame-box">${bar(built.extra)}${notes}<iframe class="preview" id="art-frame" sandbox="allow-scripts allow-popups allow-forms allow-modals allow-downloads" referrerpolicy="no-referrer" title="${esc(a.title)}"></iframe></div>`;
+    const picker = built.boards ? `<select class="input" style="padding:3px 8px;font-size:13px" ${on.change(el => pickBoard(el.value))} aria-label="Board">${built.boards.list.map(b => `<option value="${esc(b.file)}"${b.file === built.boards.current ? ' selected' : ''}>${esc(b.title)}</option>`).join('')}</select>` : '';
+    box.innerHTML = `<div class="frame-box" id="art-frame-box">${bar(picker)}${notes}<iframe class="preview" id="art-frame" sandbox="allow-scripts allow-popups allow-forms allow-modals allow-downloads" referrerpolicy="no-referrer" title="${esc(a.title)}"></iframe></div>`;
     box.querySelector('iframe').srcdoc = built.html;
   } catch (err) {
     console.error(err);
+    if (signal.aborted) return;
     box.innerHTML = `<div class="frame-box">${bar()}<div class="notice warn">Could not open this version: ${esc(err.message || err)}</div></div>`;
   }
 }
@@ -370,7 +373,8 @@ async function buildDesign(f, boardWanted) {
   const firstReal = present.find(b => f.get('project/' + b).size > 1024) || present[0];
   const board = present.includes(boardWanted) ? boardWanted : (present.includes(launch) ? launch : firstReal);
   const notesList = canvas && canvas.notes ? Object.values(canvas.notes).filter(x => x && x.text) : [];
-  const extra = present.length > 1 ? `<select class="input" style="padding:3px 8px;font-size:13px" data-action-change="pick-board" aria-label="Board">${present.map(b => `<option value="${esc(b)}"${b === board ? ' selected' : ''}>${esc((boards[b] && boards[b].title) || b)}</option>`).join('')}</select>` : '';
+  // Plain data, not markup: the result is cached across pages, and the picker's handler is not.
+  const picker = present.length > 1 ? { list: present.map(b => ({ file: b, title: (boards[b] && boards[b].title) || b })), current: board } : null;
   if (!board) return { html: null, source: canvas ? JSON.stringify(canvas, null, 2) : null, notes: [], empty: 'The design’s board files are not in the export.' };
   let html = await f.get('project/' + board).text();
   // Boards load ./support.js from the platform; it is not exported, so give them an empty stub.
@@ -379,10 +383,10 @@ async function buildDesign(f, boardWanted) {
   const notes = ['Design boards are shown one at a time. Some interactive parts need claude.ai and may not work.'];
   if (order.length > present.length) notes.push((order.length - present.length) + ' board(s) are listed but missing from the export.');
   if (notesList.length) notes.push('Canvas notes: ' + notesList.map(n => oneLine(n.text)).join(' · ').slice(0, 600));
-  return { html: withFrameShim(r.html, assetLookupScript(r.lookup) + BOARD_LINK_SCRIPT), source: canvas ? JSON.stringify(canvas, null, 2) : null, notes: notes.concat(r.notes, platformNotes(html)), extra };
+  return { html: withFrameShim(r.html, assetLookupScript(r.lookup) + BOARD_LINK_SCRIPT), source: canvas ? JSON.stringify(canvas, null, 2) : null, notes: notes.concat(r.notes, platformNotes(html)), boards: picker };
 }
 
-function versionFilesHtml(a, vid, info) {
+function versionFilesHtml(vid, info) {
   const s = info.slot;
   const rows = [];
   if (s.single) rows.push(['versions/' + vid + '.html', s.single]);
@@ -391,25 +395,20 @@ function versionFilesHtml(a, vid, info) {
   const plumbing = p => /^(SKILL\.md|artifact-type\/)/.test(p);
   const shown = rows.filter(([p]) => !plumbing(p));
   const hidden = rows.length - shown.length;
-  const li = ([p, node]) => `<tr><td class="mono" dir="auto">${esc(p)}</td><td class="num">${fmtBytes(node.size)}</td><td class="right"><button class="btn small" type="button" data-action="art-file" data-art="${esc(a.id)}" data-vid="${esc(vid)}" data-path="${esc(p)}">Open</button></td></tr>`;
+  const li = ([p, node]) => `<tr><td class="mono" dir="auto">${esc(p)}</td><td class="num">${fmtBytes(node.size)}</td><td class="right"><button class="btn small" type="button" ${on(() => openArtifactFile(p, node))}>Open</button></td></tr>`;
   return `<table class="list" style="font-size:13px"><tbody>${shown.map(li).join('')}</tbody></table>
     ${hidden ? `<details class="blk" style="margin-top:10px"><summary><span class="lbl">${hidden} platform files</span><span class="desc">the app runtime and instructions for Claude, not user content</span></summary><div class="blk-body"><table class="list" style="font-size:13px"><tbody>${rows.filter(([p]) => plumbing(p)).map(li).join('')}</tbody></table></div></details>` : ''}
     <div id="art-file-view" style="margin-top:12px"></div>`;
 }
 
-async function openArtifactFile(a, vid, path) {
-  const info = versionInfo(a, vid);
-  const s = info.slot;
-  let node = null;
-  if (path === 'versions/' + vid + '.html') node = s.single;
-  else if (path === 'versions/' + vid + '.files.json') node = s.manifest;
-  else node = s.folder.get(path);
+// One file of a version, shown below the Files list.
+async function openArtifactFile(path, node) {
   const box = $('#art-file-view');
-  if (!node || !box) return;
+  if (!box) return;
   const { signal } = VIEW.ac;
   const ext = fileExt(path);
   box.innerHTML = '<p class="muted">Opening…</p>';
-  const head = `<div class="row" style="margin-bottom:8px"><b class="mono" dir="auto">${esc(path)}</b><span class="grow"></span><button class="btn small" type="button" data-action="art-file-dl" data-art="${esc(a.id)}" data-vid="${esc(vid)}" data-path="${esc(path)}">Download</button></div>`;
+  const head = `<div class="row" style="margin-bottom:8px"><b class="mono" dir="auto">${esc(path)}</b><span class="grow"></span><button class="btn small" type="button" ${on(() => node.blob(mimeFor(path)).then(b => downloadBlob(b, path.split('/').pop())))}>Download</button></div>`;
   if (/^(png|jpe?g|gif|webp|svg|avif|ico|bmp)$/.test(ext)) {
     const src = await dataUrl(node, path);
     if (signal.aborted) return;
@@ -444,11 +443,11 @@ async function drawPage(a) {
   const threads = (a.comments || []).filter(t => !t.tab || t.tab === tab.title || tabs.length === 1);
   const body = tab.body.replace(/!\[([^\]]*)\]\(attachment\)/g, (all, alt) => `*[image not in export${alt ? ': ' + alt : ''}]*`);
   box.innerHTML = `<div class="card">
-    ${tabs.length > 1 ? `<div class="tabs" style="margin:0;padding:0 12px">${tabs.map((t, i) => `<button class="tab${i === idx ? ' active' : ''}" type="button" data-action="page-tab" data-art="${esc(a.id)}" data-tab="${esc(t.title)}" dir="auto">${esc(t.title || 'Untitled')}</button>`).join('')}</div>` : ''}
+    ${tabs.length > 1 ? `<div class="tabs" style="margin:0;padding:0 12px">${tabs.map((t, i) => `<button class="tab${i === idx ? ' active' : ''}" type="button" ${on(() => navigate('#/a/' + encodeURIComponent(a.id) + '?tab=' + encodeURIComponent(t.title), true))} dir="auto">${esc(t.title || 'Untitled')}</button>`).join('')}</div>` : ''}
     <div class="card-pad" id="page-body">${mdBlock(body)}</div>
     <div class="frame-bar" style="border-top:1px solid var(--border);border-bottom:0">
-      <button class="btn small" type="button" data-action="page-dl" data-art="${esc(a.id)}">Download page.md</button>
-      <button class="btn small" type="button" data-action="page-copy" data-art="${esc(a.id)}">Copy Markdown</button>
+      <button class="btn small" type="button" ${on(() => a.pageNode.blob('text/markdown').then(b => downloadBlob(b, safeFilename(a.title, 'page') + '.md')))}>Download page.md</button>
+      <button class="btn small" type="button" ${on(() => a.pageNode.text().then(copyText))}>Copy Markdown</button>
     </div>
   </div>
   ${(a.comments || []).length ? `<h2 class="section-title">Comments${tabs.length > 1 ? ' on this tab' : ''} <span class="badge">${threads.reduce((n, t) => n + (t.comments || []).length, 0)}</span></h2><div class="card card-pad">${threads.length ? pageCommentsHtml(a, threads) : '<p class="faint">No comments on this tab.</p>'}</div>` : ''}`;
@@ -522,34 +521,3 @@ async function downloadVersion(a, vid) {
   if (s.manifest) zip.add('files.json', await s.manifest.bytes());
   downloadBlob(zip.blob(), safeFilename(a.title, 'artifact') + ' (' + vid + ').zip');
 }
-
-function artAction(action, el) {
-  const a = el.dataset.art ? DB.artifactById.get(el.dataset.art) : null;
-  switch (action) {
-    case 'pick-version': navigate('#/a/' + encodeURIComponent(el.dataset.art) + '/' + encodeURIComponent(el.dataset.vid), true); return true;
-    case 'art-view': navigate('#/a/' + encodeURIComponent(el.dataset.art) + '/' + encodeURIComponent(el.dataset.vid) + '?view=' + el.dataset.view, true); return true;
-    case 'art-full': { const b = $('#art-frame-box') || el.closest('.frame-box'); if (b) b.classList.toggle('full'); return true; }
-    case 'art-newtab': if (a) openPreviewTab(a, el.dataset.vid); return true;
-    case 'art-download': if (a) downloadVersion(a, el.dataset.vid); return true;
-    case 'art-file': if (a) openArtifactFile(a, el.dataset.vid, el.dataset.path); return true;
-    case 'art-file-dl': {
-      if (!a) return true;
-      const s = versionInfo(a, el.dataset.vid).slot;
-      const p = el.dataset.path;
-      const node = p.startsWith('versions/') ? (p.endsWith('.files.json') ? s.manifest : s.single) : s.folder.get(p);
-      if (node) node.blob(mimeFor(p)).then(b => downloadBlob(b, p.split('/').pop()));
-      return true;
-    }
-    case 'page-tab': navigate('#/a/' + encodeURIComponent(el.dataset.art) + '?tab=' + encodeURIComponent(el.dataset.tab), true); return true;
-    case 'page-dl': if (a && a.pageNode) a.pageNode.blob('text/markdown').then(b => downloadBlob(b, safeFilename(a.title, 'page') + '.md')); return true;
-    case 'page-copy': if (a && a.pageNode) a.pageNode.text().then(copyText); return true;
-  }
-  return false;
-}
-
-document.addEventListener('change', e => {
-  const el = e.target.closest('[data-action-change="pick-board"]');
-  if (!el) return;
-  const r = App.route;
-  navigate('#/a/' + encodeURIComponent(r.path[1]) + (r.path[2] ? '/' + encodeURIComponent(r.path[2]) : '') + '?board=' + encodeURIComponent(el.value), true);
-});

@@ -77,7 +77,7 @@ function renderSidebar() {
     ${fp ? `<div class="focus-box">
       <div class="lbl">Showing only</div>
       <div class="who">${avatarHtml(fp, 'sm')}<a href="#/person/${encodeURIComponent(fp.id)}">${esc(fp.name)}</a></div>
-      <button class="btn small" data-action="clear-focus" type="button">Show everyone</button>
+      <button class="btn small" ${on(() => setFocus(null))} type="button">Show everyone</button>
     </div>` : ''}
     <div class="nav-group">
       ${link('#/', ICONS.home, 'Start', null, sec === '')}
@@ -388,16 +388,16 @@ function viewPerson(id, tab) {
         <h1 class="row wrap">${esc(p.name)} ${unknownBadge(p)}</h1>
         <div class="sub">
           ${p.email ? `<a href="mailto:${esc(p.email)}">${esc(p.email)}</a>` : ''}
-          ${p.phone ? `<span class="row" style="gap:4px">📞 <span data-phone="${esc(p.phone)}">${esc(maskPhone(p.phone))}</span> <button class="btn small ghost" type="button" data-action="reveal-phone">show</button></span>` : ''}
+          ${p.phone ? `<span class="row" style="gap:4px">📞 <span>${esc(maskPhone(p.phone))}</span> <button class="btn small ghost" type="button" ${on(el => { el.previousElementSibling.textContent = p.phone; el.remove(); })}>show</button></span>` : ''}
           <span>${firstLast}</span>
-          ${p.system ? '' : `<span class="mono faint" title="Account id">${esc(p.id)}</span> <button class="btn small ghost" type="button" data-action="copy" data-text="${esc(p.id)}" title="Copy id">⧉</button>`}
+          ${p.system ? '' : `<span class="mono faint" title="Account id">${esc(p.id)}</span> <button class="btn small ghost" type="button" ${on(() => copyText(p.id))} title="Copy id">⧉</button>`}
         </div>
       </div>
       <div class="row wrap">
         ${p.system ? '' : (isFocus
-          ? `<button class="btn small" type="button" data-action="clear-focus">Show everyone</button>`
-          : `<button class="btn small" type="button" data-action="focus" data-id="${esc(p.id)}" title="Scope every list and search to this person">Focus on ${esc(p.name.split(' · ')[0])}</button>`)}
-        <button class="btn small primary" type="button" data-action="export-person" data-id="${esc(p.id)}" title="Download everything about this person as a .zip">Download their data</button>
+          ? `<button class="btn small" type="button" ${on(() => setFocus(null))}>Show everyone</button>`
+          : `<button class="btn small" type="button" ${on(() => setFocus(p.id))} title="Scope every list and search to this person">Focus on ${esc(p.name.split(' · ')[0])}</button>`)}
+        <button class="btn small primary" type="button" ${on(() => exportPerson(p))} title="Download everything about this person as a .zip">Download their data</button>
       </div>
     </div>
     <div class="tabs" role="tablist">${tabs}</div>
@@ -491,36 +491,4 @@ function personComments(p) {
       <div dir="auto">${mdToHtml(text)}</div>
     </div>`;
   }).join('')}</div>`;
-}
-
-/* ---------- Actions ---------- */
-
-function handleAction(action, el, e) {
-  switch (action) {
-    case 'clear-focus': setFocus(null); break;
-    case 'focus': setFocus(el.dataset.id); break;
-    case 'copy': copyText(el.dataset.text || ''); break;
-    case 'copy-pre': {
-      const pre = el.closest('pre');
-      const code = pre && pre.querySelector('code');
-      copyText((code || pre).innerText.replace(/\nCopy$/, ''));
-      break;
-    }
-    case 'expand-pre': {
-      const text = TEXT_STASH.get(el.dataset.stash);
-      const box = el.closest('.row');
-      const pre = box && box.previousElementSibling;
-      if (text != null && pre) { pre.textContent = text; box.remove(); }
-      break;
-    }
-    case 'reveal-phone': {
-      const span = el.parentElement.querySelector('[data-phone]');
-      if (span) { span.textContent = span.dataset.phone; el.remove(); }
-      break;
-    }
-    case 'export-person': exportPerson(el.dataset.id, el); break;
-    case 'scroll-to': revealBlock(el.dataset.target); e.preventDefault(); break;
-    default:
-      if (typeof handleViewAction === 'function') handleViewAction(action, el, e);
-  }
 }

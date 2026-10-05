@@ -37,7 +37,7 @@ function convTable(list, key, showOwner) {
     text: c => [c.title, c.summary, c.owner && c.owner.name, c.owner && c.owner.email, c.id].join(' '),
     placeholder: 'Filter by title, summary or person…',
     empty: 'No conversations.',
-    extraToolbar: empties ? `<label class="row muted" style="font-size:14px"><input type="checkbox" data-action="toggle-empty"${CONV_OPTS.hideEmpty ? ' checked' : ''}> Hide ${empties} without content</label>` : '',
+    extraToolbar: empties ? `<label class="row muted" style="font-size:14px"><input type="checkbox" ${on(el => { CONV_OPTS.hideEmpty = el.checked; saveConvOpts(); onRoute(); })}${CONV_OPTS.hideEmpty ? ' checked' : ''}> Hide ${empties} without content</label>` : '',
   });
 }
 
@@ -166,22 +166,22 @@ function viewConversation(id) {
         </div>
       </div>
       <div class="row wrap">
-        <button class="btn small" type="button" data-action="conv-md" data-id="${esc(conv.id)}">Copy as Markdown</button>
-        <button class="btn small" type="button" data-action="conv-dl-md" data-id="${esc(conv.id)}">Download .md</button>
-        <button class="btn small" type="button" data-action="conv-dl-json" data-id="${esc(conv.id)}">.json</button>
-        <button class="btn small ghost" type="button" data-action="print" title="Print or save as PDF">⎙</button>
+        <button class="btn small" type="button" ${on(() => copyText(convToMarkdown(conv)))}>Copy as Markdown</button>
+        <button class="btn small" type="button" ${on(() => downloadBlob(new Blob([convToMarkdown(conv)], { type: 'text/markdown' }), safeFilename(conv.title, 'conversation') + '.md'))}>Download .md</button>
+        <button class="btn small" type="button" ${on(() => downloadBlob(new Blob([JSON.stringify(conv.raw, null, 2)], { type: 'application/json' }), safeFilename(conv.title, 'conversation') + '.json'))}>.json</button>
+        <button class="btn small ghost" type="button" ${on(() => window.print())} title="Print or save as PDF">⎙</button>
       </div>
     </div>
 
     ${conv.summary && conv.summary.trim() ? `<details class="card summary-box"><summary>Summary written by Claude</summary>${mdBlock(conv.summary)}</details>` : ''}
-    ${outputs.length ? outputsBox(outputs) : ''}
+    ${outputs.length ? outputsBox(conv, outputs) : ''}
 
     <div class="conv-toolbar" id="conv-toolbar">
-      <label class="chip${CONV_OPTS.showTools ? ' on' : ''}"><input type="checkbox" data-action="conv-opt" data-opt="showTools" ${CONV_OPTS.showTools ? 'checked' : ''} hidden>⚙ Tool calls</label>
-      <label class="chip${CONV_OPTS.showThinking ? ' on' : ''}"><input type="checkbox" data-action="conv-opt" data-opt="showThinking" ${CONV_OPTS.showThinking ? 'checked' : ''} hidden>💭 Thinking</label>
-      <label class="chip${CONV_OPTS.showSystem ? ' on' : ''}" title="Text the platform added to messages (memory snapshots, dates)"><input type="checkbox" data-action="conv-opt" data-opt="showSystem" ${CONV_OPTS.showSystem ? 'checked' : ''} hidden>⚑ System notes</label>
-      <button class="chip" type="button" data-action="expand-all">Expand all</button>
-      <button class="chip" type="button" data-action="collapse-all">Collapse all</button>
+      <label class="chip${CONV_OPTS.showTools ? ' on' : ''}"><input type="checkbox" ${on(el => setConvOpt(conv, 'showTools', el))} ${CONV_OPTS.showTools ? 'checked' : ''} hidden>⚙ Tool calls</label>
+      <label class="chip${CONV_OPTS.showThinking ? ' on' : ''}"><input type="checkbox" ${on(el => setConvOpt(conv, 'showThinking', el))} ${CONV_OPTS.showThinking ? 'checked' : ''} hidden>💭 Thinking</label>
+      <label class="chip${CONV_OPTS.showSystem ? ' on' : ''}" title="Text the platform added to messages (memory snapshots, dates)"><input type="checkbox" ${on(el => setConvOpt(conv, 'showSystem', el))} ${CONV_OPTS.showSystem ? 'checked' : ''} hidden>⚑ System notes</label>
+      <button class="chip" type="button" ${on(expandAll)}>Expand all</button>
+      <button class="chip" type="button" ${on(collapseAll)}>Collapse all</button>
       ${q ? `<span class="chip on">Highlighting “${esc(q)}” <a href="#/c/${encodeURIComponent(conv.id)}" title="Clear">×</a></span><span class="muted" id="hit-count" style="font-size:13px"></span>` : ''}
     </div>
 
@@ -191,6 +191,18 @@ function viewConversation(id) {
     <div class="thread" id="thread"></div>
   </div>`;
 }
+
+// A toolbar option (tool calls, thinking, system notes): save it and redraw the thread in place.
+function setConvOpt(conv, key, el) {
+  CONV_OPTS[key] = el.checked;
+  saveConvOpts();
+  el.closest('.chip').classList.toggle('on', el.checked);
+  drawThread(conv, { q: App.route.query.q || '', anchor: threadAnchor() });
+}
+
+// Expand all / Collapse all, for conversations and design chats.
+function expandAll() { $$('#thread details.blk').forEach(d => { d.open = true; }); }
+function collapseAll() { $$('#thread details.blk').forEach(d => { d.open = false; }); }
 
 // The first message whose bottom is below the top of the viewport, and where it sits now.
 function threadAnchor() {
@@ -270,11 +282,12 @@ function messageHtml(m, ctx) {
   const who = human ? conv.owner : null;
   const sibs = siblingsOf(conv, m);
   const idx = sibs.findIndex(s => s.uuid === m.uuid);
+  const prev = sibs[idx - 1], next = sibs[idx + 1];
   const branch = sibs.length > 1
     ? `<span class="branch-nav" title="${human ? 'This message was edited' : 'This reply was regenerated'}: ${sibs.length} versions">
-        <button type="button" data-action="branch" data-conv="${esc(conv.id)}" data-to="${esc(sibs[idx - 1] ? sibs[idx - 1].uuid : '')}" ${idx <= 0 ? 'disabled' : ''} aria-label="Previous version">‹</button>
+        <button type="button" ${prev ? on(el => switchBranch(conv, prev.uuid, el)) : 'disabled'} aria-label="Previous version">‹</button>
         ${idx + 1} / ${sibs.length}
-        <button type="button" data-action="branch" data-conv="${esc(conv.id)}" data-to="${esc(sibs[idx + 1] ? sibs[idx + 1].uuid : '')}" ${idx >= sibs.length - 1 ? 'disabled' : ''} aria-label="Next version">›</button>
+        <button type="button" ${next ? on(el => switchBranch(conv, next.uuid, el)) : 'disabled'} aria-label="Next version">›</button>
       </span>` : '';
   const blocks = Array.isArray(m.content) ? m.content : [];
   const firstStart = blocks.reduce((min, b) => { const t = parseTime(b && b.start_timestamp); return t && (!min || t < min) ? t : min; }, 0);
@@ -289,12 +302,20 @@ function messageHtml(m, ctx) {
       ${dur ? `<span class="faint" title="Time to answer">· ${esc(dur)}</span>` : ''}
       ${branch}
       <span class="msg-actions">
-        <button class="btn small ghost" type="button" data-action="copy-msg" data-conv="${esc(conv.id)}" data-msg="${esc(m.uuid)}" title="Copy message text">⧉</button>
-        <button class="btn small ghost" type="button" data-action="link-msg" data-conv="${esc(conv.id)}" data-msg="${esc(m.uuid)}" title="Copy link to this message">#</button>
+        <button class="btn small ghost" type="button" ${on(() => copyText(messageToMarkdown(conv, m)))} title="Copy message text">⧉</button>
+        <button class="btn small ghost" type="button" ${on(() => copyText(location.href.split('#')[0] + '#/c/' + conv.id + '?m=' + m.uuid))} title="Copy link to this message">#</button>
       </span>
     </div>
     <div class="msg-body">${body || '<span class="faint">(empty message)</span>'}</div>
   </article>`;
+}
+
+// Show another version of an edited or regenerated message, keeping it where it is on screen.
+function switchBranch(conv, to, el) {
+  const msgEl = el.closest('.msg');
+  const anchor = msgEl ? { id: to, top: msgEl.getBoundingClientRect().top } : threadAnchor();
+  selectBranchFor(conv, to);
+  drawThread(conv, { q: App.route.query.q || '', anchor });
 }
 
 const HUMAN_FOLD = 3000;
@@ -581,7 +602,7 @@ function toolResultHtml(res, ctx) {
       out.push(`<span class="file-chip">🖼 Screenshot or image <span class="sz">not in export</span></span>`);
     } else if (it.type === 'local_resource') {
       const created = ctx.created.get(it.file_path);
-      out.push(`<span class="file-chip">📄 <span dir="auto">${esc(it.name || it.file_path)}</span> <span class="sz">${esc(it.mime_type || '')}</span>${created ? ` <button class="btn small" type="button" data-action="scroll-to" data-target="t-${esc(created.id)}">show content</button>` : ' <span class="sz">bytes not in export</span>'}</span>`);
+      out.push(`<span class="file-chip">📄 <span dir="auto">${esc(it.name || it.file_path)}</span> <span class="sz">${esc(it.mime_type || '')}</span>${created ? ` <button class="btn small" type="button" ${on(() => revealBlock('t-' + (created.id || '')))}>show content</button>` : ' <span class="sz">bytes not in export</span>'}</span>`);
     } else if (it.type === 'image_gallery') {
       const imgs = Array.isArray(it.images) ? it.images : [];
       out.push(imgs.length ? `<div class="files-row">${imgs.map(g => `<a class="file-chip" href="${esc(safeUrl(g.page_url || g.url))}" target="_blank" rel="noopener noreferrer">🖼 ${esc(g.title || 'image')}</a>`).join('')}</div>` : '<p class="faint">Image results expired.</p>');
@@ -660,9 +681,10 @@ function specialToolHtml(name, input, res, ctx, use) {
     const path = input.path || '';
     const ext = codeLangFromPath(path);
     const k = viewKey(() => {
-      if (ext === 'md' || ext === 'markdown') return `<div class="row" style="margin-bottom:8px"><span class="muted" style="font-size:12.5px">${esc(path)}</span><button class="btn small" type="button" data-action="dl-text" data-name="${esc(path.split('/').pop())}" data-stash="${stashText(input.file_text)}">Download</button></div>${mdBlock(input.file_text)}<details class="blk" style="margin-top:8px"><summary><span class="lbl">Source</span></summary><div class="blk-body">${preHtml(input.file_text)}</div></details>`;
-      if (ext === 'html' || ext === 'htm' || ext === 'svg') return `<div class="row" style="margin-bottom:8px"><span class="muted" style="font-size:12.5px">${esc(path)}</span><button class="btn small" type="button" data-action="dl-text" data-name="${esc(path.split('/').pop())}" data-stash="${stashText(input.file_text)}">Download</button></div>${sandboxFrame(input.file_text, 520)}<details class="blk" style="margin-top:8px"><summary><span class="lbl">Source</span></summary><div class="blk-body">${preHtml(input.file_text)}</div></details>`;
-      return `<div class="row" style="margin-bottom:8px"><span class="muted" style="font-size:12.5px">${esc(path)}</span><button class="btn small" type="button" data-action="dl-text" data-name="${esc(path.split('/').pop())}" data-stash="${stashText(input.file_text)}">Download</button></div>${preHtml(input.file_text)}`;
+      const dl = `<div class="row" style="margin-bottom:8px"><span class="muted" style="font-size:12.5px">${esc(path)}</span><button class="btn small" type="button" ${on(() => downloadText(path.split('/').pop(), input.file_text))}>Download</button></div>`;
+      if (ext === 'md' || ext === 'markdown') return `${dl}${mdBlock(input.file_text)}<details class="blk" style="margin-top:8px"><summary><span class="lbl">Source</span></summary><div class="blk-body">${preHtml(input.file_text)}</div></details>`;
+      if (ext === 'html' || ext === 'htm' || ext === 'svg') return `${dl}${sandboxFrame(input.file_text, 520)}<details class="blk" style="margin-top:8px"><summary><span class="lbl">Source</span></summary><div class="blk-body">${preHtml(input.file_text)}</div></details>`;
+      return dl + preHtml(input.file_text);
     });
     return `<details class="blk artifact" data-lazy="${k}" id="t-${id}"><summary><span class="lbl">📄 Created file</span><span class="desc mono" dir="auto">${esc(path.split('/').pop())}</span><span class="meta">${fmtBytes(input.file_text.length)}</span></summary><div class="blk-body"></div></details>`;
   }
@@ -791,11 +813,20 @@ function collectOutputs(conv) {
   return out;
 }
 
-function outputsBox(outputs) {
+function outputsBox(conv, outputs) {
   return `<details class="card summary-box"${outputs.length <= 6 ? ' open' : ''}><summary>What Claude produced here <span class="badge">${outputs.length}</span></summary>
     <div style="padding:0 16px 14px" class="files-row">${outputs.map(o => o.art
       ? `<a class="file-chip" href="#/a/${encodeURIComponent(o.art)}">${o.ico} <span dir="auto">${esc(truncate(o.label, 60))}</span> <span class="sz">published</span></a>`
-      : `<button class="file-chip" type="button" data-action="goto-block" data-msg="${esc(o.msg)}" data-target="t-${esc(o.id)}" style="cursor:pointer">${o.ico} <span dir="auto">${esc(truncate(o.label, 60))}</span> <span class="sz">${esc(o.kind)}</span></button>`).join('')}</div></details>`;
+      : `<button class="file-chip" type="button" ${on(() => gotoBlock(conv, o.msg, 't-' + (o.id || '')))} style="cursor:pointer">${o.ico} <span dir="auto">${esc(truncate(o.label, 60))}</span> <span class="sz">${esc(o.kind)}</span></button>`).join('')}</div></details>`;
+}
+
+// Open a produced file or widget in the thread. It may be on another branch or not drawn yet.
+function gotoBlock(conv, msgId, target) {
+  if (!document.getElementById(target) && msgId) {
+    if (!currentPath(conv).some(m => m.uuid === msgId)) selectBranchFor(conv, msgId);
+    drawThread(conv, { q: App.route.query.q || '', target: msgId });
+  }
+  revealBlock(target);
 }
 
 /* ---------- Markdown export ---------- */
@@ -877,64 +908,4 @@ function revealBlock(id) {
   t.scrollIntoView({ behavior: 'smooth', block: 'start' });
   t.classList.add('flash');
   return true;
-}
-
-/* ---------- Conversation actions ---------- */
-
-function convAction(action, el) {
-  const conv = DB.convById.get(el.dataset.conv || el.dataset.id);
-  switch (action) {
-    case 'toggle-empty':
-      CONV_OPTS.hideEmpty = el.checked; saveConvOpts(); onRoute(); return true;
-    case 'conv-opt': {
-      CONV_OPTS[el.dataset.opt] = el.checked; saveConvOpts();
-      const label = el.closest('.chip');
-      if (label) label.classList.toggle('on', el.checked);
-      const cur = App.route.path[0] === 'c' ? DB.convById.get(App.route.path[1]) : null;
-      if (cur) drawThread(cur, { q: App.route.query.q || '', anchor: threadAnchor() });
-      return true;
-    }
-    case 'branch': {
-      if (!conv || !el.dataset.to) return true;
-      // Keep the switched message where it is on screen; its sibling takes its place.
-      const msgEl = el.closest('.msg');
-      const anchor = msgEl ? { id: el.dataset.to, top: msgEl.getBoundingClientRect().top } : threadAnchor();
-      selectBranchFor(conv, el.dataset.to);
-      drawThread(conv, { q: App.route.query.q || '', anchor });
-      return true;
-    }
-    case 'conv-md': copyText(convToMarkdown(conv)); return true;
-    case 'conv-dl-md': downloadBlob(new Blob([convToMarkdown(conv)], { type: 'text/markdown' }), safeFilename(conv.title, 'conversation') + '.md'); return true;
-    case 'conv-dl-json': downloadBlob(new Blob([JSON.stringify(conv.raw, null, 2)], { type: 'application/json' }), safeFilename(conv.title, 'conversation') + '.json'); return true;
-    case 'copy-msg': {
-      const m = buildTree(conv).byId.get(el.dataset.msg);
-      if (m) copyText(messageToMarkdown(conv, m.m));
-      return true;
-    }
-    case 'link-msg': {
-      const url = location.href.split('#')[0] + '#/c/' + conv.id + '?m=' + el.dataset.msg;
-      copyText(url);
-      return true;
-    }
-    case 'goto-block': {
-      const cur = DB.convById.get(App.route.path[1]);
-      const msgId = el.dataset.msg;
-      if (!document.getElementById(el.dataset.target) && cur && msgId) {
-        // The output may be on another branch, or not drawn yet: show its message first.
-        if (!currentPath(cur).some(m => m.uuid === msgId)) selectBranchFor(cur, msgId);
-        drawThread(cur, { q: App.route.query.q || '', target: msgId });
-      }
-      revealBlock(el.dataset.target);
-      return true;
-    }
-    case 'expand-all': $$('#thread details.blk').forEach(d => { d.open = true; }); return true;
-    case 'collapse-all': $$('#thread details.blk').forEach(d => { d.open = false; }); return true;
-    case 'print': window.print(); return true;
-    case 'dl-text': {
-      const t = TEXT_STASH.get(el.dataset.stash);
-      if (t != null) downloadBlob(new Blob([t], { type: mimeFor(el.dataset.name) }), el.dataset.name || 'file.txt');
-      return true;
-    }
-  }
-  return false;
 }

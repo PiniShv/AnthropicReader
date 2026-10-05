@@ -24,6 +24,12 @@ const after = fn => VIEW.mounts.push(fn);
 // Keeps fn for this view only and returns a short key to put into the markup.
 const viewKey = fn => { const k = 'v' + ++VIEW.n; VIEW.fns.set(k, fn); return k; };
 
+/* Behaviour bound where the markup is made: `<button ${on(() => save(conv))}>`. The listeners in
+ * app.js call fn(el, event) on click (or on change for on.change). Never put a key into a string
+ * that outlives the view, such as a cache: the key means nothing on the next page. */
+const on = fn => `data-on="${viewKey(fn)}"`;
+on.change = fn => `data-on-change="${viewKey(fn)}"`;
+
 function mountView(v) {
   while (v.mounts.length) {
     const fn = v.mounts.shift();

@@ -68,7 +68,7 @@ function viewProject(id) {
 function docHtml(d) {
   const ext = fileExt(d.filename);
   const k = viewKey(() => {
-    const dl = `<div class="row" style="margin-bottom:8px"><span class="faint" style="font-size:12.5px">Added ${esc(fmtDateTime(d.created))}</span><span class="grow"></span><button class="btn small" type="button" data-action="dl-text" data-name="${esc(d.filename.split('/').pop())}" data-stash="${stashText(d.content)}">Download</button></div>`;
+    const dl = `<div class="row" style="margin-bottom:8px"><span class="faint" style="font-size:12.5px">Added ${esc(fmtDateTime(d.created))}</span><span class="grow"></span><button class="btn small" type="button" ${on(() => downloadText(d.filename.split('/').pop(), d.content))}>Download</button></div>`;
     if (ext === 'md' || ext === 'markdown' || ext === 'pptx' || ext === 'docx' || ext === 'pdf') {
       return dl + (ext !== 'md' && ext !== 'markdown' ? `<p class="notice" style="margin:0 0 8px">Text extracted from the ${esc(ext)} file. The original file is not in the export.</p>` : '') + mdBlock(d.content) +
         `<details class="blk" style="margin-top:10px"><summary><span class="lbl">Raw text</span></summary><div class="blk-body">${preHtml(d.content, { wrap: true })}</div></details>`;
@@ -158,7 +158,7 @@ function memoryBody(mem) {
   const filesHtml = keys.map(g => `<h3 class="section-title" style="font-size:14.5px">${esc(label(g))} <span class="badge">${groups.get(g).length}</span></h3>
     <div class="doc-list">${groups.get(g).map(f => memoryFileCard(f, mem, i++)).join('')}</div>`).join('');
   return `
-    ${mem.files.length ? `<div class="row wrap" style="margin:4px 0 0"><span class="muted" style="font-size:13.5px">Memory files Claude keeps. Each fact is tagged with where it came from.</span><span class="grow"></span><button class="btn small" type="button" data-action="mem-expand">Expand all</button></div>${filesHtml}` : ''}
+    ${mem.files.length ? `<div class="row wrap" style="margin:4px 0 0"><span class="muted" style="font-size:13.5px">Memory files Claude keeps. Each fact is tagged with where it came from.</span><span class="grow"></span><button class="btn small" type="button" ${on(() => $$('.mem-file').forEach(d => { d.open = true; }))}>Expand all</button></div>${filesHtml}` : ''}
     ${mem.conversationsMemory ? `<h2 class="section-title">Chat memory summary</h2><div class="card card-pad">${memoryText(mem.conversationsMemory, mem)}</div>` : ''}
     ${mem.projectMemories.length ? `<h2 class="section-title">Project memories</h2>${mem.projectMemories.map(pm => `<div class="card card-pad" style="margin-bottom:10px"><h3 style="margin-bottom:8px">${DB.projectById.has(pm.projectId) ? `<a href="#/p/${encodeURIComponent(pm.projectId)}">${esc(projectName(pm.projectId))}</a>` : esc(pm.projectId)}</h3>${memoryText(pm.text, mem)}</div>`).join('')}` : ''}
     ${!mem.files.length && !mem.conversationsMemory && !mem.projectMemories.length ? '<div class="card empty">Empty memory.</div>' : ''}`;
@@ -235,8 +235,8 @@ function viewDesignChat(id) {
         ${(d.authors || []).map(p => `<span class="row" style="gap:6px">${avatarHtml(p, 'sm')}${personLink(p)}</span>`).join('') || '<span class="faint">No author (empty chat)</span>'}
         <span>Started ${esc(fmtDateTime(d.created))}</span><span>Last ${esc(fmtDateTime(d.lastTs))}</span><span>${plural(d.msgCount, 'message')}</span>
         ${tokens ? `<span class="faint" title="Sum of input context over all turns">${fmtNum(Math.round(tokens / 1000))}k context tokens</span>` : ''}</div>
-    </div><div class="row"><button class="btn small" type="button" data-action="design-dl" data-id="${esc(d.id)}">Download .json</button></div></div>
-    <div class="conv-toolbar"><button class="chip" type="button" data-action="expand-all">Expand all</button><button class="chip" type="button" data-action="collapse-all">Collapse all</button></div>
+    </div><div class="row"><button class="btn small" type="button" ${on(() => downloadBlob(new Blob([JSON.stringify(d.raw, null, 2)], { type: 'application/json' }), safeFilename(d.project.name + ' ' + d.id.slice(0, 8), 'design-chat') + '.json'))}>Download .json</button></div></div>
+    <div class="conv-toolbar"><button class="chip" type="button" ${on(expandAll)}>Expand all</button><button class="chip" type="button" ${on(collapseAll)}>Collapse all</button></div>
     <div class="thread" id="thread">${msgs.length ? msgs.map(m => designMessageHtml(m, d, receipts)).join('') : '<div class="empty">This design chat has no messages in the export.</div>'}</div>
   </div>`;
 }
@@ -580,6 +580,9 @@ const SEARCH_TYPES = [
 
 function viewSearch(q, t) {
   const deep = App.route.query.deep === '1';
+  // The type as it is in the URL: the default 'all' must not be added to it.
+  const urlType = App.route.query.t;
+  const setDeep = el => navigate('#/search?q=' + encodeURIComponent(q) + (el.checked ? '&deep=1' : '') + (urlType ? '&t=' + urlType : ''), true);
   const fp = focusPerson();
   after(async () => {
     const box = $('#search-results');
@@ -592,9 +595,9 @@ function viewSearch(q, t) {
   });
   return `<div class="page narrow">
     <div class="page-head"><div class="grow"><h1>Search</h1>
-      <div class="sub">${fp ? `<span>Only ${personLink(fp)}’s data · <a href="#" data-action="clear-focus">search everyone</a></span>` : '<span>All people</span>'}</div></div></div>
+      <div class="sub">${fp ? `<span>Only ${personLink(fp)}’s data · <a href="#" ${on(() => setFocus(null))}>search everyone</a></span>` : '<span>All people</span>'}</div></div></div>
     <div class="toolbar">
-      <label class="row muted" style="font-size:14px"><input type="checkbox" data-action="search-deep"${deep ? ' checked' : ''}> Deep search: also look inside tool calls, thinking, attached files and artifact content (slower the first time)</label>
+      <label class="row muted" style="font-size:14px"><input type="checkbox" ${on(setDeep)}${deep ? ' checked' : ''}> Deep search: also look inside tool calls, thinking, attached files and artifact content (slower the first time)</label>
     </div>
     <div id="search-tabs" class="search-tabs"></div>
     <div id="search-results"></div>
@@ -734,9 +737,7 @@ function missingParts(m) {
 
 /* ======================= Per-person export ======================= */
 
-async function exportPerson(id, btn) {
-  const p = DB.people.get(id);
-  if (!p) return;
+async function exportPerson(p) {
   const back = document.createElement('div');
   back.className = 'modal-back';
   const versionsTotal = p.artifacts.reduce((a, x) => a + x.versions.length, 0);
@@ -846,24 +847,4 @@ async function buildPersonZip(p, opts, progress, isCancelled) {
   }
   progress('Packing…');
   return z.blob();
-}
-
-/* ======================= Shared actions ======================= */
-
-function handleViewAction(action, el, e) {
-  if (typeof convAction === 'function' && convAction(action, el, e)) return;
-  if (typeof artAction === 'function' && artAction(action, el, e)) return;
-  switch (action) {
-    case 'search-deep': {
-      const q = App.route.query.q || '';
-      navigate('#/search?q=' + encodeURIComponent(q) + (el.checked ? '&deep=1' : '') + (App.route.query.t ? '&t=' + App.route.query.t : ''), true);
-      break;
-    }
-    case 'design-dl': {
-      const d = DB.designById.get(el.dataset.id);
-      if (d) downloadBlob(new Blob([JSON.stringify(d.raw, null, 2)], { type: 'application/json' }), safeFilename(d.project.name + ' ' + d.id.slice(0, 8), 'design-chat') + '.json');
-      break;
-    }
-    case 'mem-expand': $$('.mem-file').forEach(d => { d.open = true; }); break;
-  }
 }
