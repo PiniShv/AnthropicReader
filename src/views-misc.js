@@ -8,7 +8,7 @@ function projectTable(list, key, showOwner) {
     id: 'name', label: 'Project', cls: 'title', link: true, asc: true, sortVal: x => (x.name || '').toLowerCase(),
     html: x => `<div dir="auto">${x.name ? esc(x.name) : '<i class="faint">Untitled project</i>'}</div>
       ${x.description ? `<div class="snip" dir="auto">${esc(truncate(x.description, 200))}</div>` : ''}
-      <div class="row wrap" style="margin-top:5px;gap:4px">${x.isStarter ? '<span class="chip">Starter</span>' : ''}${!x.isPrivate ? '<span class="chip on">Shared</span>' : ''}${projectMemoryOf(x).length ? '<span class="chip">🧠 memory</span>' : ''}</div>`,
+      <div class="row wrap" style="margin-top:5px;gap:4px">${x.isStarter ? '<span class="chip">Starter</span>' : ''}${!x.isPrivate ? '<span class="chip on">Shared</span>' : ''}${x.memoryRefs.length ? '<span class="chip">🧠 memory</span>' : ''}</div>`,
   }];
   if (showOwner) columns.push(COL.owner);
   columns.push(COL.num('docs', 'Docs', x => x.docs.length));
@@ -31,21 +31,11 @@ function viewProjects() {
     ${projectTable(list, 'proj-' + s.key, !s.person)}</div>`;
 }
 
-// Memory about a project: the owner's project_memories entry and /projects/<id>/ memory files.
-function projectMemoryOf(x) {
-  const out = [];
-  for (const mem of DB.memories) {
-    for (const pm of mem.projectMemories) if (pm.projectId === x.id) out.push({ mem, kind: 'summary', text: pm.text });
-    for (const f of mem.files) if (f.path.startsWith('/projects/' + x.id + '/')) out.push({ mem, kind: 'file', file: f });
-  }
-  return out;
-}
-
 function viewProject(id) {
   const x = DB.projectById.get(id);
   if (!x) return notFound('No project with this id in the loaded export.');
   const p = x.owner;
-  const pm = projectMemoryOf(x);
+  const pm = x.memoryRefs;
   return `<div class="page narrow">
     <div class="crumbs"><a href="#/projects">Projects</a><span>›</span>${p && !p.system ? `${personLink(p)}<span>›</span>` : ''}<span dir="auto">${esc(x.name || 'Untitled project')}</span></div>
     <div class="page-head"><div class="grow">
@@ -273,7 +263,7 @@ function drawSearchResults(res, q, t, deep) {
 /* ======================= About ======================= */
 
 function viewAbout() {
-  const m = DB.manifests.slice().sort((a, b) => b.createdAt - a.createdAt)[0];
+  const m = latestManifest();
   const people = Array.from(DB.people.values()).filter(p => !p.system);
   return `<div class="page narrow"><div class="page-head"><div class="grow"><h1>About this export</h1></div></div>
     ${m ? `<div class="card card-pad"><dl class="kv"><dt>Exported</dt><dd>${esc(fmtDateTime(m.createdAt))}</dd><dt>Files in export</dt><dd>${esc(m.totalFiles)} (${m.files.map(f => esc(f.filename)).join(', ')})</dd></dl></div>` : ''}
@@ -301,23 +291,6 @@ function viewAbout() {
       <li>Everything stays in this tab. Reloading the page forgets the data${window.showOpenFilePicker ? '; use “Reopen last export” on the start screen to load it again quickly' : ', so you pick the files again'}.</li>
     </ul></div>
   </div>`;
-}
-
-// A manifest part counts as loaded if its zip opened, or (for unzipped folders) if its kind of
-// data is present. A zip that failed to open does not count.
-// Manifest parts whose data is not loaded.
-function missingFiles(m) {
-  const okZips = new Set(DB.sources.filter(s => s.kind === 'zip' && !s.error).map(s => s.name));
-  const framesZips = DB.sources.some(s => s.kind === 'zip' && !s.error && /^frames-/i.test(s.name));
-  const has = {
-    conversations: DB.conversations.length > 0,
-    design_chats: DB.designChats.length > 0,
-    memories: DB.memories.length > 0,
-    projects: DB.projects.length > 0,
-    light_metadata: Array.from(DB.people.values()).some(p => p.known),
-    frames: DB.artifacts.length > 0 && !framesZips,
-  };
-  return m.files.filter(f => !okZips.has(f.filename) && !has[f.category]);
 }
 
 const LINK_LIFETIME = 24 * 3600 * 1000;

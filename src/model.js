@@ -638,6 +638,22 @@ function latestManifest() {
   return DB.manifests.slice().sort((a, b) => b.createdAt - a.createdAt)[0] || null;
 }
 
+// Manifest parts whose data is not loaded. A part counts as loaded if its zip opened, or (for
+// unzipped folders) if its kind of data is present. A zip that failed to open does not count.
+function missingFiles(m) {
+  const okZips = new Set(DB.sources.filter(s => s.kind === 'zip' && !s.error).map(s => s.name));
+  const framesZips = DB.sources.some(s => s.kind === 'zip' && !s.error && /^frames-/i.test(s.name));
+  const has = {
+    conversations: DB.conversations.length > 0,
+    design_chats: DB.designChats.length > 0,
+    memories: DB.memories.length > 0,
+    projects: DB.projects.length > 0,
+    light_metadata: Array.from(DB.people.values()).some(p => p.known),
+    frames: DB.artifacts.length > 0 && !framesZips,
+  };
+  return m.files.filter(f => !okZips.has(f.filename) && !has[f.category]);
+}
+
 /* ---------- Linking & derived data ---------- */
 
 function finalize() {
@@ -698,10 +714,18 @@ function finalize() {
         if (who) { who.comments.push({ artifact: a, thread: th, comment: cm, byAgent: !!cm.posted_by_agent, source: 'page' }); who.touch(parseTime(cm.created_at)); }
       }
     }
-    // Thread comments are anonymous; only the owner's own (non-Claude) comments are attributable.
+    // Threads with the comments that do not repeat a doc comment; threads with none are left out.
+    a.threadView = [];
     for (const th of a.threads || []) {
-      for (const cm of (th && th.comments) || []) {
-        if (isDuplicateThreadComment(a, cm)) continue;
+      const comments = [];
+      for (const cm of (th && th.comments) || []) if (!isDuplicateThreadComment(a, cm)) comments.push(cm);
+      if (comments.length) a.threadView.push({ th, comments });
+    }
+    a.commentCount = (a.comments || []).reduce((n, t) => n + (t && t.comments ? t.comments.length : 0), 0) +
+      a.threadView.reduce((n, x) => n + x.comments.length, 0);
+    // Thread comments are anonymous; only the owner's own (non-Claude) comments are attributable.
+    for (const { th, comments } of a.threadView) {
+      for (const cm of comments) {
         if (cm.author_is_artifact_owner && cm.author_role !== 'assistant' && a.ownerId) {
           a.owner.comments.push({ artifact: a, thread: th, comment: cm, byAgent: false, source: 'thread' });
         }
@@ -743,6 +767,20 @@ function finalize() {
   DB.designChats.sort(byLast);
   DB.artifacts.sort(byNewest);
   DB.memories.sort((a, b) => b.updated - a.updated);
+  // Memory about each project, newest memory first: its project_memories summary, then its
+  // memory files under /projects/<id>/.
+  for (const pr of DB.projects) pr.memoryRefs = [];
+  for (const mem of DB.memories) {
+    for (const pm of mem.projectMemories) {
+      const pr = DB.projectById.get(pm.projectId);
+      if (pr) pr.memoryRefs.push({ mem, kind: 'summary', text: pm.text });
+    }
+    for (const f of mem.files) {
+      const m = /^\/projects\/([^/]+)\//.exec(f.path);
+      const pr = m && DB.projectById.get(m[1]);
+      if (pr) pr.memoryRefs.push({ mem, kind: 'file', file: f });
+    }
+  }
   for (const p of DB.people.values()) {
     p.conversations.sort(byLast);
     p.projects.sort(byNewest);
@@ -770,11 +808,16 @@ function peopleSorted() {
   return Array.from(DB.people.values()).sort((a, b) => (b.total() - a.total()) || a.name.localeCompare(b.name));
 }
 
+// q is lower case and trimmed: part of the name or email, or the start of the id.
+function personMatches(p, q) {
+  return p.name.toLowerCase().includes(q) || (p.email || '').toLowerCase().includes(q) || p.id.startsWith(q);
+}
+
 function peopleMatching(q) {
   q = (q || '').toLowerCase().trim();
   const all = peopleSorted().filter(p => !p.system);
   if (!q) return all;
-  return all.filter(p => p.name.toLowerCase().includes(q) || (p.email || '').toLowerCase().includes(q) || p.id.startsWith(q));
+  return all.filter(p => personMatches(p, q));
 }
 
 // The records in view: one person's (finalize() linked them), or everyone's when p is null.

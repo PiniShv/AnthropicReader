@@ -12,19 +12,12 @@ function visChip(a) {
   return `<span class="chip${v === 'private' ? '' : ' on'}" title="Visibility">${esc(VIS_LABEL[v] || v)}${esc(extra)}</span>`;
 }
 
-function artifactCommentCount(a) {
-  let n = 0;
-  for (const t of a.comments || []) n += (t && t.comments ? t.comments.length : 0);
-  for (const t of a.threads || []) n += (t && t.comments ? t.comments.filter(c => !isDuplicateThreadComment(a, c)).length : 0);
-  return n;
-}
-
 function artifactTable(list, key, showOwner, facet) {
   const columns = [
     {
       id: 'title', label: 'Title', cls: 'title', link: true, asc: true, sortVal: a => a.title.toLowerCase(),
       html: a => `<div dir="auto">${esc(a.title)}</div>${a.description && !TYPE_BLURB.test(a.description) && a.description !== a.title ? `<div class="snip" dir="auto">${esc(truncate(a.description, 200))}</div>` : ''}
-        <div class="row wrap" style="margin-top:5px;gap:4px"><span class="chip">${esc(a.contentType)}</span>${visChip(a)}${artifactCommentCount(a) ? `<span class="chip">🗨 ${artifactCommentCount(a)}</span>` : ''}${a.mentionedIn && a.mentionedIn.length ? `<span class="chip" title="Linked from conversations">💬 ${a.mentionedIn.length}</span>` : ''}</div>`,
+        <div class="row wrap" style="margin-top:5px;gap:4px"><span class="chip">${esc(a.contentType)}</span>${visChip(a)}${a.commentCount ? `<span class="chip">🗨 ${a.commentCount}</span>` : ''}${a.mentionedIn && a.mentionedIn.length ? `<span class="chip" title="Linked from conversations">💬 ${a.mentionedIn.length}</span>` : ''}</div>`,
     },
   ];
   if (showOwner) columns.push(COL.owner);
@@ -59,7 +52,6 @@ function viewArtifact(id, vid) {
   const selected = vid && versions.some(v => v.id === vid) ? vid : a.activeVersion;
   const sel = versions.find(v => v.id === selected);
   const isPage = a.kind === 'page';
-  const nComments = artifactCommentCount(a);
 
   // Design boards: the board picker and links between boards. The URL keeps its version part as is.
   const pickBoard = board => navigate('#/a/' + encodeURIComponent(id) + (vid ? '/' + encodeURIComponent(vid) : '') + '?board=' + encodeURIComponent(board), true);
@@ -103,7 +95,7 @@ function viewArtifact(id, vid) {
       <aside>
         ${versions.length ? `<div class="card card-pad side-card"><h2 style="margin-bottom:8px">Versions</h2><ul class="version-list">${versionList}</ul>${isPage ? '<p class="faint" style="font-size:12.5px;margin:8px 0 0">Docs keep only the current text in the export; older versions are listed for reference.</p>' : ''}</div>` : ''}
         ${a.mentionedIn && a.mentionedIn.length ? `<div class="card card-pad side-card"><h2 style="margin-bottom:8px">Mentioned in</h2>${a.mentionedIn.map(c => `<div style="padding:4px 0"><a href="#/c/${encodeURIComponent(c.id)}" dir="auto">${esc(c.title || 'Untitled conversation')}</a> <span class="faint" style="font-size:12.5px">${esc(fmtDate(c.lastTs))}</span></div>`).join('')}</div>` : ''}
-        ${!isPage && a.threads && a.threads.length ? `<div class="card card-pad side-card"><h2 style="margin-bottom:8px">Comments <span class="badge">${nComments}</span></h2>${threadCommentsHtml(a)}</div>` : ''}
+        ${!isPage && a.threads && a.threads.length ? `<div class="card card-pad side-card"><h2 style="margin-bottom:8px">Comments <span class="badge">${a.commentCount}</span></h2>${threadCommentsHtml(a)}</div>` : ''}
         <div class="card card-pad side-card"><dl class="kv" style="font-size:13px"><dt>Id</dt><dd class="mono">${esc(a.id)}</dd><dt>Kind</dt><dd>${esc(a.kind)}</dd><dt>Files</dt><dd>${fmtNum(a.files.size)}</dd></dl></div>
       </aside>
     </div>
@@ -248,9 +240,9 @@ function pageCommentsHtml(a, threads) {
 }
 
 function threadCommentsHtml(a) {
-  return (a.threads || []).filter(t => (t.comments || []).some(c => !isDuplicateThreadComment(a, c))).map(t => `<div class="comment">
+  return a.threadView.map(({ th: t, comments }) => `<div class="comment">
     <div style="font-size:12.5px" class="row wrap">${t.resolved ? '<span class="chip ok">resolved</span>' : '<span class="chip">open</span>'}<span class="faint">${esc(fmtDateTime(t.created_at))}</span></div>
-    ${(t.comments || []).filter(c => !isDuplicateThreadComment(a, c)).map(c => {
+    ${comments.map(c => {
       const who = c.author_role === 'assistant' ? 'Claude'
         : c.author_role === 'page' ? 'Doc comment'
         : c.author_is_artifact_owner ? (a.owner && !a.owner.system ? esc(a.owner.name) : 'Owner')

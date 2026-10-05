@@ -242,7 +242,8 @@ function viewHome() {
   const people = peopleSorted().filter(p => !p.system);
   const active = people.filter(p => p.total() > 0);
   const totalMsgs = DB.conversations.reduce((a, c) => a + c.msgCount, 0);
-  const manifest = DB.manifests.slice().sort((a, b) => b.createdAt - a.createdAt)[0];
+  const manifest = latestManifest();
+  const missing = manifest ? missingFiles(manifest) : [];
   const dates = DB.conversations.map(c => c.created).filter(Boolean);
   const first = dates.length ? Math.min(...dates) : 0;
   const last = DB.conversations.length ? Math.max(...DB.conversations.map(c => c.lastTs || 0)) : 0;
@@ -268,7 +269,7 @@ function viewHome() {
       </div>
     </div></div>
 
-    ${manifest && missingFiles(manifest).length ? `<div class="notice warn" style="margin-bottom:14px">${plural(missingFiles(manifest).length, 'part')} of this export ${missingFiles(manifest).length === 1 ? 'is' : 'are'} not loaded (${missingFiles(manifest).map(f => esc(f.filename)).join(', ')}). <a href="#/about">Download or add them</a>.</div>` : ''}
+    ${missing.length ? `<div class="notice warn" style="margin-bottom:14px">${plural(missing.length, 'part')} of this export ${missing.length === 1 ? 'is' : 'are'} not loaded (${missing.map(f => esc(f.filename)).join(', ')}). <a href="#/about">Download or add them</a>.</div>` : ''}
     ${DB.warnings.length ? `<div class="notice warn" style="margin-bottom:14px">${plural(DB.warnings.length, 'file')} could not be read, so some data is missing. <a href="#/about">See which</a>.</div>` : ''}
     <div class="tiles">
       <a class="tile" href="#/people"><div class="num">${fmtNum(active.length)}</div><div class="lbl">people with data <span class="faint">of ${fmtNum(people.length)}</span></div></a>
@@ -338,8 +339,7 @@ function viewPeople() {
   after(() => {
     const draw = () => {
       const q = PEOPLE_STATE.q.toLowerCase().trim();
-      let list = all.filter(p => (PEOPLE_STATE.showEmpty || p.total() > 0 || q) &&
-        (!q || p.name.toLowerCase().includes(q) || (p.email || '').toLowerCase().includes(q) || p.id.startsWith(q)));
+      let list = all.filter(p => (PEOPLE_STATE.showEmpty || p.total() > 0 || q) && (!q || personMatches(p, q)));
       list.sort((a, b) => PEOPLE_SORTS[PEOPLE_STATE.sort][1](a, b) || a.name.localeCompare(b.name));
       $('#people-grid').innerHTML = list.map(personCardHtml).join('') || '<div class="empty">No one matches.</div>';
       $('#people-count').textContent = `${fmtNum(list.length)} shown`;

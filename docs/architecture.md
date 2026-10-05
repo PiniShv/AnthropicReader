@@ -85,12 +85,12 @@ When the same item is loaded twice (two exports), the `add…()` functions keep 
 `finalize()` rebuilds every link from scratch (`Person.resetLinks()`), so loading more files later never counts anything twice. It:
 
 - attaches each item to a `Person` (creating placeholder people for unknown ids, and a "No owner" person for items without one)
-- attributes thread comments and page comments
-- builds the reverse "mentioned in conversations" links for artifacts
+- attributes thread comments and page comments, and stores each artifact's comment count (`commentCount`) and its threads without the repeated doc comments (`threadView`)
+- builds the reverse "mentioned in conversations" links for artifacts, and each project's memory (`memoryRefs`: summaries and `/projects/<id>/` memory files)
 - picks display names and adds the email local part when two people share a name
 - sorts everything newest first, and puts the conversation, project, design chat and memory maps in the same order, so a later load starts from it
 
-`Person` has one definition of each count (`convCount()`, `memoryCount()`, `total()`), so every card, tile, tab and badge shows the same number.
+These values change only when files are loaded, so the views read them instead of working them out on every draw. `Person` has one definition of each count (`convCount()`, `memoryCount()`, `total()`), so every card, tile, tab and badge shows the same number.
 
 ## ZIP reader
 

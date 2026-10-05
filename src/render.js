@@ -8,7 +8,6 @@ function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, c => ESC
 
 const DATE_FMT = new Intl.DateTimeFormat(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
 const DATETIME_FMT = new Intl.DateTimeFormat(undefined, { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
-const TIME_FMT = new Intl.DateTimeFormat(undefined, { hour: '2-digit', minute: '2-digit' });
 const MONTH_FMT = new Intl.DateTimeFormat(undefined, { year: 'numeric', month: 'short' });
 const NUM_FMT = new Intl.NumberFormat();
 
@@ -21,8 +20,6 @@ function toDate(v) {
 }
 function fmtDate(v) { const d = toDate(v); return d ? DATE_FMT.format(d) : ''; }
 function fmtDateTime(v) { const d = toDate(v); return d ? DATETIME_FMT.format(d) : ''; }
-function fmtTime(v) { const d = toDate(v); return d ? TIME_FMT.format(d) : ''; }
-function fmtMonth(v) { const d = toDate(v); return d ? MONTH_FMT.format(d) : ''; }
 function fmtNum(n) { return NUM_FMT.format(n || 0); }
 function fmtBytes(n) {
   if (n == null || isNaN(n)) return '';
@@ -33,16 +30,6 @@ function fmtBytes(n) {
   return (n >= 100 ? Math.round(n) : n.toFixed(1)) + ' ' + u[i];
 }
 function plural(n, one, many) { return fmtNum(n) + ' ' + (n === 1 ? one : (many || one + 's')); }
-function fmtRel(v) {
-  const d = toDate(v);
-  if (!d) return '';
-  const s = (Date.now() - d.getTime()) / 1000;
-  if (s < 60) return 'just now';
-  if (s < 3600) return Math.floor(s / 60) + ' min ago';
-  if (s < 86400) return Math.floor(s / 3600) + ' h ago';
-  if (s < 86400 * 30) return Math.floor(s / 86400) + ' d ago';
-  return fmtDate(d);
-}
 function fmtDuration(ms) {
   if (!(ms >= 0)) return '';
   const s = ms / 1000;

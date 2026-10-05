@@ -1144,7 +1144,6 @@ function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, c => ESC
 
 const DATE_FMT = new Intl.DateTimeFormat(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
 const DATETIME_FMT = new Intl.DateTimeFormat(undefined, { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
-const TIME_FMT = new Intl.DateTimeFormat(undefined, { hour: '2-digit', minute: '2-digit' });
 const MONTH_FMT = new Intl.DateTimeFormat(undefined, { year: 'numeric', month: 'short' });
 const NUM_FMT = new Intl.NumberFormat();
 
@@ -1157,8 +1156,6 @@ function toDate(v) {
 }
 function fmtDate(v) { const d = toDate(v); return d ? DATE_FMT.format(d) : ''; }
 function fmtDateTime(v) { const d = toDate(v); return d ? DATETIME_FMT.format(d) : ''; }
-function fmtTime(v) { const d = toDate(v); return d ? TIME_FMT.format(d) : ''; }
-function fmtMonth(v) { const d = toDate(v); return d ? MONTH_FMT.format(d) : ''; }
 function fmtNum(n) { return NUM_FMT.format(n || 0); }
 function fmtBytes(n) {
   if (n == null || isNaN(n)) return '';
@@ -1169,16 +1166,6 @@ function fmtBytes(n) {
   return (n >= 100 ? Math.round(n) : n.toFixed(1)) + ' ' + u[i];
 }
 function plural(n, one, many) { return fmtNum(n) + ' ' + (n === 1 ? one : (many || one + 's')); }
-function fmtRel(v) {
-  const d = toDate(v);
-  if (!d) return '';
-  const s = (Date.now() - d.getTime()) / 1000;
-  if (s < 60) return 'just now';
-  if (s < 3600) return Math.floor(s / 60) + ' min ago';
-  if (s < 86400) return Math.floor(s / 3600) + ' h ago';
-  if (s < 86400 * 30) return Math.floor(s / 86400) + ' d ago';
-  return fmtDate(d);
-}
 function fmtDuration(ms) {
   if (!(ms >= 0)) return '';
   const s = ms / 1000;
@@ -2200,6 +2187,22 @@ function latestManifest() {
   return DB.manifests.slice().sort((a, b) => b.createdAt - a.createdAt)[0] || null;
 }
 
+// Manifest parts whose data is not loaded. A part counts as loaded if its zip opened, or (for
+// unzipped folders) if its kind of data is present. A zip that failed to open does not count.
+function missingFiles(m) {
+  const okZips = new Set(DB.sources.filter(s => s.kind === 'zip' && !s.error).map(s => s.name));
+  const framesZips = DB.sources.some(s => s.kind === 'zip' && !s.error && /^frames-/i.test(s.name));
+  const has = {
+    conversations: DB.conversations.length > 0,
+    design_chats: DB.designChats.length > 0,
+    memories: DB.memories.length > 0,
+    projects: DB.projects.length > 0,
+    light_metadata: Array.from(DB.people.values()).some(p => p.known),
+    frames: DB.artifacts.length > 0 && !framesZips,
+  };
+  return m.files.filter(f => !okZips.has(f.filename) && !has[f.category]);
+}
+
 /* ---------- Linking & derived data ---------- */
 
 function finalize() {
@@ -2260,10 +2263,18 @@ function finalize() {
         if (who) { who.comments.push({ artifact: a, thread: th, comment: cm, byAgent: !!cm.posted_by_agent, source: 'page' }); who.touch(parseTime(cm.created_at)); }
       }
     }
-    // Thread comments are anonymous; only the owner's own (non-Claude) comments are attributable.
+    // Threads with the comments that do not repeat a doc comment; threads with none are left out.
+    a.threadView = [];
     for (const th of a.threads || []) {
-      for (const cm of (th && th.comments) || []) {
-        if (isDuplicateThreadComment(a, cm)) continue;
+      const comments = [];
+      for (const cm of (th && th.comments) || []) if (!isDuplicateThreadComment(a, cm)) comments.push(cm);
+      if (comments.length) a.threadView.push({ th, comments });
+    }
+    a.commentCount = (a.comments || []).reduce((n, t) => n + (t && t.comments ? t.comments.length : 0), 0) +
+      a.threadView.reduce((n, x) => n + x.comments.length, 0);
+    // Thread comments are anonymous; only the owner's own (non-Claude) comments are attributable.
+    for (const { th, comments } of a.threadView) {
+      for (const cm of comments) {
         if (cm.author_is_artifact_owner && cm.author_role !== 'assistant' && a.ownerId) {
           a.owner.comments.push({ artifact: a, thread: th, comment: cm, byAgent: false, source: 'thread' });
         }
@@ -2305,6 +2316,20 @@ function finalize() {
   DB.designChats.sort(byLast);
   DB.artifacts.sort(byNewest);
   DB.memories.sort((a, b) => b.updated - a.updated);
+  // Memory about each project, newest memory first: its project_memories summary, then its
+  // memory files under /projects/<id>/.
+  for (const pr of DB.projects) pr.memoryRefs = [];
+  for (const mem of DB.memories) {
+    for (const pm of mem.projectMemories) {
+      const pr = DB.projectById.get(pm.projectId);
+      if (pr) pr.memoryRefs.push({ mem, kind: 'summary', text: pm.text });
+    }
+    for (const f of mem.files) {
+      const m = /^\/projects\/([^/]+)\//.exec(f.path);
+      const pr = m && DB.projectById.get(m[1]);
+      if (pr) pr.memoryRefs.push({ mem, kind: 'file', file: f });
+    }
+  }
   for (const p of DB.people.values()) {
     p.conversations.sort(byLast);
     p.projects.sort(byNewest);
@@ -2332,11 +2357,16 @@ function peopleSorted() {
   return Array.from(DB.people.values()).sort((a, b) => (b.total() - a.total()) || a.name.localeCompare(b.name));
 }
 
+// q is lower case and trimmed: part of the name or email, or the start of the id.
+function personMatches(p, q) {
+  return p.name.toLowerCase().includes(q) || (p.email || '').toLowerCase().includes(q) || p.id.startsWith(q);
+}
+
 function peopleMatching(q) {
   q = (q || '').toLowerCase().trim();
   const all = peopleSorted().filter(p => !p.system);
   if (!q) return all;
-  return all.filter(p => p.name.toLowerCase().includes(q) || (p.email || '').toLowerCase().includes(q) || p.id.startsWith(q));
+  return all.filter(p => personMatches(p, q));
 }
 
 // The records in view: one person's (finalize() linked them), or everyone's when p is null.
@@ -3386,7 +3416,8 @@ function viewHome() {
   const people = peopleSorted().filter(p => !p.system);
   const active = people.filter(p => p.total() > 0);
   const totalMsgs = DB.conversations.reduce((a, c) => a + c.msgCount, 0);
-  const manifest = DB.manifests.slice().sort((a, b) => b.createdAt - a.createdAt)[0];
+  const manifest = latestManifest();
+  const missing = manifest ? missingFiles(manifest) : [];
   const dates = DB.conversations.map(c => c.created).filter(Boolean);
   const first = dates.length ? Math.min(...dates) : 0;
   const last = DB.conversations.length ? Math.max(...DB.conversations.map(c => c.lastTs || 0)) : 0;
@@ -3412,7 +3443,7 @@ function viewHome() {
       </div>
     </div></div>
 
-    ${manifest && missingFiles(manifest).length ? `<div class="notice warn" style="margin-bottom:14px">${plural(missingFiles(manifest).length, 'part')} of this export ${missingFiles(manifest).length === 1 ? 'is' : 'are'} not loaded (${missingFiles(manifest).map(f => esc(f.filename)).join(', ')}). <a href="#/about">Download or add them</a>.</div>` : ''}
+    ${missing.length ? `<div class="notice warn" style="margin-bottom:14px">${plural(missing.length, 'part')} of this export ${missing.length === 1 ? 'is' : 'are'} not loaded (${missing.map(f => esc(f.filename)).join(', ')}). <a href="#/about">Download or add them</a>.</div>` : ''}
     ${DB.warnings.length ? `<div class="notice warn" style="margin-bottom:14px">${plural(DB.warnings.length, 'file')} could not be read, so some data is missing. <a href="#/about">See which</a>.</div>` : ''}
     <div class="tiles">
       <a class="tile" href="#/people"><div class="num">${fmtNum(active.length)}</div><div class="lbl">people with data <span class="faint">of ${fmtNum(people.length)}</span></div></a>
@@ -3482,8 +3513,7 @@ function viewPeople() {
   after(() => {
     const draw = () => {
       const q = PEOPLE_STATE.q.toLowerCase().trim();
-      let list = all.filter(p => (PEOPLE_STATE.showEmpty || p.total() > 0 || q) &&
-        (!q || p.name.toLowerCase().includes(q) || (p.email || '').toLowerCase().includes(q) || p.id.startsWith(q)));
+      let list = all.filter(p => (PEOPLE_STATE.showEmpty || p.total() > 0 || q) && (!q || personMatches(p, q)));
       list.sort((a, b) => PEOPLE_SORTS[PEOPLE_STATE.sort][1](a, b) || a.name.localeCompare(b.name));
       $('#people-grid').innerHTML = list.map(personCardHtml).join('') || '<div class="empty">No one matches.</div>';
       $('#people-count').textContent = `${fmtNum(list.length)} shown`;
@@ -4337,19 +4367,12 @@ function visChip(a) {
   return `<span class="chip${v === 'private' ? '' : ' on'}" title="Visibility">${esc(VIS_LABEL[v] || v)}${esc(extra)}</span>`;
 }
 
-function artifactCommentCount(a) {
-  let n = 0;
-  for (const t of a.comments || []) n += (t && t.comments ? t.comments.length : 0);
-  for (const t of a.threads || []) n += (t && t.comments ? t.comments.filter(c => !isDuplicateThreadComment(a, c)).length : 0);
-  return n;
-}
-
 function artifactTable(list, key, showOwner, facet) {
   const columns = [
     {
       id: 'title', label: 'Title', cls: 'title', link: true, asc: true, sortVal: a => a.title.toLowerCase(),
       html: a => `<div dir="auto">${esc(a.title)}</div>${a.description && !TYPE_BLURB.test(a.description) && a.description !== a.title ? `<div class="snip" dir="auto">${esc(truncate(a.description, 200))}</div>` : ''}
-        <div class="row wrap" style="margin-top:5px;gap:4px"><span class="chip">${esc(a.contentType)}</span>${visChip(a)}${artifactCommentCount(a) ? `<span class="chip">🗨 ${artifactCommentCount(a)}</span>` : ''}${a.mentionedIn && a.mentionedIn.length ? `<span class="chip" title="Linked from conversations">💬 ${a.mentionedIn.length}</span>` : ''}</div>`,
+        <div class="row wrap" style="margin-top:5px;gap:4px"><span class="chip">${esc(a.contentType)}</span>${visChip(a)}${a.commentCount ? `<span class="chip">🗨 ${a.commentCount}</span>` : ''}${a.mentionedIn && a.mentionedIn.length ? `<span class="chip" title="Linked from conversations">💬 ${a.mentionedIn.length}</span>` : ''}</div>`,
     },
   ];
   if (showOwner) columns.push(COL.owner);
@@ -4384,7 +4407,6 @@ function viewArtifact(id, vid) {
   const selected = vid && versions.some(v => v.id === vid) ? vid : a.activeVersion;
   const sel = versions.find(v => v.id === selected);
   const isPage = a.kind === 'page';
-  const nComments = artifactCommentCount(a);
 
   // Design boards: the board picker and links between boards. The URL keeps its version part as is.
   const pickBoard = board => navigate('#/a/' + encodeURIComponent(id) + (vid ? '/' + encodeURIComponent(vid) : '') + '?board=' + encodeURIComponent(board), true);
@@ -4428,7 +4450,7 @@ function viewArtifact(id, vid) {
       <aside>
         ${versions.length ? `<div class="card card-pad side-card"><h2 style="margin-bottom:8px">Versions</h2><ul class="version-list">${versionList}</ul>${isPage ? '<p class="faint" style="font-size:12.5px;margin:8px 0 0">Docs keep only the current text in the export; older versions are listed for reference.</p>' : ''}</div>` : ''}
         ${a.mentionedIn && a.mentionedIn.length ? `<div class="card card-pad side-card"><h2 style="margin-bottom:8px">Mentioned in</h2>${a.mentionedIn.map(c => `<div style="padding:4px 0"><a href="#/c/${encodeURIComponent(c.id)}" dir="auto">${esc(c.title || 'Untitled conversation')}</a> <span class="faint" style="font-size:12.5px">${esc(fmtDate(c.lastTs))}</span></div>`).join('')}</div>` : ''}
-        ${!isPage && a.threads && a.threads.length ? `<div class="card card-pad side-card"><h2 style="margin-bottom:8px">Comments <span class="badge">${nComments}</span></h2>${threadCommentsHtml(a)}</div>` : ''}
+        ${!isPage && a.threads && a.threads.length ? `<div class="card card-pad side-card"><h2 style="margin-bottom:8px">Comments <span class="badge">${a.commentCount}</span></h2>${threadCommentsHtml(a)}</div>` : ''}
         <div class="card card-pad side-card"><dl class="kv" style="font-size:13px"><dt>Id</dt><dd class="mono">${esc(a.id)}</dd><dt>Kind</dt><dd>${esc(a.kind)}</dd><dt>Files</dt><dd>${fmtNum(a.files.size)}</dd></dl></div>
       </aside>
     </div>
@@ -4573,9 +4595,9 @@ function pageCommentsHtml(a, threads) {
 }
 
 function threadCommentsHtml(a) {
-  return (a.threads || []).filter(t => (t.comments || []).some(c => !isDuplicateThreadComment(a, c))).map(t => `<div class="comment">
+  return a.threadView.map(({ th: t, comments }) => `<div class="comment">
     <div style="font-size:12.5px" class="row wrap">${t.resolved ? '<span class="chip ok">resolved</span>' : '<span class="chip">open</span>'}<span class="faint">${esc(fmtDateTime(t.created_at))}</span></div>
-    ${(t.comments || []).filter(c => !isDuplicateThreadComment(a, c)).map(c => {
+    ${comments.map(c => {
       const who = c.author_role === 'assistant' ? 'Claude'
         : c.author_role === 'page' ? 'Doc comment'
         : c.author_is_artifact_owner ? (a.owner && !a.owner.system ? esc(a.owner.name) : 'Owner')
@@ -4827,7 +4849,7 @@ function projectTable(list, key, showOwner) {
     id: 'name', label: 'Project', cls: 'title', link: true, asc: true, sortVal: x => (x.name || '').toLowerCase(),
     html: x => `<div dir="auto">${x.name ? esc(x.name) : '<i class="faint">Untitled project</i>'}</div>
       ${x.description ? `<div class="snip" dir="auto">${esc(truncate(x.description, 200))}</div>` : ''}
-      <div class="row wrap" style="margin-top:5px;gap:4px">${x.isStarter ? '<span class="chip">Starter</span>' : ''}${!x.isPrivate ? '<span class="chip on">Shared</span>' : ''}${projectMemoryOf(x).length ? '<span class="chip">🧠 memory</span>' : ''}</div>`,
+      <div class="row wrap" style="margin-top:5px;gap:4px">${x.isStarter ? '<span class="chip">Starter</span>' : ''}${!x.isPrivate ? '<span class="chip on">Shared</span>' : ''}${x.memoryRefs.length ? '<span class="chip">🧠 memory</span>' : ''}</div>`,
   }];
   if (showOwner) columns.push(COL.owner);
   columns.push(COL.num('docs', 'Docs', x => x.docs.length));
@@ -4850,21 +4872,11 @@ function viewProjects() {
     ${projectTable(list, 'proj-' + s.key, !s.person)}</div>`;
 }
 
-// Memory about a project: the owner's project_memories entry and /projects/<id>/ memory files.
-function projectMemoryOf(x) {
-  const out = [];
-  for (const mem of DB.memories) {
-    for (const pm of mem.projectMemories) if (pm.projectId === x.id) out.push({ mem, kind: 'summary', text: pm.text });
-    for (const f of mem.files) if (f.path.startsWith('/projects/' + x.id + '/')) out.push({ mem, kind: 'file', file: f });
-  }
-  return out;
-}
-
 function viewProject(id) {
   const x = DB.projectById.get(id);
   if (!x) return notFound('No project with this id in the loaded export.');
   const p = x.owner;
-  const pm = projectMemoryOf(x);
+  const pm = x.memoryRefs;
   return `<div class="page narrow">
     <div class="crumbs"><a href="#/projects">Projects</a><span>›</span>${p && !p.system ? `${personLink(p)}<span>›</span>` : ''}<span dir="auto">${esc(x.name || 'Untitled project')}</span></div>
     <div class="page-head"><div class="grow">
@@ -5092,7 +5104,7 @@ function drawSearchResults(res, q, t, deep) {
 /* ======================= About ======================= */
 
 function viewAbout() {
-  const m = DB.manifests.slice().sort((a, b) => b.createdAt - a.createdAt)[0];
+  const m = latestManifest();
   const people = Array.from(DB.people.values()).filter(p => !p.system);
   return `<div class="page narrow"><div class="page-head"><div class="grow"><h1>About this export</h1></div></div>
     ${m ? `<div class="card card-pad"><dl class="kv"><dt>Exported</dt><dd>${esc(fmtDateTime(m.createdAt))}</dd><dt>Files in export</dt><dd>${esc(m.totalFiles)} (${m.files.map(f => esc(f.filename)).join(', ')})</dd></dl></div>` : ''}
@@ -5120,23 +5132,6 @@ function viewAbout() {
       <li>Everything stays in this tab. Reloading the page forgets the data${window.showOpenFilePicker ? '; use “Reopen last export” on the start screen to load it again quickly' : ', so you pick the files again'}.</li>
     </ul></div>
   </div>`;
-}
-
-// A manifest part counts as loaded if its zip opened, or (for unzipped folders) if its kind of
-// data is present. A zip that failed to open does not count.
-// Manifest parts whose data is not loaded.
-function missingFiles(m) {
-  const okZips = new Set(DB.sources.filter(s => s.kind === 'zip' && !s.error).map(s => s.name));
-  const framesZips = DB.sources.some(s => s.kind === 'zip' && !s.error && /^frames-/i.test(s.name));
-  const has = {
-    conversations: DB.conversations.length > 0,
-    design_chats: DB.designChats.length > 0,
-    memories: DB.memories.length > 0,
-    projects: DB.projects.length > 0,
-    light_metadata: Array.from(DB.people.values()).some(p => p.known),
-    frames: DB.artifacts.length > 0 && !framesZips,
-  };
-  return m.files.filter(f => !okZips.has(f.filename) && !has[f.category]);
 }
 
 const LINK_LIFETIME = 24 * 3600 * 1000;
