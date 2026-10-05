@@ -4,15 +4,20 @@
 
 // Built previews, keyed by artifact + version + board. Building can take seconds for big
 // versions, so switching between Preview / Source / Files must not redo it.
+// Files added later can complete a version (one version can be split across two zips), so
+// the cache starts again whenever finalize() runs, like the search index.
 const BUILD_CACHE = new Map();
 const BUILD_CACHE_MAX = 4;
+let BUILD_GEN = -1;
 
 async function getBuilt(a, vid, info, board) {
+  if (BUILD_GEN !== DB.generation) { BUILD_CACHE.clear(); BUILD_GEN = DB.generation; }
   const key = a.id + '|' + vid + '|' + (board || '');
   if (BUILD_CACHE.has(key)) return BUILD_CACHE.get(key);
   const p = buildVersionHtml(a, vid, info, board);
   BUILD_CACHE.set(key, p);
-  p.catch(() => BUILD_CACHE.delete(key));
+  // A build that fails after the cache started again must not remove a newer entry.
+  p.catch(() => { if (BUILD_CACHE.get(key) === p) BUILD_CACHE.delete(key); });
   while (BUILD_CACHE.size > BUILD_CACHE_MAX) BUILD_CACHE.delete(BUILD_CACHE.keys().next().value);
   return p;
 }

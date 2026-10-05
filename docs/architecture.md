@@ -51,8 +51,8 @@ A few small pieces carry most of the app. When you add something, reach for thes
 | `tableHtml(spec)` | `views.js` | The sortable, filterable, paged table, with optional type chips (`spec.facet`). It keeps its own state per table key. |
 | `KINDS` | `views.js` | The five record kinds (conversations, artifacts, projects, design chats, memory): routes, labels, icons, counts, list and person views. |
 | `scopeOf(p)`, `focusScope()` | `model.js`, `ui.js` | The records in view: one person's, or everyone's. Lists, sidebar counts and search use it. |
-| `DB.generation` | `model.js` | Goes up on every `finalize()`, so caches of derived data (the search index) start again. |
-| `getBuilt()` | `preview.js` | A built artifact preview. The last 4 (per version and board) are kept, so switching tabs does not rebuild them. |
+| `DB.generation` | `model.js` | Goes up on every `finalize()`, so caches of derived data (the search index and built previews) start again. |
+| `getBuilt()` | `preview.js` | A built artifact preview. The last 4 (per version and board) are kept, so switching tabs does not rebuild them. The cache starts again when `DB.generation` changes. |
 
 ## Data flow
 
@@ -185,7 +185,7 @@ How a preview is built:
 - **Design** (`buildDesign()`): shows one board at a time, chosen by the board picker, the canvas `launch` file, or the first board with real content. `./support.js` is replaced by an empty script. Links between boards send a `postMessage({ cerBoard })` to the reader, which accepts it only from the open preview frame and switches the board.
 - **Widgets** get a stand-in stylesheet (`WIDGET_CSS`) with the CSS variables and class names that claude.ai normally provides, so their SVGs do not render solid black.
 - **Notices.** `platformNotes()` warns when a version uses claude.ai-only resources (`/_blob/`, `/_runtime/`, `/_f/`, `/_cas/`, `window.claude`).
-- **Cache.** Built previews are kept in a small cache (4 entries), so switching between Preview, Source and Files does not rebuild them.
+- **Cache.** Built previews are kept in a small cache (4 entries), so switching between Preview, Source and Files does not rebuild them. Files added later can complete a version (one version can be split across two zips), so the cache starts again when `DB.generation` changes.
 - **New tab.** "Open in new tab" opens an empty window first (inside the click, so pop-up blockers allow it), then puts a sandboxed iframe with the preview into it.
 
 ## Routing

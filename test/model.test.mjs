@@ -571,6 +571,30 @@ test('an artifact split across two zips is merged by path', async () => {
   assert.equal(a.contentType, 'HTML + files');
 });
 
+test('a preview is built again when a later load adds files to its version', async () => {
+  // One version split across two zips, loaded one after the other: the second zip brings
+  // the image that index.html uses, so the build cached before it must not come back.
+  const first = await zip('frames-000.zip', {
+    [`artifacts/${art(1)}/artifact.json`]: artifactJson(ADA, [{ id: V(1), title: 'Split chart' }]),
+    [`artifacts/${art(1)}/versions/${V(1)}/index.html`]: '<!doctype html><html><head></head><body><img src="chart.svg"></body></html>',
+  });
+  const second = await zip('frames-001.zip', {
+    [`artifacts/${art(1)}/versions/${V(1)}/chart.svg`]: '<svg xmlns="http://www.w3.org/2000/svg"></svg>',
+  });
+  const { api } = await importFiles([first]);
+  const build = () => {
+    const a = api.DB.artifactById.get(art(1));
+    return api.getBuilt(a, V(1), api.versionInfo(a, V(1)), '');
+  };
+  const before = await build();
+  assert.doesNotMatch(before.html, /data:image\/svg/);
+  assert.equal(await build(), before, 'switching tabs reuses the build');
+  await api.importExport([second], { set() {} });
+  const after = await build();
+  assert.notEqual(after, before);
+  assert.match(after.html, /<img src="data:image\/svg\+xml;base64,/);
+});
+
 test('a newer export of an artifact brings its title, versions, page and comments, in any order', async () => {
   const doc = (title, versions, updated, page, comment) => zip(`export-${title}.zip`, {
     [`artifacts/${art(1)}/artifact.json`]: artifactJson(ADA, versions.map(([id, at]) => ({ id, title, created_at: at })), { kind: 'page', updated_at: updated }),
