@@ -4564,7 +4564,15 @@ async function drawPage(a) {
   if (!box) return;
   if (!a.pageNode) { box.innerHTML = '<div class="card empty">This doc has no page.md in the loaded files.</div>'; return; }
   const { signal } = VIEW.ac;
-  const md = await a.pageNode.text();
+  let md;
+  try {
+    md = await a.pageNode.text();
+  } catch (err) {
+    // For example a damaged zip entry: say so, instead of leaving the panel empty.
+    console.error(err);
+    if (!signal.aborted) box.innerHTML = `<div class="notice warn">Could not open this doc: ${esc(err.message || err)}</div>`;
+    return;
+  }
   if (signal.aborted) return;
   const tabs = splitTabs(md);
   const want = App.route.query.tab;
