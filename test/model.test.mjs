@@ -766,3 +766,26 @@ test('conversation stats: branch points, tool calls, outputs and links to artifa
   const a = api.DB.artifactById.get(art(1));
   assert.deepEqual(Array.from(a.mentionedIn, x => x.id), [conv(1)]);
 });
+
+test('the branch and output badges count what the thread and the outputs box show', async () => {
+  const c = conversation(conv(2), ADA, 'Odd chat', [
+    // No parent, and a parent that is not in the export: the thread shows both as branches of the start.
+    message('o1', 'human', 'First try', { parent_message_uuid: null }),
+    message('o2', 'assistant', '', {
+      parent_message_uuid: 'o1',
+      content: [
+        { type: 'tool_use', name: 'create_file', input: { path: '/tmp/out/plan.md' } },
+        { type: 'tool_use', name: 'create_file', input: {} },   // no path: the box leaves it out
+      ],
+    }),
+    message('o3', 'human', 'Second try', { parent_message_uuid: 'deleted-message' }),
+    message('o4', 'assistant', 'Answer', { parent_message_uuid: 'o3' }),
+  ]);
+  const { api } = await importFiles([looseFile('conversations.json', [c])]);
+  const got = api.DB.convById.get(conv(2));
+  const t = api.buildTree(got);
+  assert.equal(got.forks, Array.from(t.children.values()).filter(kids => kids.length > 1).length);
+  assert.equal(got.forks, 1);
+  assert.equal(got.outputCount, api.collectOutputs(got).length);
+  assert.equal(got.outputCount, 1);
+});

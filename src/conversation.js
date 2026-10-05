@@ -140,8 +140,7 @@ function collectOutputs(conv) {
   const out = [];
   for (const m of conv.raw.chat_messages || []) {
     for (const b of (Array.isArray(m.content) ? m.content : [])) {
-      const outputOf = b && b.type === 'tool_use' && OUTPUTS.get(b.name);
-      const o = outputOf && outputOf(b.input || {});
+      const o = b && b.type === 'tool_use' && outputOf(b);
       if (o) out.push({ id: b.id, msg: m.uuid, ...o });
     }
   }

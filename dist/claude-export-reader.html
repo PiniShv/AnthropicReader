@@ -1673,14 +1673,20 @@ function addUser(u) {
 }
 
 /* Tools whose output the person saw: name -> a function that gives the output's chip in the
- * "What Claude produced here" box (collectOutputs), or null. The list badge counts every call
- * of these tools, so it also counts a create_file without a path, which the box leaves out. */
+ * "What Claude produced here" box (collectOutputs), or null. */
 const OUTPUTS = new Map([
-  ['create_file', i => (i.path ? { ico: '📄', label: i.path.split('/').pop(), kind: 'file' } : null)],
+  ['create_file', i => (i.path ? { ico: '📄', label: String(i.path).split('/').pop(), kind: 'file' } : null)],
   ['artifacts', i => ({ ico: '◧', label: i.title || i.id || 'Artifact', kind: 'artifact' })],
   ['visualize:show_widget', i => ({ ico: '▦', label: i.title || 'Widget', kind: 'widget' })],
   ['message_compose_v1', i => ({ ico: '✉', label: i.summary_title || 'Draft', kind: 'draft' })],
 ]);
+// The chip of a tool_use block that produced an output, or null. The list badge and the box
+// both use it, so they always agree.
+function outputOf(b) {
+  const chip = OUTPUTS.get(b.name);
+  return chip ? chip(b.input || {}) : null;
+}
+
 // Artifact ids referenced from chat JSON: published links and tool result ids.
 const RE_ART_REF = /(?:\/artifact\/|artifact_id\\?"\s*:\s*\\?")([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/g;
 
@@ -1695,7 +1701,6 @@ function addConversation(c, source, rawText) {
     DB.convById.delete(c.uuid);
   }
   let human = 0, firstTs = 0, lastTs = 0, contentful = 0, files = 0, outputs = 0, tools = 0, firstHuman = '', firstReply = '';
-  const childCount = new Map();
   for (const m of msgs) {
     if (m.sender === 'human') human++;
     const t = parseTime(m.created_at);
@@ -1705,16 +1710,24 @@ function addConversation(c, source, rawText) {
     if (blocks.length || (m.text && m.text.trim()) || (m.files && m.files.length) || (m.attachments && m.attachments.length)) contentful++;
     if (m.sender === 'human') files += (m.files ? m.files.length : 0);   // assistant files are tool screenshots
     for (const b of blocks) {
-      if (b && b.type === 'tool_use') { tools++; if (OUTPUTS.has(String(b.name || ''))) outputs++; }
+      if (b && b.type === 'tool_use') { tools++; if (outputOf(b)) outputs++; }
       else if (!firstHuman && m.sender === 'human' && b && b.type === 'text' && b.text && b.text.trim()) firstHuman = b.text;
       else if (!firstReply && m.sender === 'assistant' && b && b.type === 'text' && b.text && b.text.trim()) firstReply = b.text;
     }
     if (!firstHuman && m.sender === 'human' && m.text && m.text.trim()) firstHuman = m.text;
-    const pu = m.parent_message_uuid;
-    if (pu) childCount.set(pu, (childCount.get(pu) || 0) + 1);
   }
+  // Branch points as the thread shows them (see buildTree): a message whose parent is not in
+  // the export hangs off the start (null here), and with no parents at all the chat is one line.
   let forks = 0;
-  for (const n of childCount.values()) if (n > 1) forks++;
+  if (msgs.some(m => m.parent_message_uuid)) {
+    const ids = new Set(msgs.map(m => m.uuid));
+    const kids = new Map();
+    for (const m of msgs) {
+      const p = m.parent_message_uuid && ids.has(m.parent_message_uuid) ? m.parent_message_uuid : null;
+      kids.set(p, (kids.get(p) || 0) + 1);
+    }
+    for (const n of kids.values()) if (n > 1) forks++;
+  }
   const artRefs = new Set();
   if (rawText && rawText.indexOf('artifact') >= 0) {
     RE_ART_REF.lastIndex = 0;
@@ -2537,8 +2550,7 @@ function collectOutputs(conv) {
   const out = [];
   for (const m of conv.raw.chat_messages || []) {
     for (const b of (Array.isArray(m.content) ? m.content : [])) {
-      const outputOf = b && b.type === 'tool_use' && OUTPUTS.get(b.name);
-      const o = outputOf && outputOf(b.input || {});
+      const o = b && b.type === 'tool_use' && outputOf(b);
       if (o) out.push({ id: b.id, msg: m.uuid, ...o });
     }
   }
