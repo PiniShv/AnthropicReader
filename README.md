@@ -157,9 +157,10 @@ src/
   conversation.js    message tree, branches, tool helpers, outputs
   search.js          search engine and its index
   export.js          Markdown export and the per-person zip
+  preview.js         artifact previews: inlined files, Slides, Design boards
   views.js           kind registry, router, sidebar, tables, start page, people, person page
   views-conv.js      conversation list and thread view
-  views-art.js       artifacts, versions, Slides, Design, Docs pages
+  views-art.js       artifact list and page, versions, Docs pages
   views-design.js    design chat list and thread
   views-misc.js      projects, memory, search page, about, download dialog
   demo.js            the made-up sample export

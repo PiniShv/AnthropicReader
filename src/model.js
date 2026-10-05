@@ -444,6 +444,9 @@ function indexArtifactVersions(a) {
   }
 }
 
+// Files of a typed app's runtime (Slides, Design) and its instructions for Claude, not user content.
+function isPlumbing(p) { return /^(SKILL\.md$|artifact-type\/)/.test(p); }
+
 // What a version contains and how to show it.
 function versionInfo(a, vid) {
   const s = a.vfiles && a.vfiles.get(vid);
@@ -452,9 +455,7 @@ function versionInfo(a, vid) {
   const f = s.folder;
   if (f.has('project/deck.json') || Array.from(f.keys()).some(k => k.startsWith('project/slides/'))) return { type: 'Slides', slot: s };
   if (f.has('project/canvas.json')) return { type: 'Design', slot: s };
-  if (f.has('SKILL.md') || Array.from(f.keys()).some(k => k.startsWith('artifact-type/'))) {
-    return { type: 'App (data not exported)', slot: s, typedEmpty: true };
-  }
+  if (Array.from(f.keys()).some(isPlumbing)) return { type: 'App (data not exported)', slot: s, typedEmpty: true };
   if (f.has('index.html')) return { type: 'HTML + files', slot: s };
   return { type: f.size ? 'Files' : 'No files', slot: s };
 }
