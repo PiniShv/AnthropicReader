@@ -30,6 +30,15 @@ const viewKey = fn => { const k = 'v' + ++VIEW.n; VIEW.fns.set(k, fn); return k;
 const on = fn => `data-on="${viewKey(fn)}"`;
 on.change = fn => `data-on-change="${viewKey(fn)}"`;
 
+/* A collapsible block. summary is HTML; id is escaped here. render() draws the rest of the body
+ * after `body`: the first time the block opens (the toggle listener in app.js), or right away
+ * when it starts open. Big content stays out of the page until someone asks for it. */
+function blk({ cls = '', id = '', open = false, summary, body = '' }, render) {
+  const lazy = render && !open ? ` data-lazy="${viewKey(render)}"` : '';
+  return `<details class="blk${cls ? ' ' + cls : ''}"${id ? ` id="${esc(id)}"` : ''}${open ? ' open' : ''}${lazy}>` +
+    `<summary>${summary}</summary><div class="blk-body">${body}${render && open ? render() : ''}</div></details>`;
+}
+
 function mountView(v) {
   while (v.mounts.length) {
     const fn = v.mounts.shift();

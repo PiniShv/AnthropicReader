@@ -67,7 +67,9 @@ function viewProject(id) {
 
 function docHtml(d) {
   const ext = fileExt(d.filename);
-  const k = viewKey(() => {
+  const parts = d.filename.split('/');
+  const file = parts.pop();
+  return blk({ summary: `<span class="lbl" dir="auto">${esc(file)}</span>${parts.length ? `<span class="desc faint mono">${esc(parts.join('/'))}/</span>` : ''}<span class="meta">${fmtBytes(d.content.length)}</span>` }, () => {
     const dl = `<div class="row" style="margin-bottom:8px"><span class="faint" style="font-size:12.5px">Added ${esc(fmtDateTime(d.created))}</span><span class="grow"></span><button class="btn small" type="button" ${on(() => downloadText(d.filename.split('/').pop(), d.content))}>Download</button></div>`;
     if (ext === 'md' || ext === 'markdown' || ext === 'pptx' || ext === 'docx' || ext === 'pdf') {
       return dl + (ext !== 'md' && ext !== 'markdown' ? `<p class="notice" style="margin:0 0 8px">Text extracted from the ${esc(ext)} file. The original file is not in the export.</p>` : '') + mdBlock(d.content) +
@@ -78,9 +80,6 @@ function docHtml(d) {
     }
     return dl + preHtml(d.content);
   });
-  const parts = d.filename.split('/');
-  const file = parts.pop();
-  return `<details class="blk" data-lazy="${k}"><summary><span class="lbl" dir="auto">${esc(file)}</span>${parts.length ? `<span class="desc faint mono">${esc(parts.join('/'))}/</span>` : ''}<span class="meta">${fmtBytes(d.content.length)}</span></summary><div class="blk-body"></div></details>`;
 }
 
 /* ======================= Memory ======================= */
@@ -172,11 +171,12 @@ function memoryFileCard(f, mem, i) {
   const title = String(name).replace(/[-_]+/g, ' ');
   const sources = Array.isArray(f.meta.sources) ? f.meta.sources : [];
   const aliases = Array.isArray(f.meta.aliases) ? f.meta.aliases : [];
-  const k = viewKey(() => (f.body.trim() ? memoryText(f.body, mem) : '<p class="faint">(empty)</p>') + `<details class="blk" style="margin-top:10px"><summary><span class="lbl">Raw file</span><span class="desc mono">${esc(f.path)}</span></summary><div class="blk-body">${preHtml(f.content, { wrap: true })}</div></details>`);
-  return `<details class="blk mem-file" data-lazy="${k}" id="${memSlugId(mem, f.path)}"><summary>
-    <span class="lbl" dir="auto">${esc(title)}</span><span class="desc" dir="auto">${esc(f.meta.description || '')}</span>
-    <span class="meta">${sources.map(s => `<span class="chip" style="font-size:11px" title="${esc(SOURCE_HELP[s] || '')}">${esc(s)}</span>`).join(' ')} ${f.updated ? esc(fmtDate(f.updated)) : ''}</span></summary>
-    <div class="blk-body">${aliases.length ? `<p class="faint" style="font-size:12.5px;margin:0 0 6px">Also called: ${aliases.map(esc).join(', ')}</p>` : ''}</div></details>`;
+  return blk({
+    cls: 'mem-file', id: memSlugId(mem, f.path),
+    summary: `<span class="lbl" dir="auto">${esc(title)}</span><span class="desc" dir="auto">${esc(f.meta.description || '')}</span>
+      <span class="meta">${sources.map(s => `<span class="chip" style="font-size:11px" title="${esc(SOURCE_HELP[s] || '')}">${esc(s)}</span>`).join(' ')} ${f.updated ? esc(fmtDate(f.updated)) : ''}</span>`,
+    body: aliases.length ? `<p class="faint" style="font-size:12.5px;margin:0 0 6px">Also called: ${aliases.map(esc).join(', ')}</p>` : '',
+  }, () => (f.body.trim() ? memoryText(f.body, mem) : '<p class="faint">(empty)</p>') + `<details class="blk" style="margin-top:10px"><summary><span class="lbl">Raw file</span><span class="desc mono">${esc(f.path)}</span></summary><div class="blk-body">${preHtml(f.content, { wrap: true })}</div></details>`);
 }
 
 const SOURCE_HELP = { backfill: 'Seeded from older chat history', chat: 'Learned in a claude.ai chat', cowork: 'Learned in Cowork' };
@@ -251,10 +251,7 @@ function designUserContent(text) {
   const cleaned = cleanDesignPrompt(raw);
   const injected = raw.length - cleaned.length > 20;
   let h = cleaned ? `<div class="md" dir="auto">${mdToHtml(cleaned, { breaks: true })}</div>` : '';
-  if (injected) {
-    const k = viewKey(() => preHtml(raw, { wrap: true }));
-    h += `<details class="blk thinking" data-lazy="${k}"><summary><span class="lbl">Context added by the app</span></summary><div class="blk-body"></div></details>`;
-  }
+  if (injected) h += blk({ cls: 'thinking', summary: '<span class="lbl">Context added by the app</span>' }, () => preHtml(raw, { wrap: true }));
   return h;
 }
 
@@ -266,16 +263,16 @@ function designAttachments(atts, showHidden) {
     if (a.hidden && !showHidden) continue;
     const name = a.name || a.type || 'attachment';
     if (a.type === 'skill' || a.type === 'text' || (a.type === 'image' && a.content)) {
-      const k = viewKey(() => preHtml(a.content || '', { wrap: true }));
-      out.push(`<details class="blk attach" data-lazy="${k}"><summary><span class="lbl" dir="auto">${a.type === 'skill' ? 'skill: ' : ''}${esc(name)}</span><span class="meta">${fmtBytes((a.content || '').length)}</span></summary><div class="blk-body"></div></details>`);
+      out.push(blk({ cls: 'attach', summary: `<span class="lbl" dir="auto">${a.type === 'skill' ? 'skill: ' : ''}${esc(name)}</span><span class="meta">${fmtBytes((a.content || '').length)}</span>` },
+        () => preHtml(a.content || '', { wrap: true })));
     } else if (a.type === 'comment') {
       const content = String(a.content || '');
       const fb = content.includes('</mentioned-element>') ? content.split('</mentioned-element>').pop() : content.replace(/^File:[^\n]*\n?/, '');
       const onFile = a.filePath || ((/^File:\s*(.+)$/m.exec(content) || [])[1] || '').trim();
       out.push(`<div class="card card-pad" style="padding:8px 12px"><div class="row wrap" style="font-size:12.5px;color:var(--muted)"><span class="chip">🗨 comment on the design</span>${onFile ? `<span class="mono">${esc(onFile)}</span>` : ''}</div><div class="md" dir="auto">${mdToHtml(fb.replace(/^\s*Feedback:\s*/, '').trim())}</div></div>`);
     } else if (a.type === 'fig-file') {
-      const k = viewKey(() => (Array.isArray(a.selectedFrames) ? `<ul>${a.selectedFrames.map(f => `<li class="mono">${esc(f)}</li>`).join('')}</ul>` : '') + (a.figOutline ? preHtml(a.figOutline, { wrap: true }) : ''));
-      out.push(`<details class="blk attach" data-lazy="${k}"><summary><span class="lbl">Figma: ${esc(name)}</span></summary><div class="blk-body"></div></details>`);
+      out.push(blk({ cls: 'attach', summary: `<span class="lbl">Figma: ${esc(name)}</span>` },
+        () => (Array.isArray(a.selectedFrames) ? `<ul>${a.selectedFrames.map(f => `<li class="mono">${esc(f)}</li>`).join('')}</ul>` : '') + (a.figOutline ? preHtml(a.figOutline, { wrap: true }) : '')));
     } else {
       const ico = a.type === 'image' ? '🖼' : a.type === 'folder' ? '📁' : '📄';
       out.push(`<span class="file-chip" title="${esc(a.path || '')}">${ico} <span dir="auto">${esc(name)}</span> <span class="sz">${a.type === 'folder' ? 'local folder' : 'not in export'}</span></span>`);
@@ -370,7 +367,7 @@ function designToolHtml(t) {
   const i = t.input && typeof t.input === 'object' ? t.input : {};
   const desc = i.path || i.a_filename || i.query || i.purpose || i.title || i.pattern || i.label || i.filename || (i.from_id ? i.from_id + '→' + i.to_id : '') || '';
   const out = typeof t.output === 'string' ? t.output : null;
-  const k = viewKey(() => {
+  return blk({ cls: 'tool', summary: `<span class="lbl">${esc(t.name || 'tool')}</span>${t.serverSide ? '<span class="chip" style="font-size:11px">server</span>' : ''}<span class="desc" dir="auto">${esc(truncate(oneLine(String(desc)), 140))}</span>` }, () => {
     let h = '<div class="blk-sub">Input</div>';
     if ((t.name === 'questions_v2' || t.name === 'ask_user') && Array.isArray(i.questions)) {
       h += designQuestionCard(i, null).replace(/<p class="faint"[^>]*>No answer recorded\.<\/p>/, '') + '<p class="faint" style="font-size:12.5px">The answers are in the next message from the person.</p>';
@@ -386,7 +383,6 @@ function designToolHtml(t) {
     else h += preHtml(out, { wrap: true }) + (out.length === 200 ? '<p class="faint" style="font-size:12.5px">The export cuts tool output at 200 characters.</p>' : '');
     return h;
   });
-  return `<details class="blk tool" data-lazy="${k}"><summary><span class="lbl">${esc(t.name || 'tool')}</span>${t.serverSide ? '<span class="chip" style="font-size:11px">server</span>' : ''}<span class="desc" dir="auto">${esc(truncate(oneLine(String(desc)), 140))}</span></summary><div class="blk-body"></div></details>`;
 }
 
 /* ======================= Search ======================= */

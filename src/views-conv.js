@@ -238,7 +238,6 @@ function drawThread(conv, opts) {
     if (terms.length) highlightIn(frag, terms);
     while (frag.firstChild) thread.appendChild(frag.firstChild);
     i += n;
-    thread.querySelectorAll('details[data-lazy][open]:not([data-done])').forEach(d => d.dispatchEvent(new Event('toggle')));
     hydrateFrames(thread);
   };
   renderBatch(firstBatch);
@@ -328,9 +327,9 @@ function humanBody(m, ctx) {
   for (const t of texts) {
     if (t.length > HUMAN_FOLD) {
       // The preview stays; opening the box adds only the rest of the text.
-      const k = viewKey(() => `<div dir="auto" style="white-space:pre-wrap">${plainTextHtml(t.slice(HUMAN_FOLD))}</div>`);
-      parts.push(`<div dir="auto" style="white-space:pre-wrap">${plainTextHtml(t.slice(0, HUMAN_FOLD))}</div>
-        <details class="blk" data-lazy="${k}"><summary><span class="lbl">Show the rest of the message</span><span class="meta">${fmtBytes(t.length - HUMAN_FOLD)} more</span></summary><div class="blk-body"></div></details>`);
+      parts.push(`<div dir="auto" style="white-space:pre-wrap">${plainTextHtml(t.slice(0, HUMAN_FOLD))}</div>` +
+        blk({ summary: `<span class="lbl">Show the rest of the message</span><span class="meta">${fmtBytes(t.length - HUMAN_FOLD)} more</span>` },
+          () => `<div dir="auto" style="white-space:pre-wrap">${plainTextHtml(t.slice(HUMAN_FOLD))}</div>`));
     } else {
       parts.push(`<div dir="auto" style="white-space:pre-wrap">${plainTextHtml(t)}</div>`);
     }
@@ -338,8 +337,8 @@ function humanBody(m, ctx) {
   if (CONV_OPTS.showSystem) {
     for (const b of blocks) {
       if (b && b.type === 'injected_prompt_block') {
-        const k = viewKey(() => preHtml(b.prompt || '', { wrap: true }));
-        parts.push(`<details class="blk thinking" data-lazy="${k}"><summary><span class="lbl">System note</span><span class="desc">${esc(b.injection_source || '')} — added by the platform, not typed by the person</span><span class="meta">${fmtBytes((b.prompt || '').length)}</span></summary><div class="blk-body"></div></details>`);
+        parts.push(blk({ cls: 'thinking', summary: `<span class="lbl">System note</span><span class="desc">${esc(b.injection_source || '')} — added by the platform, not typed by the person</span><span class="meta">${fmtBytes((b.prompt || '').length)}</span>` },
+          () => preHtml(b.prompt || '', { wrap: true })));
       }
     }
   }
@@ -357,10 +356,10 @@ function filesHtml(m) {
   for (const a of atts) {
     const name = a.file_name || 'Pasted text';
     const content = a.extracted_content || '';
-    const k = viewKey(() => /\.(md|markdown)$/i.test(a.file_name || '') || /markdown/.test(a.file_type || '')
-      ? `<div class="row" style="margin-bottom:6px"><span class="muted" style="font-size:12.5px">Rendered Markdown</span></div>${mdBlock(content)}`
-      : preHtml(content, { wrap: true }));
-    out.push(`<details class="blk attach" data-lazy="${k}"><summary><span class="lbl" dir="auto">${esc(name)}</span><span class="desc">${esc(a.file_type || '')}</span><span class="meta">${fmtBytes(a.file_size || content.length)}</span></summary><div class="blk-body"></div></details>`);
+    out.push(blk({ cls: 'attach', summary: `<span class="lbl" dir="auto">${esc(name)}</span><span class="desc">${esc(a.file_type || '')}</span><span class="meta">${fmtBytes(a.file_size || content.length)}</span>` },
+      () => /\.(md|markdown)$/i.test(a.file_name || '') || /markdown/.test(a.file_type || '')
+        ? `<div class="row" style="margin-bottom:6px"><span class="muted" style="font-size:12.5px">Rendered Markdown</span></div>${mdBlock(content)}`
+        : preHtml(content, { wrap: true })));
     // Pair with the same-named file entry so it is not listed twice.
     const fi = files.findIndex((f, i) => !used.has(i) && (f.file_name || '') === (a.file_name || ''));
     if (fi >= 0) used.add(fi);
@@ -431,8 +430,7 @@ function assistantBody(m, ctx) {
     } else if (b.type === 'token_budget') {
       continue;
     } else if (b.type !== 'injected_prompt_block') {
-      const k = viewKey(() => preHtml(jsonPretty(b)));
-      out.push(`<details class="blk" data-lazy="${k}"><summary><span class="lbl">${esc(b.type || 'block')}</span></summary><div class="blk-body"></div></details>`);
+      out.push(blk({ summary: `<span class="lbl">${esc(b.type || 'block')}</span>` }, () => preHtml(jsonPretty(b))));
     }
   }
   flush();
@@ -473,14 +471,13 @@ function thinkingHtml(b) {
   const dur = t0 && t1 && t1 > t0 ? fmtDuration(t1 - t0) : '';
   const label = sums.length ? sums[sums.length - 1] : (b.thinking ? truncate(oneLine(b.thinking), 120) : 'Thinking');
   const hidden = b.thinking_hidden || !b.thinking;
-  const k = viewKey(() => {
+  return blk({ cls: 'thinking', summary: `<span class="lbl">💭 Thinking</span><span class="desc" dir="auto">${esc(label)}</span><span class="meta">${dur}${hidden ? ' · summary only' : ''}</span>` }, () => {
     let h = '';
     if (b.thinking) h += `<div class="md" dir="auto">${mdToHtml(b.thinking)}</div>`;
     else h += `<p class="faint">The thinking text itself is not in the export${sums.length ? '; only these summaries remain' : ''}.</p>`;
     if (sums.length) h += `<div class="blk-sub">Summaries</div><ul>${sums.map(s => `<li dir="auto">${esc(s)}</li>`).join('')}</ul>`;
     return h;
   });
-  return `<details class="blk thinking" data-lazy="${k}"><summary><span class="lbl">💭 Thinking</span><span class="desc" dir="auto">${esc(label)}</span><span class="meta">${dur}${hidden ? ' · summary only' : ''}</span></summary><div class="blk-body"></div></details>`;
 }
 
 /* ---------- Tool calls ---------- */
@@ -517,11 +514,11 @@ function toolCallHtml(use, res, ctx) {
   if (special) return special;
 
   const desc = toolInputSummary(name, input) || use.message || '';
-  const k = viewKey(() => toolBodyHtml(use, res, ctx));
-  return `<details class="blk tool${error ? ' result error' : ''}" data-lazy="${k}" id="t-${esc(use.id || '')}">
-    <summary><span class="lbl">${esc(toolLabel(name))}</span>${integ ? `<span class="faint" style="flex:none">${esc(integ)}</span>` : ''}<span class="desc" dir="auto">${esc(truncate(oneLine(desc), 160))}</span>
-    <span class="meta">${error ? `<b style="color:var(--err)">failed${errType ? ' · ' + esc(errType) : ''}</b> ` : ''}${!res ? 'no result ' : ''}${dur}</span></summary>
-    <div class="blk-body"></div></details>`;
+  return blk({
+    cls: 'tool' + (error ? ' result error' : ''), id: 't-' + (use.id || ''),
+    summary: `<span class="lbl">${esc(toolLabel(name))}</span>${integ ? `<span class="faint" style="flex:none">${esc(integ)}</span>` : ''}<span class="desc" dir="auto">${esc(truncate(oneLine(desc), 160))}</span>
+      <span class="meta">${error ? `<b style="color:var(--err)">failed${errType ? ' · ' + esc(errType) : ''}</b> ` : ''}${!res ? 'no result ' : ''}${dur}</span>`,
+  }, () => toolBodyHtml(use, res, ctx));
 }
 
 function toolBodyHtml(use, res, ctx) {
@@ -594,10 +591,11 @@ function toolResultHtml(res, ctx) {
       out.push(linkifyChats(preHtml(prettyMaybeJson(t), { wrap: true })));
     } else if (it.type === 'knowledge') {
       // The page text Claude read is in the export: show it on demand.
-      const k = viewKey(() => `<p style="margin:0 0 6px"><a href="${esc(safeUrl(it.url))}" target="_blank" rel="noopener noreferrer">${esc(it.url || '')}</a></p>` + preHtml(it.text || '', { wrap: true }));
-      out.push(`<details class="blk" data-lazy="${k}"><summary><span class="lbl" dir="auto">${esc(it.title || it.url || 'Web page')}</span>
-        <span class="desc">${esc((it.metadata && (it.metadata.site_name || it.metadata.site_domain)) || '')}${it.prompt_context_metadata && it.prompt_context_metadata.age ? ' · ' + esc(it.prompt_context_metadata.age) : ''}</span>
-        <span class="meta">${fmtBytes((it.text || '').length)} of page text</span></summary><div class="blk-body"></div></details>`);
+      out.push(blk({
+        summary: `<span class="lbl" dir="auto">${esc(it.title || it.url || 'Web page')}</span>
+          <span class="desc">${esc((it.metadata && (it.metadata.site_name || it.metadata.site_domain)) || '')}${it.prompt_context_metadata && it.prompt_context_metadata.age ? ' · ' + esc(it.prompt_context_metadata.age) : ''}</span>
+          <span class="meta">${fmtBytes((it.text || '').length)} of page text</span>`,
+      }, () => `<p style="margin:0 0 6px"><a href="${esc(safeUrl(it.url))}" target="_blank" rel="noopener noreferrer">${esc(it.url || '')}</a></p>` + preHtml(it.text || '', { wrap: true })));
     } else if (it.type === 'image') {
       out.push(`<span class="file-chip">🖼 Screenshot or image <span class="sz">not in export</span></span>`);
     } else if (it.type === 'local_resource') {
@@ -620,7 +618,6 @@ function toolResultHtml(res, ctx) {
   const sc = res.structured_content;
   if (sc && typeof sc === 'object' && Object.keys(sc).length) {
     if (sc.artifact_id) out.push(artifactLinkHtml(sc.artifact_id, sc.title));
-    const k = 'sc-' + Math.random().toString(36).slice(2, 8);
     out.push(`<details class="blk"${stub ? ' open' : ''}><summary><span class="lbl">Structured data</span><span class="desc">${stub ? 'the full result (the text above is only a stub)' : 'raw JSON returned by the tool'}</span><span class="meta">${fmtBytes(JSON.stringify(sc).length)}</span></summary><div class="blk-body">${preHtml(jsonPretty(sc))}</div></details>`);
   }
   return out.join('') || '<p class="faint">(empty result)</p>';
@@ -665,50 +662,49 @@ function hydrateFrames(root) {
 }
 
 function specialToolHtml(name, input, res, ctx, use) {
-  const id = esc(use.id || '');
+  const tid = 't-' + (use.id || '');   // the outputs box and "show content" scroll to this id
   if (name === 'artifacts' && (input.content || input.command)) {
     const type = input.type || '';
     const title = input.title || input.id || 'Artifact';
     const content = input.content || '';
-    const k = viewKey(() => {
+    // Starts open, so its body is drawn right away.
+    return blk({ cls: 'artifact', id: tid, open: true, summary: `<span class="lbl">◧ Artifact</span><span class="desc" dir="auto">${esc(title)}</span><span class="meta">${esc(input.command || '')} · ${esc(type.replace('application/vnd.ant.', ''))}</span>` }, () => {
       if (/markdown/.test(type)) return mdBlock(content);
       if (/html/.test(type)) return `${sandboxFrame(content, 520)}<details class="blk" style="margin-top:8px"><summary><span class="lbl">Source</span></summary><div class="blk-body">${preHtml(content)}</div></details>`;
       return `<p class="muted" style="margin:0 0 6px">${esc(type)} source (React components cannot run offline)</p>${preHtml(content)}`;
     });
-    return `<details class="blk artifact" data-lazy="${k}" id="t-${id}" open><summary><span class="lbl">◧ Artifact</span><span class="desc" dir="auto">${esc(title)}</span><span class="meta">${esc(input.command || '')} · ${esc(type.replace('application/vnd.ant.', ''))}</span></summary><div class="blk-body"></div></details>`;
   }
   if (name === 'create_file' && input.file_text != null) {
     const path = input.path || '';
     const ext = codeLangFromPath(path);
-    const k = viewKey(() => {
+    return blk({ cls: 'artifact', id: tid, summary: `<span class="lbl">📄 Created file</span><span class="desc mono" dir="auto">${esc(path.split('/').pop())}</span><span class="meta">${fmtBytes(input.file_text.length)}</span>` }, () => {
       const dl = `<div class="row" style="margin-bottom:8px"><span class="muted" style="font-size:12.5px">${esc(path)}</span><button class="btn small" type="button" ${on(() => downloadText(path.split('/').pop(), input.file_text))}>Download</button></div>`;
       if (ext === 'md' || ext === 'markdown') return `${dl}${mdBlock(input.file_text)}<details class="blk" style="margin-top:8px"><summary><span class="lbl">Source</span></summary><div class="blk-body">${preHtml(input.file_text)}</div></details>`;
       if (ext === 'html' || ext === 'htm' || ext === 'svg') return `${dl}${sandboxFrame(input.file_text, 520)}<details class="blk" style="margin-top:8px"><summary><span class="lbl">Source</span></summary><div class="blk-body">${preHtml(input.file_text)}</div></details>`;
       return dl + preHtml(input.file_text);
     });
-    return `<details class="blk artifact" data-lazy="${k}" id="t-${id}"><summary><span class="lbl">📄 Created file</span><span class="desc mono" dir="auto">${esc(path.split('/').pop())}</span><span class="meta">${fmtBytes(input.file_text.length)}</span></summary><div class="blk-body"></div></details>`;
   }
   if (name === 'visualize:show_widget' && input.widget_code) {
-    const k = viewKey(() => `${sandboxFrame(`<!doctype html><html><head><meta charset="utf-8"><style>${WIDGET_CSS}</style></head><body>${input.widget_code}</body></html>`, 460)}<details class="blk" style="margin-top:8px"><summary><span class="lbl">Source</span></summary><div class="blk-body">${preHtml(input.widget_code)}</div></details>`);
-    return `<details class="blk artifact" data-lazy="${k}" id="t-${id}"><summary><span class="lbl">▦ Widget</span><span class="desc" dir="auto">${esc(input.title || 'Interactive widget')}</span><span class="meta">open to render</span></summary><div class="blk-body"></div></details>`;
+    return blk({ cls: 'artifact', id: tid, summary: `<span class="lbl">▦ Widget</span><span class="desc" dir="auto">${esc(input.title || 'Interactive widget')}</span><span class="meta">open to render</span>` },
+      () => `${sandboxFrame(`<!doctype html><html><head><meta charset="utf-8"><style>${WIDGET_CSS}</style></head><body>${input.widget_code}</body></html>`, 460)}<details class="blk" style="margin-top:8px"><summary><span class="lbl">Source</span></summary><div class="blk-body">${preHtml(input.widget_code)}</div></details>`);
   }
   if (name === 'message_compose_v1') {
     const variants = composeVariants(input);
-    return `<div class="card card-pad" id="t-${id}"><div class="row wrap" style="margin-bottom:6px"><span class="chip on">✉ Draft ${esc(input.kind || '')}</span><b dir="auto">${esc(input.summary_title || '')}</b></div>
+    return `<div class="card card-pad" id="${esc(tid)}"><div class="row wrap" style="margin-bottom:6px"><span class="chip on">✉ Draft ${esc(input.kind || '')}</span><b dir="auto">${esc(input.summary_title || '')}</b></div>
       ${variants.map(v => `<div style="margin-top:8px">${v.label ? `<div class="blk-sub">${esc(v.label)}</div>` : ''}${v.subject ? `<div><b>Subject:</b> <span dir="auto">${esc(v.subject)}</span></div>` : ''}<div class="md" dir="auto">${mdToHtml(v.body || '', { breaks: true })}</div></div>`).join('') || '<p class="faint">(no text)</p>'}</div>`;
   }
   if (name === 'ask_user_input_v0' && Array.isArray(input.questions)) {
-    return `<div class="card card-pad" id="t-${id}"><div class="row" style="margin-bottom:6px"><span class="chip on">? Questions for the person</span></div>
+    return `<div class="card card-pad" id="${esc(tid)}"><div class="row" style="margin-bottom:6px"><span class="chip on">? Questions for the person</span></div>
       ${input.questions.map(q => `<div style="margin-top:6px"><div dir="auto"><b>${esc(q.question || '')}</b> ${q.type ? `<span class="faint">${esc(q.type)}</span>` : ''}</div><div class="files-row" style="margin-top:4px">${(Array.isArray(q.options) ? q.options : []).map(o => `<span class="chip" dir="auto">${esc(typeof o === 'string' ? o : JSON.stringify(o))}</span>`).join('')}</div></div>`).join('')}
       <p class="faint" style="font-size:13px;margin:8px 0 0">The answer is in the next message.</p></div>`;
   }
   if (name === 'chart_display_v0' && Array.isArray(input.series)) {
-    return `<div class="card card-pad" id="t-${id}"><div class="row" style="margin-bottom:6px"><span class="chip on">📊 Chart</span><b dir="auto">${esc(input.title || '')}</b></div>${simpleBarTable(input)}</div>`;
+    return `<div class="card card-pad" id="${esc(tid)}"><div class="row" style="margin-bottom:6px"><span class="chip on">📊 Chart</span><b dir="auto">${esc(input.title || '')}</b></div>${simpleBarTable(input)}</div>`;
   }
   if (name === 'places_map_display_v0' && (Array.isArray(input.days) || Array.isArray(input.locations))) {
     // Most calls put `locations` at the top level instead of inside `days`.
     const days = Array.isArray(input.days) ? input.days : [{ locations: input.locations }];
-    return `<div class="card card-pad" id="t-${id}"><div class="row" style="margin-bottom:6px"><span class="chip on">🗺 ${Array.isArray(input.days) ? 'Itinerary' : 'Places'}</span><b dir="auto">${esc(input.title || '')}</b></div>
+    return `<div class="card card-pad" id="${esc(tid)}"><div class="row" style="margin-bottom:6px"><span class="chip on">🗺 ${Array.isArray(input.days) ? 'Itinerary' : 'Places'}</span><b dir="auto">${esc(input.title || '')}</b></div>
       ${input.narrative ? `<p dir="auto">${esc(input.narrative)}</p>` : ''}
       ${days.map(d => `${d.day_number || d.title ? `<div class="blk-sub">Day ${esc(d.day_number || '')} · ${esc(d.title || '')}</div>` : ''}<ul>${(Array.isArray(d.locations) ? d.locations : []).map(l => `<li dir="auto"><b>${esc((l && l.name) || '')}</b>${l && l.arrival_time ? ' · ' + esc(l.arrival_time) : ''}${l && l.notes ? ' — ' + esc(l.notes) : ''}</li>`).join('')}</ul>`).join('')}</div>`;
   }
@@ -717,7 +713,7 @@ function specialToolHtml(name, input, res, ctx, use) {
     const sc = res && res.structured_content;
     const artId = (dc && dc.published_artifact_id) || (sc && sc.artifact_id) || ((/\/artifact\/([0-9a-f-]{36})/.exec(input.url || '') || [])[1]);
     if (artId) {
-      return `<div id="t-${id}">${artifactLinkHtml(artId, (dc && dc.title) || input.title, input.action || (dc && dc.published_action))}</div>`;
+      return `<div id="${esc(tid)}">${artifactLinkHtml(artId, (dc && dc.title) || input.title, input.action || (dc && dc.published_action))}</div>`;
     }
   }
   return '';

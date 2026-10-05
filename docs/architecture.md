@@ -23,7 +23,7 @@ For the format of the export itself, see [export-format.md](export-format.md).
 | `src/zip.js` | `ZipArchive` / `ZipEntry`: random-access zip reader. `ZipWriter`: small zip writer for downloads. |
 | `src/load.js` | `FileNode` / `ZipNode`: one interface for loose files and zip entries. File and folder picking, drag and drop, remembered file handles (`HandleStore`), and `parseJsonArrayStream()`. |
 | `src/render.js` | Escaping (`esc`), formatting of dates, numbers and sizes, Markdown (`mdToHtml`, `mdBlock`), sanitizing, search highlighting, the sandbox frame shim, small helpers (toast, copy, download, MIME types). |
-| `src/ui.js` | `App` (route and focus), the `$` / `$$` shortcuts, and the lifetime of one drawn page: `VIEW`, `after()`, `viewKey()`, and `on()` for click behaviour. |
+| `src/ui.js` | `App` (route and focus), the `$` / `$$` shortcuts, and the lifetime of one drawn page: `VIEW`, `after()`, `viewKey()`, `on()` for click behaviour, and `blk()` for collapsible blocks. |
 | `src/model.js` | The in-memory model: `Person`, the `DB` object, `classify()`, one `add…()` function per record type, `importExport()` (the import pipeline) and `finalize()` (links and derived data). |
 | `src/views.js` | Router dispatch (`renderRoute`), sidebar, the shared sortable table, start page, people list and person page. |
 | `src/views-conv.js` | Conversation list, message tree and branches, message and tool rendering, the "What Claude produced here" box, Markdown export. |
@@ -137,7 +137,7 @@ Size limits keep the tab responsive:
 
 ## Lazy rendering
 
-- **Collapsed blocks** (tool calls, thinking, attachments, docs, memory files) are `<details data-lazy="key">` elements with an empty body. Their renderer is stored in the current view under that key (`viewKey()`). A capturing `toggle` listener renders the body the first time the block is opened.
+- **Collapsed blocks** (tool calls, thinking, attachments, docs, memory files) are made with `blk({ summary }, render)`. The block starts with an empty body, and `render` is kept in the current view under a key (`data-lazy`). A capturing `toggle` listener draws the body the first time the block is opened. A block that starts open (`open: true`) draws its body right away.
 - **Long conversations** are drawn in batches: the first 30 messages (or enough to reach a linked message) at once, then 25 more every few milliseconds. A token stops an old batch run when the thread is redrawn (for example after a branch switch).
 - **Tables** show 200 rows at a time with a **Show more** button.
 - **Artifact metadata** is read at load time, but version files are read only when a version is opened.

@@ -355,19 +355,16 @@ function setupShell() {
     const fn = el && VIEW.fns.get(el.dataset.onChange);
     if (fn) fn(el, e);
   });
-  // Lazy bodies for collapsed blocks.
+  // A collapsed blk() draws its body the first time it opens.
   document.addEventListener('toggle', e => {
     const d = e.target;
-    if (d.tagName === 'DETAILS' && d.open && d.dataset.lazy && !d.dataset.done) {
-      const fn = VIEW.fns.get(d.dataset.lazy);
-      if (fn) {
-        const body = d.querySelector(':scope > .blk-body');
-        body.insertAdjacentHTML('beforeend', fn());
-        d.dataset.done = '1';
-        hydrateFrames(body);
-        if (App.route.query.q) highlightIn(body, searchTerms(App.route.query.q));
-      }
-    }
+    const fn = d.tagName === 'DETAILS' && d.open && VIEW.fns.get(d.dataset.lazy);
+    if (!fn) return;
+    const body = d.querySelector(':scope > .blk-body');
+    body.insertAdjacentHTML('beforeend', fn());
+    delete d.dataset.lazy;
+    hydrateFrames(body);
+    if (App.route.query.q) highlightIn(body, searchTerms(App.route.query.q));
   }, true);
 }
 

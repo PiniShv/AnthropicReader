@@ -62,7 +62,7 @@ Read [docs/architecture.md](docs/architecture.md) for the full picture. In short
   - render Markdown only through `mdToHtml()` / `mdBlock()`, which sanitize with DOMPurify
   - show HTML from the export only in a sandboxed iframe (`sandboxFrame()`), never with `allow-same-origin`
   - make links from export data clickable only through `safeUrl()`
-- Keep big exports fast. Do not read large files up front. Render big blocks lazily (`<details data-lazy>` with `viewKey()`), and cut very long text with `preHtml()`.
+- Keep big exports fast. Do not read large files up front. Render big blocks lazily (`blk()` with a render function), and cut very long text with `preHtml()`.
 - Use `dir="auto"` on blocks of user text, so right-to-left languages display correctly.
 
 ## Adding support for a new export field
