@@ -19,7 +19,8 @@ export const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 // Same order as the built page; build.mjs is the source of truth when it exports it.
 const FALLBACK_ORDER = [
   'src/zip.js', 'src/load.js', 'src/render.js', 'src/ui.js', 'src/model.js',
-  'src/search.js', 'src/views.js', 'src/views-conv.js', 'src/views-art.js', 'src/views-misc.js',
+  'src/conversation.js', 'src/search.js', 'src/export.js',
+  'src/views.js', 'src/views-conv.js', 'src/views-art.js', 'src/views-misc.js',
   'src/demo.js', 'src/app.js',
 ];
 export const BUILD_ORDER = Array.isArray(buildModule.APP_SCRIPTS) ? buildModule.APP_SCRIPTS : FALLBACK_ORDER;

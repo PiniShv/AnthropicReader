@@ -1689,9 +1689,15 @@ function addUsers(list) {
   }
 }
 
-const ROOT_PARENT = '00000000-0000-4000-8000-000000000000';
-// Same rules as the "What Claude produced here" box in the conversation view.
-const OUTPUT_TOOLS = /^(create_file|artifacts|visualize:show_widget|message_compose_v1)$/;
+/* Tools whose output the person saw: name -> a function that gives the output's chip in the
+ * "What Claude produced here" box (collectOutputs), or null. The list badge counts every call
+ * of these tools, so it also counts a create_file without a path, which the box leaves out. */
+const OUTPUTS = new Map([
+  ['create_file', i => (i.path ? { ico: '📄', label: i.path.split('/').pop(), kind: 'file' } : null)],
+  ['artifacts', i => ({ ico: '◧', label: i.title || i.id || 'Artifact', kind: 'artifact' })],
+  ['visualize:show_widget', i => ({ ico: '▦', label: i.title || 'Widget', kind: 'widget' })],
+  ['message_compose_v1', i => ({ ico: '✉', label: i.summary_title || 'Draft', kind: 'draft' })],
+]);
 // Artifact ids referenced from chat JSON: published links and tool result ids.
 const RE_ART_REF = /(?:\/artifact\/|artifact_id\\?"\s*:\s*\\?")([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/g;
 
@@ -1716,7 +1722,7 @@ function addConversation(c, source, rawText) {
     if (blocks.length || (m.text && m.text.trim()) || (m.files && m.files.length) || (m.attachments && m.attachments.length)) contentful++;
     if (m.sender === 'human') files += (m.files ? m.files.length : 0);   // assistant files are tool screenshots
     for (const b of blocks) {
-      if (b && b.type === 'tool_use') { tools++; if (OUTPUT_TOOLS.test(b.name || '')) outputs++; }
+      if (b && b.type === 'tool_use') { tools++; if (OUTPUTS.has(String(b.name || ''))) outputs++; }
       else if (!firstHuman && m.sender === 'human' && b && b.type === 'text' && b.text && b.text.trim()) firstHuman = b.text;
       else if (!firstReply && m.sender === 'assistant' && b && b.type === 'text' && b.text && b.text.trim()) firstReply = b.text;
     }
@@ -2337,6 +2343,162 @@ function projectName(id) {
 }
 
 </script>
+<script>/* src/conversation.js */
+/* Conversations as data: the message tree and its branches, tool names and inputs, and the
+ * outputs Claude produced. No DOM. */
+'use strict';
+
+// The parent of a chat's first message.
+const ROOT_PARENT = '00000000-0000-4000-8000-000000000000';
+
+const BRANCH_CHOICE = new Map();   // convId -> Map(parentId -> chosen child id)
+
+// The tree of each conversation, made once. A newer copy of a chat is a new object, so a tree
+// never goes stale.
+const TREE = new WeakMap();
+
+// A message's parent, or ROOT_PARENT when it has none or its parent is not in the export.
+const parentKey = (t, m) => (m.parent_message_uuid && t.byId.has(m.parent_message_uuid) ? m.parent_message_uuid : ROOT_PARENT);
+
+/* msgs: the raw messages. byId: uuid -> message. children: parent key -> messages.
+ * newest: uuid -> highest array index anywhere in that message's subtree. linear: no message
+ * has a parent, so the array order is the conversation. created: path -> the create_file
+ * tool_use that wrote it (to resolve present_files). */
+function buildTree(conv) {
+  let t = TREE.get(conv);
+  if (t) return t;
+  const msgs = conv.raw.chat_messages || [];
+  t = { msgs, byId: new Map(), children: new Map(), newest: new Map(), linear: true, created: new Map() };
+  for (const m of msgs) {
+    t.byId.set(m.uuid, m);
+    if (m.parent_message_uuid) t.linear = false;
+    for (const b of (Array.isArray(m.content) ? m.content : [])) {
+      if (b && b.type === 'tool_use' && b.name === 'create_file' && b.input && b.input.path) t.created.set(b.input.path, b);
+    }
+  }
+  if (!t.linear) {
+    for (const m of msgs) {
+      const p = parentKey(t, m);
+      if (!t.children.has(p)) t.children.set(p, []);
+      t.children.get(p).push(m);
+    }
+    // Children always come after their parent in the array, so a reverse pass is enough.
+    for (let i = msgs.length - 1; i >= 0; i--) {
+      const m = msgs[i];
+      let best = i;
+      for (const k of (t.children.get(m.uuid) || [])) best = Math.max(best, t.newest.get(k.uuid) || 0);
+      t.newest.set(m.uuid, best);
+    }
+  }
+  TREE.set(conv, t);
+  return t;
+}
+
+// The visible path: from the root, at each fork take the chosen child, else the child whose
+// branch holds the newest message (the last array element is always the current leaf).
+function currentPath(conv) {
+  const t = buildTree(conv);
+  if (t.linear) return t.msgs.slice();
+  const choice = BRANCH_CHOICE.get(conv.id) || new Map();
+  const path = [];
+  let cur = ROOT_PARENT;
+  const seen = new Set();
+  for (;;) {
+    const kids = t.children.get(cur);
+    if (!kids || !kids.length) break;
+    const chosenId = choice.get(cur);
+    const next = kids.find(k => k.uuid === chosenId) ||
+      kids.reduce((a, b) => ((t.newest.get(b.uuid) || 0) > (t.newest.get(a.uuid) || 0) ? b : a));
+    if (seen.has(next.uuid)) break;
+    seen.add(next.uuid);
+    path.push(next);
+    cur = next.uuid;
+  }
+  return path;
+}
+
+// Make sure a message (e.g. a search hit on another branch) is on the visible path.
+function selectBranchFor(conv, msgId) {
+  const t = buildTree(conv);
+  if (t.linear || !t.byId.has(msgId)) return;
+  const choice = BRANCH_CHOICE.get(conv.id) || new Map();
+  let cur = t.byId.get(msgId);
+  const guard = new Set();
+  while (cur && !guard.has(cur.uuid)) {
+    guard.add(cur.uuid);
+    const p = parentKey(t, cur);
+    choice.set(p, cur.uuid);
+    if (p === ROOT_PARENT) break;
+    cur = t.byId.get(p);
+  }
+  BRANCH_CHOICE.set(conv.id, choice);
+}
+
+function siblingsOf(conv, m) {
+  const t = buildTree(conv);
+  if (t.linear) return [m];
+  return t.children.get(parentKey(t, m)) || [m];
+}
+
+/* ---------- Tools ---------- */
+
+function toolLabel(name) {
+  const s = String(name || 'tool');
+  const i = s.indexOf(':');
+  return i > 0 ? s.slice(i + 1) : s;
+}
+
+function toolInputSummary(name, i) {
+  if (!i || typeof i !== 'object') return '';
+  const v = i.query || i.q || i.command || i.url || i.path || i.file_path || i.jql || i.title || i.summary_title || i.issueIdOrKey || i.summary || i.action || i.searchString || i.description || i.keywords || '';
+  if (Array.isArray(v)) return v.join(', ');
+  if (Array.isArray(i.filepaths)) return i.filepaths.map(p => String(p).split('/').pop()).join(', ');
+  return typeof v === 'string' ? v : JSON.stringify(v);
+}
+
+/* Draft variants. The model sometimes sends `variants` as a broken string (e.g. "label" or
+ * '<parameter name="label">Warm'), while the real text sits in input.body. */
+function composeVariants(input) {
+  if (Array.isArray(input.variants)) return input.variants.filter(v => v && typeof v === 'object');
+  const raw = typeof input.variants === 'string' ? input.variants : '';
+  if (raw) {
+    try { const v = JSON.parse(raw); if (Array.isArray(v)) return v.filter(x => x && typeof x === 'object'); } catch (e) { /* not JSON */ }
+  }
+  if (typeof input.body === 'string' && input.body.trim()) {
+    const label = oneLine(raw.replace(/<[^>]*>/g, ''));
+    return [{ label: label && label !== 'label' && label.length < 60 ? label : '', subject: input.subject, body: input.body }];
+  }
+  return raw ? [{ body: raw }] : [];
+}
+
+// Citation offsets count Unicode code points; JS strings index UTF-16 units.
+function cpToUnits(text, cp) {
+  let units = 0, n = 0;
+  for (const ch of text) { if (n >= cp) break; units += ch.length; n++; }
+  return units;
+}
+
+/* ---------- Outputs ---------- */
+
+// The files, artifacts, widgets and drafts Claude produced, then the published artifacts the
+// chat links to: the "What Claude produced here" box.
+function collectOutputs(conv) {
+  const out = [];
+  for (const m of conv.raw.chat_messages || []) {
+    for (const b of (Array.isArray(m.content) ? m.content : [])) {
+      const outputOf = b && b.type === 'tool_use' && OUTPUTS.get(b.name);
+      const o = outputOf && outputOf(b.input || {});
+      if (o) out.push({ id: b.id, msg: m.uuid, ...o });
+    }
+  }
+  for (const id of conv.artRefs || []) {
+    const a = DB.artifactById.get(id);
+    out.push({ art: id, ico: '◧', label: a ? a.title : 'Published artifact ' + id.slice(0, 8), kind: 'published' });
+  }
+  return out;
+}
+
+</script>
 <script>/* src/search.js */
 /* Search: the searchable text of each record, an index of it, and the engine (runSearch).
  * No DOM: the search page in views-misc.js draws the results. */
@@ -2537,6 +2699,157 @@ async function artifactPlainText(a) {
       .replace(/\s+/g, ' ');
   }
   return out.slice(0, ARTIFACT_TEXT_CAP);
+}
+
+</script>
+<script>/* src/export.js */
+/* Files made from the model for download: a conversation as Markdown, and one person's zip. */
+'use strict';
+
+/* ---------- Markdown ---------- */
+
+function convToMarkdown(conv) {
+  const p = conv.owner;
+  const lines = [];
+  lines.push('# ' + (conv.title || 'Untitled conversation'));
+  lines.push('');
+  lines.push(`- Person: ${p ? p.name : 'unknown'}${p && p.email ? ' <' + p.email + '>' : ''}`);
+  lines.push(`- Started: ${fmtDateTime(conv.created)} · Last message: ${fmtDateTime(conv.lastTs)}`);
+  lines.push(`- Messages: ${conv.msgCount} · Link: https://claude.ai/chat/${conv.id}`);
+  lines.push('');
+  if (conv.summary) { lines.push('## Summary', '', conv.summary.trim(), ''); }
+  lines.push('---', '');
+  const path = currentPath(conv);
+  for (const m of path) lines.push(messageToMarkdown(conv, m), '');
+  const off = conv.msgCount - path.length;
+  if (off > 0) lines.push('---', '', `_${off} message${off === 1 ? '' : 's'} on other branches (edited or regenerated) are not shown here; they are in the .json file._`);
+  return lines.join('\n');
+}
+
+const MD_ATTACH_CAP = 100000;
+
+function fence(text, lang) {
+  // Use a fence longer than any backtick run inside the text.
+  const longest = (String(text).match(/`+/g) || []).reduce((a, s) => Math.max(a, s.length), 0);
+  const f = '`'.repeat(Math.max(3, longest + 1));
+  return f + (lang || '') + '\n' + text + '\n' + f;
+}
+
+function messageToMarkdown(conv, m) {
+  const human = m.sender === 'human';
+  const who = human ? (conv.owner ? conv.owner.name : 'User') : 'Claude';
+  const out = [`### ${human ? '👤' : '🤖'} ${who} — ${fmtDateTime(m.created_at)}`, ''];
+  const blocks = Array.isArray(m.content) ? m.content : [];
+  if (!blocks.length && m.text) out.push(m.text);
+  for (const b of blocks) {
+    if (!b) continue;
+    if (b.type === 'text' && b.text && b.text.trim()) out.push(b.text, '');
+    else if (b.type === 'tool_use') {
+      const i = b.input || {};
+      const s = toolInputSummary(b.name, i);
+      out.push(`> ⚙ ${b.name}${s ? ': ' + oneLine(s).slice(0, 200) : ''}`, '');
+      if (b.name === 'create_file' && i.file_text != null) out.push(fence(i.file_text, fileExt(i.path)), '');
+      if (b.name === 'artifacts' && i.content) out.push(`**Artifact: ${i.title || ''}**`, '', i.content, '');
+      if (b.name === 'message_compose_v1') {
+        for (const v of composeVariants(i)) {
+          out.push(`**Draft${v.label ? ' — ' + v.label : ''}${i.summary_title ? ': ' + i.summary_title : ''}**`, '');
+          if (v.subject) out.push('Subject: ' + v.subject, '');
+          out.push(String(v.body || ''), '');
+        }
+      }
+      if (b.name === 'ask_user_input_v0' && Array.isArray(i.questions)) {
+        for (const q of i.questions) out.push(`- **${q.question || ''}** ${(Array.isArray(q.options) ? q.options : []).map(o => '`' + (typeof o === 'string' ? o : JSON.stringify(o)) + '`').join(' · ')}`);
+        out.push('');
+      }
+      if (b.name === 'visualize:show_widget' && i.title) out.push(`_Interactive widget: ${i.title}_`, '');
+    }
+  }
+  for (const a of (m.attachments || [])) {
+    const text = a.extracted_content || '';
+    out.push(`> 📎 ${a.file_name || 'Pasted text'} (${fmtBytes(a.file_size || text.length)})`, '');
+    if (text) {
+      out.push(fence(text.length > MD_ATTACH_CAP ? text.slice(0, MD_ATTACH_CAP) : text), '');
+      if (text.length > MD_ATTACH_CAP) out.push(`_Cut at ${fmtBytes(MD_ATTACH_CAP)}; the full text is in the .json file._`, '');
+    }
+  }
+  for (const f of (m.files || [])) if (!(m.attachments || []).some(a => a.file_name === f.file_name)) out.push(`> 📄 ${f.file_name || 'file'} (not in export)`);
+  return out.join('\n');
+}
+
+/* ---------- Per-person zip ---------- */
+
+function datePrefix(t) {
+  if (!t) return '';
+  const d = toDate(t);
+  if (!d) return '';
+  return d.toISOString().slice(0, 10) + ' ';
+}
+
+async function buildPersonZip(p, opts, progress, isCancelled) {
+  const z = new ZipWriter();
+  const short = id => String(id || '').slice(0, 8);
+  // "<date> <title> (<id8>)" with the title cut first, so the id is never lost.
+  const nameOf = (t, title, id) => datePrefix(t) + safeFilename(title, 'Untitled').slice(0, 70).trim() + ' (' + short(id) + ')';
+  // Keep in-zip paths inside their folder: "." and ".." segments become "_".
+  const cleanPath = p => String(p).split('/').filter(Boolean).map(x => (x === '.' || x === '..') ? '_' : safeFilename(x, 'file')).join('/');
+  z.add('README.txt', [
+    `Claude data for ${p.name}${p.email ? ' <' + p.email + '>' : ''}`,
+    `Account id: ${p.id}`,
+    `Made with Claude Export Reader on ${new Date().toISOString()}`,
+    '',
+    'conversations/  one .md (readable) and one .json (original) per chat',
+    'artifacts/      artifact metadata, comments and version files',
+    'projects/       project settings and knowledge files',
+    'design_chats/   Claude Design chats (original JSON)',
+    'memory/         what Claude remembers about this person',
+    'comments.json   comments this person made on artifacts',
+  ].join('\n'));
+  z.add('person.json', JSON.stringify({
+    id: p.id, name: p.name, email: p.email, phone: p.phone || null, inUsersJson: p.known,
+    counts: { conversations: p.conversations.length, messages: p.messageCount, artifacts: p.artifacts.length, projects: p.projects.length, designChats: p.designChats.length, memoryFiles: p.memory ? p.memory.files.length : 0, comments: p.comments.length },
+    firstActivity: p.first ? new Date(p.first).toISOString() : null, lastActivity: p.last ? new Date(p.last).toISOString() : null,
+  }, null, 2));
+
+  let i = 0;
+  for (const c of p.conversations) {
+    if (isCancelled()) return null;
+    const base = 'conversations/' + nameOf(c.created, c.title, c.id);
+    z.add(base + '.md', convToMarkdown(c));
+    z.add(base + '.json', JSON.stringify(c.raw, null, 2));
+    if (++i % 20 === 0) { progress(`Conversations ${i} / ${p.conversations.length}`); await new Promise(r => setTimeout(r, 0)); }
+  }
+  for (const x of p.projects) {
+    const base = 'projects/' + nameOf(0, x.name, x.id) + '/';
+    z.add(base + 'project.json', JSON.stringify(x.raw, null, 2));
+    for (const d of x.docs) z.add(base + 'docs/' + cleanPath(d.filename), d.content);
+  }
+  for (const d of p.designChats) {
+    z.add('design_chats/' + nameOf(d.created, (d.project.name ? d.project.name + ' - ' : '') + d.title, d.id) + '.json', JSON.stringify(d.raw, null, 2));
+  }
+  if (p.memory) {
+    const m = p.memory;
+    if (m.conversationsMemory) z.add('memory/chat-memory.md', m.conversationsMemory);
+    for (const pm of m.projectMemories) z.add('memory/project-memories/' + safeFilename(projectName(pm.projectId) || pm.projectId, 'project') + '.md', pm.text);
+    for (const f of m.files) z.add('memory/files/' + cleanPath(f.path), f.content);
+  }
+  if (p.comments.length) {
+    z.add('comments.json', JSON.stringify(p.comments.map(c => ({ artifactId: c.artifact.id, artifactTitle: c.artifact.title, tab: c.thread && c.thread.tab, quoted: c.thread && c.thread.quoted_text, postedByClaude: c.byAgent, comment: c.comment })), null, 2));
+  }
+  i = 0;
+  for (const a of p.artifacts) {
+    if (isCancelled()) return null;
+    const base = 'artifacts/' + nameOf(0, a.title, a.id) + '/';
+    const skip = rel => /\/artifact-type\/|\/SKILL\.md$/.test(rel);
+    for (const [rel, node] of a.files) {
+      if (skip(rel)) continue;
+      const vm = /^versions\/([^/.]+(?:-[0-9a-f]+)?)/.exec(rel);
+      if (vm && !opts.allVersions && vm[1] !== a.activeVersion) continue;
+      z.add(base + rel, await node.bytes());
+    }
+    progress(`Artifacts ${++i} / ${p.artifacts.length}`);
+  }
+  progress('Packing…');
+  return z.blob();
 }
 
 </script>
@@ -3039,7 +3352,7 @@ function personComments(p) {
 
 </script>
 <script>/* src/views-conv.js */
-/* Conversations: list, thread view (branches, blocks, tools), Markdown export. */
+/* Conversations: list and thread view (branches, blocks, tools, the outputs box). */
 'use strict';
 
 const CONV_OPTS = { hideEmpty: true, showThinking: true, showTools: true, showSystem: false };
@@ -3091,85 +3404,6 @@ function viewConversations() {
       <span>${fmtNum(list.reduce((a, c) => a + c.msgCount, 0))} messages</span></div></div></div>
     ${convTable(list, 'conv-' + s.key, !s.person)}
   </div>`;
-}
-
-/* ---------- Message tree & branches ---------- */
-
-const BRANCH_CHOICE = new Map();   // convId -> Map(parentId -> chosen child id)
-
-function buildTree(conv) {
-  if (conv._tree) return conv._tree;
-  const msgs = conv.raw.chat_messages || [];
-  const byId = new Map();
-  const children = new Map();
-  const hasParents = msgs.some(m => m.parent_message_uuid);
-  msgs.forEach((m, i) => { byId.set(m.uuid, { m, i }); });
-  // newest[uuid] = highest array index anywhere in that message's subtree.
-  const newest = new Map();
-  if (hasParents) {
-    for (const m of msgs) {
-      let p = m.parent_message_uuid;
-      if (!p || !byId.has(p)) p = ROOT_PARENT;
-      if (!children.has(p)) children.set(p, []);
-      children.get(p).push(m);
-    }
-    // Children always come after their parent in the array, so a reverse pass is enough.
-    for (let i = msgs.length - 1; i >= 0; i--) {
-      const m = msgs[i];
-      let best = i;
-      for (const k of (children.get(m.uuid) || [])) best = Math.max(best, newest.get(k.uuid) || 0);
-      newest.set(m.uuid, best);
-    }
-  }
-  conv._tree = { byId, children, linear: !hasParents, msgs, newest };
-  return conv._tree;
-}
-
-// The visible path: from the root, at each fork take the chosen child, else the child whose
-// branch holds the newest message (the last array element is always the current leaf).
-function currentPath(conv) {
-  const t = buildTree(conv);
-  if (t.linear) return t.msgs.slice();
-  const choice = BRANCH_CHOICE.get(conv.id) || new Map();
-  const path = [];
-  let cur = ROOT_PARENT;
-  const seen = new Set();
-  for (;;) {
-    const kids = t.children.get(cur);
-    if (!kids || !kids.length) break;
-    const chosenId = choice.get(cur);
-    const next = kids.find(k => k.uuid === chosenId) ||
-      kids.reduce((a, b) => ((t.newest.get(b.uuid) || 0) > (t.newest.get(a.uuid) || 0) ? b : a));
-    if (seen.has(next.uuid)) break;
-    seen.add(next.uuid);
-    path.push(next);
-    cur = next.uuid;
-  }
-  return path;
-}
-
-// Make sure a message (e.g. a search hit on another branch) is on the visible path.
-function selectBranchFor(conv, msgId) {
-  const t = buildTree(conv);
-  if (t.linear || !t.byId.has(msgId)) return;
-  const choice = BRANCH_CHOICE.get(conv.id) || new Map();
-  let cur = t.byId.get(msgId).m;
-  const guard = new Set();
-  while (cur && !guard.has(cur.uuid)) {
-    guard.add(cur.uuid);
-    const p = cur.parent_message_uuid && t.byId.has(cur.parent_message_uuid) ? cur.parent_message_uuid : ROOT_PARENT;
-    choice.set(p, cur.uuid);
-    if (p === ROOT_PARENT) break;
-    cur = t.byId.get(p).m;
-  }
-  BRANCH_CHOICE.set(conv.id, choice);
-}
-
-function siblingsOf(conv, m) {
-  const t = buildTree(conv);
-  if (t.linear) return [m];
-  const p = m.parent_message_uuid && t.byId.has(m.parent_message_uuid) ? m.parent_message_uuid : ROOT_PARENT;
-  return t.children.get(p) || [m];
 }
 
 /* ---------- Conversation view ---------- */
@@ -3266,7 +3500,7 @@ function drawThread(conv, opts) {
   const tok = ++threadSeq;
   const path = currentPath(conv);
   const terms = opts.q ? searchTerms(opts.q) : [];
-  const ctx = { conv, created: createdFilesIndex(conv) };
+  const ctx = { conv, created: buildTree(conv).created };
   thread.innerHTML = '';
   let i = 0;
   const want = opts.target || (opts.anchor && opts.anchor.id);
@@ -3522,22 +3756,10 @@ function thinkingHtml(b) {
 
 /* ---------- Tool calls ---------- */
 
-function toolLabel(name) {
-  const s = String(name || 'tool');
-  const i = s.indexOf(':');
-  return i > 0 ? s.slice(i + 1) : s;
-}
-
+// Tool calls that stay at the top level of a reply instead of folding into "N tool calls". More
+// tools than OUTPUTS (model.js): questions, charts, maps and artifact links are shown too.
 function isOutputTool(b) {
   return /^(create_file|artifacts|visualize:show_widget|message_compose_v1|ask_user_input_v0|chart_display_v0|places_map_display_v0|Artifact|present_files)$/.test(b.name || '');
-}
-
-function toolInputSummary(name, i) {
-  if (!i || typeof i !== 'object') return '';
-  const v = i.query || i.q || i.command || i.url || i.path || i.file_path || i.jql || i.title || i.summary_title || i.issueIdOrKey || i.summary || i.action || i.searchString || i.description || i.keywords || '';
-  if (Array.isArray(v)) return v.join(', ');
-  if (Array.isArray(i.filepaths)) return i.filepaths.map(p => String(p).split('/').pop()).join(', ');
-  return typeof v === 'string' ? v : JSON.stringify(v);
 }
 
 function toolCallHtml(use, res, ctx) {
@@ -3570,10 +3792,6 @@ function toolBodyHtml(use, res, ctx) {
   h += '<div class="blk-sub">Result' + (res && res.message ? ` · <span style="text-transform:none;font-weight:400">${esc(res.message)}</span>` : '') + '</div>';
   h += res ? toolResultHtml(res, ctx) : '<p class="faint">No result was recorded (the turn may have been stopped).</p>';
   return h;
-}
-
-function codeLangFromPath(p) {
-  return fileExt(p || '') || '';
 }
 
 function toolInputHtml(name, input, dc) {
@@ -3709,7 +3927,7 @@ function specialToolHtml(name, input, res, ctx, use) {
   }
   if (name === 'create_file' && input.file_text != null) {
     const path = input.path || '';
-    const ext = codeLangFromPath(path);
+    const ext = fileExt(path);
     return blk({ cls: 'artifact', id: tid, summary: `<span class="lbl">📄 Created file</span><span class="desc mono" dir="auto">${esc(path.split('/').pop())}</span><span class="meta">${fmtBytes(input.file_text.length)}</span>` }, () => {
       const dl = `<div class="row" style="margin-bottom:8px"><span class="muted" style="font-size:12.5px">${esc(path)}</span><button class="btn small" type="button" ${on(() => downloadText(path.split('/').pop(), input.file_text))}>Download</button></div>`;
       if (ext === 'md' || ext === 'markdown') return `${dl}${mdBlock(input.file_text)}<details class="blk" style="margin-top:8px"><summary><span class="lbl">Source</span></summary><div class="blk-body">${preHtml(input.file_text)}</div></details>`;
@@ -3782,64 +4000,10 @@ svg text{fill:var(--color-text-primary);font-family:var(--font-sans);font-size:1
 .c-green :is(rect,circle,ellipse,path,polygon),:is(rect,circle,ellipse,path,polygon).c-green{fill:#e5f4ea;stroke:#3a8f55}
 `;
 
-/* Draft variants. The model sometimes sends `variants` as a broken string (e.g. "label" or
- * '<parameter name="label">Warm'), while the real text sits in input.body. */
-function composeVariants(input) {
-  if (Array.isArray(input.variants)) return input.variants.filter(v => v && typeof v === 'object');
-  const raw = typeof input.variants === 'string' ? input.variants : '';
-  if (raw) {
-    try { const v = JSON.parse(raw); if (Array.isArray(v)) return v.filter(x => x && typeof x === 'object'); } catch (e) { /* not JSON */ }
-  }
-  if (typeof input.body === 'string' && input.body.trim()) {
-    const label = oneLine(raw.replace(/<[^>]*>/g, ''));
-    return [{ label: label && label !== 'label' && label.length < 60 ? label : '', subject: input.subject, body: input.body }];
-  }
-  return raw ? [{ body: raw }] : [];
-}
-
-// Citation offsets count Unicode code points; JS strings index UTF-16 units.
-function cpToUnits(text, cp) {
-  let units = 0, n = 0;
-  for (const ch of text) { if (n >= cp) break; units += ch.length; n++; }
-  return units;
-}
-
 function simpleBarTable(input) {
   const xs = (input.xAxis && input.xAxis.data) || [];
   const series = input.series || [];
   return `<div class="md"><table><thead><tr><th></th>${series.map(s => `<th>${esc(s.name || '')}</th>`).join('')}</tr></thead><tbody>${xs.map((x, i) => `<tr><td>${esc(x)}</td>${series.map(s => `<td>${esc((s.values || [])[i])}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`;
-}
-
-// path -> tool_use of the create_file that wrote it (to resolve present_files).
-function createdFilesIndex(conv) {
-  if (conv._created) return conv._created;
-  const map = new Map();
-  for (const m of conv.raw.chat_messages || []) {
-    for (const b of (Array.isArray(m.content) ? m.content : [])) {
-      if (b && b.type === 'tool_use' && b.name === 'create_file' && b.input && b.input.path) map.set(b.input.path, b);
-    }
-  }
-  conv._created = map;
-  return map;
-}
-
-function collectOutputs(conv) {
-  const out = [];
-  for (const m of conv.raw.chat_messages || []) {
-    for (const b of (Array.isArray(m.content) ? m.content : [])) {
-      if (!b || b.type !== 'tool_use') continue;
-      const i = b.input || {};
-      if (b.name === 'create_file' && i.path) out.push({ id: b.id, msg: m.uuid, ico: '📄', label: i.path.split('/').pop(), kind: 'file' });
-      else if (b.name === 'artifacts') out.push({ id: b.id, msg: m.uuid, ico: '◧', label: i.title || i.id || 'Artifact', kind: 'artifact' });
-      else if (b.name === 'visualize:show_widget') out.push({ id: b.id, msg: m.uuid, ico: '▦', label: i.title || 'Widget', kind: 'widget' });
-      else if (b.name === 'message_compose_v1') out.push({ id: b.id, msg: m.uuid, ico: '✉', label: i.summary_title || 'Draft', kind: 'draft' });
-    }
-  }
-  for (const id of conv.artRefs || []) {
-    const a = DB.artifactById.get(id);
-    out.push({ art: id, ico: '◧', label: a ? a.title : 'Published artifact ' + id.slice(0, 8), kind: 'published' });
-  }
-  return out;
 }
 
 function outputsBox(conv, outputs) {
@@ -3856,76 +4020,6 @@ function gotoBlock(conv, msgId, target) {
     drawThread(conv, { q: App.route.query.q || '', target: msgId });
   }
   revealBlock(target);
-}
-
-/* ---------- Markdown export ---------- */
-
-function convToMarkdown(conv) {
-  const p = conv.owner;
-  const lines = [];
-  lines.push('# ' + (conv.title || 'Untitled conversation'));
-  lines.push('');
-  lines.push(`- Person: ${p ? p.name : 'unknown'}${p && p.email ? ' <' + p.email + '>' : ''}`);
-  lines.push(`- Started: ${fmtDateTime(conv.created)} · Last message: ${fmtDateTime(conv.lastTs)}`);
-  lines.push(`- Messages: ${conv.msgCount} · Link: https://claude.ai/chat/${conv.id}`);
-  lines.push('');
-  if (conv.summary) { lines.push('## Summary', '', conv.summary.trim(), ''); }
-  lines.push('---', '');
-  const path = currentPath(conv);
-  for (const m of path) lines.push(messageToMarkdown(conv, m), '');
-  const off = conv.msgCount - path.length;
-  if (off > 0) lines.push('---', '', `_${off} message${off === 1 ? '' : 's'} on other branches (edited or regenerated) are not shown here; they are in the .json file._`);
-  return lines.join('\n');
-}
-
-const MD_ATTACH_CAP = 100000;
-
-function fence(text, lang) {
-  // Use a fence longer than any backtick run inside the text.
-  const longest = (String(text).match(/`+/g) || []).reduce((a, s) => Math.max(a, s.length), 0);
-  const f = '`'.repeat(Math.max(3, longest + 1));
-  return f + (lang || '') + '\n' + text + '\n' + f;
-}
-
-function messageToMarkdown(conv, m) {
-  const human = m.sender === 'human';
-  const who = human ? (conv.owner ? conv.owner.name : 'User') : 'Claude';
-  const out = [`### ${human ? '👤' : '🤖'} ${who} — ${fmtDateTime(m.created_at)}`, ''];
-  const blocks = Array.isArray(m.content) ? m.content : [];
-  if (!blocks.length && m.text) out.push(m.text);
-  for (const b of blocks) {
-    if (!b) continue;
-    if (b.type === 'text' && b.text && b.text.trim()) out.push(b.text, '');
-    else if (b.type === 'tool_use') {
-      const i = b.input || {};
-      const s = toolInputSummary(b.name, i);
-      out.push(`> ⚙ ${b.name}${s ? ': ' + oneLine(s).slice(0, 200) : ''}`, '');
-      if (b.name === 'create_file' && i.file_text != null) out.push(fence(i.file_text, codeLangFromPath(i.path)), '');
-      if (b.name === 'artifacts' && i.content) out.push(`**Artifact: ${i.title || ''}**`, '', i.content, '');
-      if (b.name === 'message_compose_v1') {
-        for (const v of composeVariants(i)) {
-          out.push(`**Draft${v.label ? ' — ' + v.label : ''}${i.summary_title ? ': ' + i.summary_title : ''}**`, '');
-          if (v.subject) out.push('Subject: ' + v.subject, '');
-          out.push(String(v.body || ''), '');
-        }
-      }
-      if (b.name === 'ask_user_input_v0' && Array.isArray(i.questions)) {
-        for (const q of i.questions) out.push(`- **${q.question || ''}** ${(Array.isArray(q.options) ? q.options : []).map(o => '`' + (typeof o === 'string' ? o : JSON.stringify(o)) + '`').join(' · ')}`);
-        out.push('');
-      }
-      if (b.name === 'visualize:show_widget' && i.title) out.push(`_Interactive widget: ${i.title}_`, '');
-    }
-  }
-  for (const a of (m.attachments || [])) {
-    const text = a.extracted_content || '';
-    out.push(`> 📎 ${a.file_name || 'Pasted text'} (${fmtBytes(a.file_size || text.length)})`, '');
-    if (text) {
-      out.push(fence(text.length > MD_ATTACH_CAP ? text.slice(0, MD_ATTACH_CAP) : text), '');
-      if (text.length > MD_ATTACH_CAP) out.push(`_Cut at ${fmtBytes(MD_ATTACH_CAP)}; the full text is in the .json file._`, '');
-    }
-  }
-  for (const f of (m.files || [])) if (!(m.attachments || []).some(a => a.file_name === f.file_name)) out.push(`> 📄 ${f.file_name || 'file'} (not in export)`);
-  return out.join('\n');
 }
 
 // Open a block and every collapsed group around it, then scroll to it.
@@ -5048,80 +5142,6 @@ async function exportPerson(p) {
       go.disabled = false;
     }
   });
-}
-
-function datePrefix(t) {
-  if (!t) return '';
-  const d = toDate(t);
-  if (!d) return '';
-  return d.toISOString().slice(0, 10) + ' ';
-}
-
-async function buildPersonZip(p, opts, progress, isCancelled) {
-  const z = new ZipWriter();
-  const short = id => String(id || '').slice(0, 8);
-  // "<date> <title> (<id8>)" with the title cut first, so the id is never lost.
-  const nameOf = (t, title, id) => datePrefix(t) + safeFilename(title, 'Untitled').slice(0, 70).trim() + ' (' + short(id) + ')';
-  // Keep in-zip paths inside their folder: "." and ".." segments become "_".
-  const cleanPath = p => String(p).split('/').filter(Boolean).map(x => (x === '.' || x === '..') ? '_' : safeFilename(x, 'file')).join('/');
-  z.add('README.txt', [
-    `Claude data for ${p.name}${p.email ? ' <' + p.email + '>' : ''}`,
-    `Account id: ${p.id}`,
-    `Made with Claude Export Reader on ${new Date().toISOString()}`,
-    '',
-    'conversations/  one .md (readable) and one .json (original) per chat',
-    'artifacts/      artifact metadata, comments and version files',
-    'projects/       project settings and knowledge files',
-    'design_chats/   Claude Design chats (original JSON)',
-    'memory/         what Claude remembers about this person',
-    'comments.json   comments this person made on artifacts',
-  ].join('\n'));
-  z.add('person.json', JSON.stringify({
-    id: p.id, name: p.name, email: p.email, phone: p.phone || null, inUsersJson: p.known,
-    counts: { conversations: p.conversations.length, messages: p.messageCount, artifacts: p.artifacts.length, projects: p.projects.length, designChats: p.designChats.length, memoryFiles: p.memory ? p.memory.files.length : 0, comments: p.comments.length },
-    firstActivity: p.first ? new Date(p.first).toISOString() : null, lastActivity: p.last ? new Date(p.last).toISOString() : null,
-  }, null, 2));
-
-  let i = 0;
-  for (const c of p.conversations) {
-    if (isCancelled()) return null;
-    const base = 'conversations/' + nameOf(c.created, c.title, c.id);
-    z.add(base + '.md', convToMarkdown(c));
-    z.add(base + '.json', JSON.stringify(c.raw, null, 2));
-    if (++i % 20 === 0) { progress(`Conversations ${i} / ${p.conversations.length}`); await new Promise(r => setTimeout(r, 0)); }
-  }
-  for (const x of p.projects) {
-    const base = 'projects/' + nameOf(0, x.name, x.id) + '/';
-    z.add(base + 'project.json', JSON.stringify(x.raw, null, 2));
-    for (const d of x.docs) z.add(base + 'docs/' + cleanPath(d.filename), d.content);
-  }
-  for (const d of p.designChats) {
-    z.add('design_chats/' + nameOf(d.created, (d.project.name ? d.project.name + ' - ' : '') + d.title, d.id) + '.json', JSON.stringify(d.raw, null, 2));
-  }
-  if (p.memory) {
-    const m = p.memory;
-    if (m.conversationsMemory) z.add('memory/chat-memory.md', m.conversationsMemory);
-    for (const pm of m.projectMemories) z.add('memory/project-memories/' + safeFilename(projectName(pm.projectId) || pm.projectId, 'project') + '.md', pm.text);
-    for (const f of m.files) z.add('memory/files/' + cleanPath(f.path), f.content);
-  }
-  if (p.comments.length) {
-    z.add('comments.json', JSON.stringify(p.comments.map(c => ({ artifactId: c.artifact.id, artifactTitle: c.artifact.title, tab: c.thread && c.thread.tab, quoted: c.thread && c.thread.quoted_text, postedByClaude: c.byAgent, comment: c.comment })), null, 2));
-  }
-  i = 0;
-  for (const a of p.artifacts) {
-    if (isCancelled()) return null;
-    const base = 'artifacts/' + nameOf(0, a.title, a.id) + '/';
-    const skip = rel => /\/artifact-type\/|\/SKILL\.md$/.test(rel);
-    for (const [rel, node] of a.files) {
-      if (skip(rel)) continue;
-      const vm = /^versions\/([^/.]+(?:-[0-9a-f]+)?)/.exec(rel);
-      if (vm && !opts.allVersions && vm[1] !== a.activeVersion) continue;
-      z.add(base + rel, await node.bytes());
-    }
-    progress(`Artifacts ${++i} / ${p.artifacts.length}`);
-  }
-  progress('Packing…');
-  return z.blob();
 }
 
 </script>

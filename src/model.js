@@ -127,9 +127,15 @@ function addUsers(list) {
   }
 }
 
-const ROOT_PARENT = '00000000-0000-4000-8000-000000000000';
-// Same rules as the "What Claude produced here" box in the conversation view.
-const OUTPUT_TOOLS = /^(create_file|artifacts|visualize:show_widget|message_compose_v1)$/;
+/* Tools whose output the person saw: name -> a function that gives the output's chip in the
+ * "What Claude produced here" box (collectOutputs), or null. The list badge counts every call
+ * of these tools, so it also counts a create_file without a path, which the box leaves out. */
+const OUTPUTS = new Map([
+  ['create_file', i => (i.path ? { ico: '📄', label: i.path.split('/').pop(), kind: 'file' } : null)],
+  ['artifacts', i => ({ ico: '◧', label: i.title || i.id || 'Artifact', kind: 'artifact' })],
+  ['visualize:show_widget', i => ({ ico: '▦', label: i.title || 'Widget', kind: 'widget' })],
+  ['message_compose_v1', i => ({ ico: '✉', label: i.summary_title || 'Draft', kind: 'draft' })],
+]);
 // Artifact ids referenced from chat JSON: published links and tool result ids.
 const RE_ART_REF = /(?:\/artifact\/|artifact_id\\?"\s*:\s*\\?")([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/g;
 
@@ -154,7 +160,7 @@ function addConversation(c, source, rawText) {
     if (blocks.length || (m.text && m.text.trim()) || (m.files && m.files.length) || (m.attachments && m.attachments.length)) contentful++;
     if (m.sender === 'human') files += (m.files ? m.files.length : 0);   // assistant files are tool screenshots
     for (const b of blocks) {
-      if (b && b.type === 'tool_use') { tools++; if (OUTPUT_TOOLS.test(b.name || '')) outputs++; }
+      if (b && b.type === 'tool_use') { tools++; if (OUTPUTS.has(String(b.name || ''))) outputs++; }
       else if (!firstHuman && m.sender === 'human' && b && b.type === 'text' && b.text && b.text.trim()) firstHuman = b.text;
       else if (!firstReply && m.sender === 'assistant' && b && b.type === 'text' && b.text && b.text.trim()) firstReply = b.text;
     }

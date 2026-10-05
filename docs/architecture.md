@@ -25,11 +25,13 @@ For the format of the export itself, see [export-format.md](export-format.md).
 | `src/render.js` | Escaping (`esc`), formatting of dates, numbers and sizes, Markdown (`mdToHtml`, `mdBlock`), sanitizing, search highlighting, the sandbox frame shim, small helpers (toast, copy, download, MIME types). |
 | `src/ui.js` | `App` (route and focus), `focusPerson()` / `focusScope()`, the `$` / `$$` shortcuts, and the lifetime of one drawn page: `VIEW`, `after()`, `viewKey()`, `on()` for click behaviour, and `blk()` for collapsible blocks. |
 | `src/model.js` | The in-memory model: `Person`, the `DB` object, `classify()`, one `add…()` function per record type, `importExport()` (the import pipeline), `finalize()` (links and derived data) and small queries such as `scopeOf()`. |
+| `src/conversation.js` | Conversations as data: the message tree and branches (`buildTree()`, `currentPath()`, `selectBranchFor()`), tool names and inputs, and the outputs Claude produced (`collectOutputs()`). |
 | `src/search.js` | The search engine (`runSearch()`), the searchable text of each record and the search index. No DOM. |
+| `src/export.js` | Files made for download: a conversation as Markdown (`convToMarkdown()`) and the per-person zip (`buildPersonZip()`). |
 | `src/views.js` | The kind registry (`KINDS`: routes, labels, icons, counts and views of the five record kinds), router dispatch (`renderRoute`), sidebar, the shared sortable table, start page, people list and person page. |
-| `src/views-conv.js` | Conversation list, message tree and branches, message and tool rendering, the "What Claude produced here" box, Markdown export. |
+| `src/views-conv.js` | Conversation list and thread: message and tool rendering, branch arrows, the "What Claude produced here" box. |
 | `src/views-art.js` | Artifact list and page, version viewer, asset inlining, Slides, Design, Claude Docs pages, artifact comments. |
-| `src/views-misc.js` | Projects, memory, design chats, the search page, "About this export", manifest download links, and the per-person zip. |
+| `src/views-misc.js` | Projects, memory, design chats, the search page, "About this export", manifest download links, and the per-person download dialog. |
 | `src/demo.js` | The made-up sample export ("Try it with sample data"). |
 | `src/app.js` | Start-up: theme, loading screen, file pickers, hash routing, focus mode, global events. |
 
@@ -202,7 +204,7 @@ The app uses hash routes, so it works from `file://` and a reload keeps your pla
 
 ## Per-person download
 
-`buildPersonZip()` writes one zip with a README, `person.json`, every conversation as Markdown and JSON, projects with their docs, design chats, memory, comments, and artifact files (only the current version unless you tick "every version"). Folder and file names are `<date> <title> (<short id>)`, cleaned so they work on every file system. Paths of project docs and memory files are cleaned too, so they cannot escape their folder. Artifact files keep their path from the export (`versions/<vid>/…`).
+`buildPersonZip()` (in `src/export.js`) writes one zip with a README, `person.json`, every conversation as Markdown and JSON, projects with their docs, design chats, memory, comments, and artifact files (only the current version unless you tick "every version"). Folder and file names are `<date> <title> (<short id>)`, cleaned so they work on every file system. Paths of project docs and memory files are cleaned too, so they cannot escape their folder. Artifact files keep their path from the export (`versions/<vid>/…`).
 
 ## Performance choices, in short
 
