@@ -5243,7 +5243,12 @@ async function exportPerson(p) {
  * Everything here is invented: the company (Northwind Labs), its people, their chats,
  * files and numbers. Ids come from fixed keys and every date is fixed, so each run builds
  * exactly the same bytes. It runs in the browser and in Node 20+: it needs only File,
- * Blob and TextEncoder, plus ZipWriter from zip.js. */
+ * Blob and TextEncoder, plus ZipWriter from zip.js.
+ *
+ * This file has the helpers, the people and the packaging (demoExportFiles). The content
+ * is in demo-chats.js, demo-records.js (projects, memory, design chats) and
+ * demo-artifacts.js, which load after it. All scripts share one global scope, so every
+ * top-level name starts with demo or DEMO_. */
 'use strict';
 
 /* ---------- Deterministic helpers (no Math.random, no Date.now) ---------- */
@@ -5379,6 +5384,55 @@ function demoUsersJson() {
     uuid: demoUser(key), full_name: name, email_address: local + '@northwind.example', verified_phone_number: phone || null,
   }));
 }
+
+/* ---------- Packaging ---------- */
+
+function demoZip(name, entries) {
+  const z = new ZipWriter();
+  // Real exports date every entry 1980-01-01 00:00. So does this, and the bytes never change.
+  z.dosTime = 0;
+  z.dosDate = (1 << 5) | 1;
+  for (const [path, data] of entries) z.add(path, data);
+  return new File([z.blob()], name, { type: 'application/zip', lastModified: demoMs(DEMO_EXPORTED) });
+}
+
+// Returns the export as File objects: the zip parts plus the manifest, like a real download.
+async function demoExportFiles() {
+  const json = v => JSON.stringify(v, null, 2);
+  const parts = [
+    ['light_metadata', [['users.json', json(demoUsersJson())]]],
+    ['projects', demoProjects().map(p => ['projects/' + p.uuid + '.json', json(p)])],
+    ['memories', demoMemories().map(m => ['memories/' + m.account_uuid + '.json', json(m)])],
+    ['design_chats', demoDesignChats().map(d => ['design_chats/' + d.uuid + '.json', json(d)])],
+    ['frames', demoArtifactSpecs().flatMap(demoArtifactEntries)],
+    ['conversations', [['conversations.json', JSON.stringify(demoConversations())]]],
+  ];
+  const zips = parts.map(([category, entries]) => demoZip(category + '-000.zip', entries));
+
+  const org = demoUuid('org:northwind');
+  const exported = demoMs(DEMO_EXPORTED);
+  const manifest = {
+    instructions: 'Download each file with its export_url. The links stop working 24 hours after the export was created.',
+    created_at: demoIso(exported, 'p6'),
+    total_files: parts.length,
+    // Made-up links: they point at no real download, and they expired long ago.
+    data_files: parts.map(([category], i) => ({
+      batch_index: i, export_url: 'https://claude.ai/export/' + org + '/download/sample-' + demoChars('link:' + category, 24, DEMO_B62),
+      category, part: 0, filename: category + '-000.zip',
+    })),
+    version: '1.0',
+  };
+  const stamp = new Date(exported).toISOString().slice(0, 19).replace(/[T:]/g, '-');
+  const manifestName = 'manifest-' + org + '-' + Math.floor(exported / 1000) + '-' + demoChars('manifest', 8, DEMO_HEX) + '-' + stamp + '.json';
+  zips.push(new File([json(manifest)], manifestName, { type: 'application/json', lastModified: exported }));
+  return zips;
+}
+
+</script>
+<script>/* src/demo-chats.js */
+/* Sample data, part 2: the conversations, and the builders that turn short specs into
+ * the shape of conversations.json. Made up, like everything in demo.js. */
+'use strict';
 
 /* ---------- Conversations: builders ---------- */
 
@@ -6297,6 +6351,12 @@ function demoLongDate(s) {
   return days[d.getUTCDay()] + ', ' + months[d.getUTCMonth()] + ' ' + d.getUTCDate() + ', ' + d.getUTCFullYear();
 }
 
+</script>
+<script>/* src/demo-records.js */
+/* Sample data, part 3: projects, memory and Claude Design chats. Made up, like
+ * everything in demo.js. */
+'use strict';
+
 /* ---------- Projects ---------- */
 
 function demoProjects() {
@@ -6794,6 +6854,12 @@ function demoDesignChats() {
   ];
 }
 
+</script>
+<script>/* src/demo-artifacts.js */
+/* Sample data, part 4: the artifacts (frames zip) with their versions, files and
+ * comments. Made up, like everything in demo.js. */
+'use strict';
+
 /* ---------- Artifacts (frames) ---------- */
 
 const DEMO_PAGE_CSS = demoLines(
@@ -7250,49 +7316,6 @@ function demoArtifactEntries(spec) {
   if (spec.comments) entries.push([base + 'comments.json', JSON.stringify(spec.comments)]);
   if (spec.threads) entries.push([base + 'artifact_comments.json', JSON.stringify({ threads: spec.threads })]);
   return entries;
-}
-
-/* ---------- Packaging ---------- */
-
-function demoZip(name, entries) {
-  const z = new ZipWriter();
-  // Real exports date every entry 1980-01-01 00:00. So does this, and the bytes never change.
-  z.dosTime = 0;
-  z.dosDate = (1 << 5) | 1;
-  for (const [path, data] of entries) z.add(path, data);
-  return new File([z.blob()], name, { type: 'application/zip', lastModified: demoMs(DEMO_EXPORTED) });
-}
-
-// Returns the export as File objects: the zip parts plus the manifest, like a real download.
-async function demoExportFiles() {
-  const json = v => JSON.stringify(v, null, 2);
-  const parts = [
-    ['light_metadata', [['users.json', json(demoUsersJson())]]],
-    ['projects', demoProjects().map(p => ['projects/' + p.uuid + '.json', json(p)])],
-    ['memories', demoMemories().map(m => ['memories/' + m.account_uuid + '.json', json(m)])],
-    ['design_chats', demoDesignChats().map(d => ['design_chats/' + d.uuid + '.json', json(d)])],
-    ['frames', demoArtifactSpecs().flatMap(demoArtifactEntries)],
-    ['conversations', [['conversations.json', JSON.stringify(demoConversations())]]],
-  ];
-  const zips = parts.map(([category, entries]) => demoZip(category + '-000.zip', entries));
-
-  const org = demoUuid('org:northwind');
-  const exported = demoMs(DEMO_EXPORTED);
-  const manifest = {
-    instructions: 'Download each file with its export_url. The links stop working 24 hours after the export was created.',
-    created_at: demoIso(exported, 'p6'),
-    total_files: parts.length,
-    // Made-up links: they point at no real download, and they expired long ago.
-    data_files: parts.map(([category], i) => ({
-      batch_index: i, export_url: 'https://claude.ai/export/' + org + '/download/sample-' + demoChars('link:' + category, 24, DEMO_B62),
-      category, part: 0, filename: category + '-000.zip',
-    })),
-    version: '1.0',
-  };
-  const stamp = new Date(exported).toISOString().slice(0, 19).replace(/[T:]/g, '-');
-  const manifestName = 'manifest-' + org + '-' + Math.floor(exported / 1000) + '-' + demoChars('manifest', 8, DEMO_HEX) + '-' + stamp + '.json';
-  zips.push(new File([json(manifest)], manifestName, { type: 'application/json', lastModified: exported }));
-  return zips;
 }
 
 </script>

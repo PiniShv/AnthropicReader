@@ -163,7 +163,10 @@ src/
   views-art.js       artifact list and page, versions, Docs pages
   views-design.js    design chat list and thread
   views-misc.js      projects, memory, search page, about, download dialog
-  demo.js            the made-up sample export
+  demo.js            the made-up sample export: helpers, people and packaging
+  demo-chats.js      sample conversations
+  demo-records.js    sample projects, memory and design chats
+  demo-artifacts.js  sample artifacts
   app.js             start-up, loading screen, routing, global events
 vendor/              marked and DOMPurify, vendored (see THIRD_PARTY_NOTICES.md)
 scripts/             build script and sample-export script

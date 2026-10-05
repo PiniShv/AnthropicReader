@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Writes the built-in sample export (src/demo.js) as real files, so you can try the reader on
+// Writes the built-in sample export (src/demo*.js) as real files, so you can try the reader on
 // zips without a real export: the six zip parts plus the manifest, like a real download.
 // All data is made up. No dependencies; Node 20+.
 //
@@ -10,15 +10,17 @@ import vm from 'node:vm';
 import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { dirname, join, resolve, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { APP_SCRIPTS } from './build.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const OUT = resolve(process.argv[2] || join(ROOT, 'demo'));
 
-// src/*.js are classic browser scripts that share one global scope. Run the two we need in
-// a fresh context, the same way the page runs them, with the few web APIs they use.
+// src/*.js are classic browser scripts that share one global scope. Run the ones we need
+// (zip.js and the sample-data files, in build order) in a fresh context, the same way the
+// page runs them, with the few web APIs they use.
 const ctx = vm.createContext({ console, TextEncoder, TextDecoder, Blob, File });
 vm.runInContext('globalThis.window = globalThis;', ctx);
-for (const file of ['src/zip.js', 'src/demo.js']) {
+for (const file of ['src/zip.js', ...APP_SCRIPTS.filter(f => f.startsWith('src/demo'))]) {
   vm.runInContext(readFileSync(join(ROOT, file), 'utf8'), ctx, { filename: join(ROOT, file) });
 }
 

@@ -34,7 +34,10 @@ For the format of the export itself, see [export-format.md](export-format.md).
 | `src/views-art.js` | Artifact list and page, version viewer (Preview, Source and Files tabs), Claude Docs pages, artifact comments. |
 | `src/views-design.js` | Claude Design chats: list and thread (prompts, tool calls, questions, attachments). |
 | `src/views-misc.js` | Projects, memory, the search page, "About this export", manifest download links, and the per-person download dialog. |
-| `src/demo.js` | The made-up sample export ("Try it with sample data"). |
+| `src/demo.js` | The made-up sample export ("Try it with sample data"): deterministic helpers, the people, and the packaging into zips (`demoExportFiles()`). |
+| `src/demo-chats.js` | Sample conversations, and the builders that turn short specs into `conversations.json` records. |
+| `src/demo-records.js` | Sample projects, memory and Claude Design chats. |
+| `src/demo-artifacts.js` | Sample artifacts: versions, files and comments. |
 | `src/app.js` | Start-up: theme, loading screen, file pickers, hash routing, focus mode, global events. |
 
 `src/template.html` holds the landing screen and the empty app shell (top bar, sidebar, main area). `src/styles.css` holds all styles, with light and dark themes as CSS custom properties.

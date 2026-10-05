@@ -74,7 +74,7 @@ Claude exports change over time. When you find a field the reader does not show 
 3. **Show it.** Conversation blocks and tools are drawn in `src/views-conv.js` (`assistantBody`, `toolCallHtml`, `specialToolHtml`, `toolInputHtml`, `toolResultHtml`). Design chats are in `src/views-design.js` (`designMessageHtml`, `designToolHtml`, `designAttachments`). Artifacts are in `src/views-art.js`, and their previews are built in `src/preview.js`. Unknown blocks already fall back to a collapsed JSON view, so nothing is lost while you work. A whole new kind of record also needs an entry in `KINDS` (`src/views.js`): it gives the kind its routes, sidebar link, person tab and search tab.
 4. **Make it searchable** if it holds text people will look for (`msgProse` / `msgDeep` and `runSearch` in `src/search.js`).
 5. **Include it in the per-person download** if it belongs to a person (`buildPersonZip` in `src/export.js`).
-6. **Add it to the sample data** in `src/demo.js`, with invented content, so others can see it.
+6. **Add it to the sample data**, with invented content, so others can see it: conversations in `src/demo-chats.js`, projects, memory and design chats in `src/demo-records.js`, artifacts in `src/demo-artifacts.js` (shared helpers and packaging are in `src/demo.js`).
 7. **Add a test** in `test/`. `test/harness.mjs` loads the browser scripts into a Node `vm` context (there is no real DOM), so test the model and parsing, not the drawing.
 8. **Document it** in [docs/export-format.md](docs/export-format.md), again with invented examples only.
 
