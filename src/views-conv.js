@@ -21,7 +21,7 @@ function convTable(list, key, showOwner) {
   const rows = CONV_OPTS.hideEmpty ? list.filter(c => !c.empty) : list;
   const columns = [
     {
-      id: 'title', label: 'Conversation', cls: 'title', sortVal: c => (c.title || '').toLowerCase(),
+      id: 'title', label: 'Conversation', cls: 'title', link: true, asc: true, sortVal: c => (c.title || '').toLowerCase(),
       html: c => `<div dir="auto">${c.title ? esc(c.title) : '<span class="faint">Untitled conversation</span>'}${c.titleIsDerived && c.title ? ' <span class="faint" title="No title in export; first message shown">·</span>' : ''}</div>
         ${c.summary ? `<div class="snip" dir="auto">${esc(truncate(oneLine(stripMd(c.summary.replace(/^\*\*Conversation Overview\*\*\s*/i, ''))), 240))}</div>` : ''}
         ${convBadges(c) ? `<div class="row wrap" style="margin-top:5px;gap:4px">${convBadges(c)}</div>` : ''}`,

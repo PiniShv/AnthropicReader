@@ -19,10 +19,10 @@ function artifactCommentCount(a) {
   return n;
 }
 
-function artifactTable(list, key, showOwner) {
+function artifactTable(list, key, showOwner, facet) {
   const columns = [
     {
-      id: 'title', label: 'Title', cls: 'title', sortVal: a => a.title.toLowerCase(),
+      id: 'title', label: 'Title', cls: 'title', link: true, asc: true, sortVal: a => a.title.toLowerCase(),
       html: a => `<div dir="auto">${esc(a.title)}</div>${a.description && !TYPE_BLURB.test(a.description) && a.description !== a.title ? `<div class="snip" dir="auto">${esc(truncate(a.description, 200))}</div>` : ''}
         <div class="row wrap" style="margin-top:5px;gap:4px"><span class="chip">${esc(a.contentType)}</span>${visChip(a)}${artifactCommentCount(a) ? `<span class="chip">🗨 ${artifactCommentCount(a)}</span>` : ''}${a.mentionedIn && a.mentionedIn.length ? `<span class="chip" title="Linked from conversations">💬 ${a.mentionedIn.length}</span>` : ''}</div>`,
     },
@@ -31,7 +31,7 @@ function artifactTable(list, key, showOwner) {
   columns.push(COL.num('versions', 'Versions', a => a.versions.length));
   columns.push(COL.date('updated', 'Updated', a => a.updated));
   return tableHtml({
-    key, rows: list, columns, sort: 'updated', dir: -1, noun: 'artifact', facet: x => x.contentType,
+    key, rows: list, columns, sort: 'updated', dir: -1, noun: 'artifact', facet,
     href: a => '#/a/' + encodeURIComponent(a.id),
     text: a => [a.title, a.description, a.contentType, a.kind, a.visibility, VIS_LABEL[a.visibility], a.owner && a.owner.name, a.owner && a.owner.email, a.id, ...a.versions.map(v => v.title)].join(' '),
     placeholder: 'Filter: title, type (slides, doc, html), visibility, person…',
@@ -42,17 +42,10 @@ function artifactTable(list, key, showOwner) {
 function viewArtifacts() {
   const fp = focusPerson();
   const list = fp ? fp.artifacts : DB.artifacts;
-  const byType = new Map();
-  for (const a of list) byType.set(a.contentType, (byType.get(a.contentType) || 0) + 1);
-  const key = 'art-' + (fp ? fp.id : 'all');
-  const cur = (TABLE_STATE.get(key) || {}).facet || '';
-  const chips = Array.from(byType.entries()).sort((a, b) => b[1] - a[1])
-    .map(([t, n]) => `<button class="chip${cur === t ? ' on' : ''}" type="button" data-action="table-facet" data-facet-table="${esc(key)}" data-value="${esc(t)}" title="Show only this type (click again for all)">${esc(t)} <b>${n}</b></button>`).join(' ');
   return `<div class="page">
     <div class="page-head"><div class="grow"><h1>Artifacts & pages</h1>
       <div class="sub">${fp ? `<span>Only ${personLink(fp)}’s</span>` : ''}<span>${plural(list.length, 'artifact')}</span>${!DB.artifacts.length ? '<span>Load the <b>frames-*.zip</b> files to see artifacts.</span>' : ''}</div></div></div>
-    ${chips ? `<div class="search-tabs">${chips}</div>` : ''}
-    ${artifactTable(list, key, !fp)}
+    ${artifactTable(list, 'art-' + (fp ? fp.id : 'all'), !fp, { of: a => a.contentType })}
   </div>`;
 }
 
@@ -550,16 +543,6 @@ function artAction(action, el) {
     case 'page-tab': navigate('#/a/' + encodeURIComponent(el.dataset.art) + '?tab=' + encodeURIComponent(el.dataset.tab), true); return true;
     case 'page-dl': if (a && a.pageNode) a.pageNode.blob('text/markdown').then(b => downloadBlob(b, safeFilename(a.title, 'page') + '.md')); return true;
     case 'page-copy': if (a && a.pageNode) a.pageNode.text().then(copyText); return true;
-    case 'table-facet': {
-      const key = el.dataset.facetTable;
-      const st = TABLE_STATE.get(key);
-      if (!st) return true;
-      st.facet = st.facet === el.dataset.value ? '' : el.dataset.value;
-      st.limit = (TABLES.get(key) || {}).page || 200;
-      drawTable(key);
-      $$('[data-action="table-facet"]').forEach(c => c.classList.toggle('on', c.dataset.value === st.facet));
-      return true;
-    }
   }
   return false;
 }

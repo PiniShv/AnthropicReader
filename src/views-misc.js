@@ -5,7 +5,7 @@
 
 function projectTable(list, key, showOwner) {
   const columns = [{
-    id: 'name', label: 'Project', cls: 'title', sortVal: x => (x.name || '').toLowerCase(),
+    id: 'name', label: 'Project', cls: 'title', link: true, asc: true, sortVal: x => (x.name || '').toLowerCase(),
     html: x => `<div dir="auto">${x.name ? esc(x.name) : '<i class="faint">Untitled project</i>'}</div>
       ${x.description ? `<div class="snip" dir="auto">${esc(truncate(x.description, 200))}</div>` : ''}
       <div class="row wrap" style="margin-top:5px;gap:4px">${x.isStarter ? '<span class="chip">Starter</span>' : ''}${!x.isPrivate ? '<span class="chip on">Shared</span>' : ''}${projectMemoryOf(x).length ? '<span class="chip">🧠 memory</span>' : ''}</div>`,
@@ -98,7 +98,7 @@ function viewMemories() {
       href: m => '#/memory/' + encodeURIComponent(m.id),
       text: m => [m.owner && m.owner.name, m.owner && m.owner.email, m.conversationsMemory, ...m.projectMemories.map(x => x.text), ...m.files.map(f => f.path + ' ' + f.content)].join(' '),
       columns: [
-        { id: 'owner', label: 'Person', sortVal: m => m.owner.name.toLowerCase(), html: m => whoCell(m.owner) },
+        { id: 'owner', label: 'Person', asc: true, sortVal: m => m.owner.name.toLowerCase(), html: m => whoCell(m.owner) },
         { id: 'profile', label: 'Profile', cls: 'title', html: m => { const pf = m.files.find(f => f.path === '/profile.md'); const t = pf ? pf.body : m.conversationsMemory; return `<div class="snip" dir="auto" style="font-weight:400">${esc(truncate(oneLine(stripMd(String(t || '').replace(/- \[stated\]/g, ''))), 220))}</div>`; } },
         COL.num('files', 'Files', m => m.files.length),
         { id: 'chat', label: 'Chat memory', html: m => m.conversationsMemory ? '✓' : '<span class="faint">—</span>', sortVal: m => (m.conversationsMemory ? 1 : 0), cls: 'num' },
@@ -194,7 +194,7 @@ function memoryText(text, mem) {
 
 function designTable(list, key, showOwner) {
   const columns = [{
-    id: 'title', label: 'Design chat', cls: 'title', sortVal: d => d.title.toLowerCase(),
+    id: 'title', label: 'Design chat', cls: 'title', link: true, asc: true, sortVal: d => d.title.toLowerCase(),
     html: d => `<div dir="auto">${esc(d.title)}</div><div class="row wrap" style="margin-top:5px;gap:4px"><span class="chip" dir="auto">✎ ${esc(d.project.name || 'design project')}</span>${d.msgCount ? '' : '<span class="chip warn">empty</span>'}${d.authors && d.authors.length > 1 ? `<span class="chip">${d.authors.length} people</span>` : ''}</div>`,
   }];
   if (showOwner) columns.push(COL.owner);

@@ -100,33 +100,84 @@ function renderSidebar() {
 
 /* ---------- Generic sortable / filterable table ---------- */
 
-const TABLES = new Map();
+// Sort, filter, type chip and page size of each table (by spec.key), kept across visits.
 const TABLE_STATE = new Map();
 
-/* spec: { key, rows, columns:[{id,label,cls,thCls,sortVal,html}], href(row), text(row),
- *         sort:'id', dir:-1|1, page:200, empty:'…', placeholder:'Filter…', extraToolbar:'' } */
+/* spec: { key, rows, columns:[{id,label,cls,thCls,sortVal,html,link,asc}], href(row), text(row),
+ *         sort:'id', dir:-1|1, page:200, empty:'…', placeholder:'Filter…', extraToolbar:'', facet:{of(row)} }
+ * link: the cell is a real link, so rows open from the keyboard and screen readers.
+ * asc: the first click sorts A to Z. facet: chips above the toolbar, one per value of of(row). */
 function tableHtml(spec) {
-  const st = TABLE_STATE.get(spec.key) || { sort: spec.sort, dir: spec.dir || -1, filter: '', limit: spec.page || 200 };
+  const st = TABLE_STATE.get(spec.key) || { sort: spec.sort, dir: spec.dir || -1, filter: '', facet: '', limit: spec.page || 200 };
   TABLE_STATE.set(spec.key, st);
-  TABLES.set(spec.key, spec);
-  after(() => wireTable(spec.key));
-  return `<div class="toolbar">
-      <input class="input filter" type="search" data-table-filter="${esc(spec.key)}" placeholder="${esc(spec.placeholder || 'Filter…')}" value="${esc(st.filter)}" aria-label="Filter">
+  const id = 'tbl' + ++VIEW.n;
+  const chips = spec.facet ? facetChipsHtml(spec, st) : '';
+  after(() => {
+    // No wrapper element (it would change the page): the toolbar sits right before the rows.
+    const wrap = document.getElementById(id);
+    if (!wrap) return;   // the view failed after this table was made
+    const bar = wrap.previousElementSibling;
+    // Filter text per row, made again on each page draw, so names changed by a later import match.
+    mountTable({ spec, st, wrap, bar, chips: chips ? bar.previousElementSibling : null, ft: new WeakMap() });
+  });
+  return `${chips}<div class="toolbar">
+      <input class="input filter" type="search" placeholder="${esc(spec.placeholder || 'Filter…')}" value="${esc(st.filter)}" aria-label="Filter">
       ${spec.extraToolbar || ''}
-      <span class="count-note" data-table-count="${esc(spec.key)}"></span>
+      <span class="count-note"></span>
     </div>
-    <div class="table-wrap" data-table="${esc(spec.key)}"></div>`;
+    <div class="table-wrap" id="${id}"></div>`;
 }
 
-function tableRows(spec, st) {
+// One chip per facet value with its count, most common first.
+function facetChipsHtml(spec, st) {
+  const counts = new Map();
+  for (const r of spec.rows) { const v = spec.facet.of(r); counts.set(v, (counts.get(v) || 0) + 1); }
+  if (!counts.size) return '';
+  return `<div class="search-tabs">${Array.from(counts).sort((a, b) => b[1] - a[1])
+    .map(([v, n]) => `<button class="chip${st.facet === v ? ' on' : ''}" type="button" data-facet="${esc(v)}" title="Show only this type (click again for all)">${esc(v)} <b>${n}</b></button>`).join(' ')}</div>`;
+}
+
+function mountTable(t) {
+  const { spec, st, wrap, bar, chips } = t;
+  const input = bar.querySelector('input.filter');
+  let timer = null;
+  input.addEventListener('input', () => {
+    clearTimeout(timer);
+    timer = setTimeout(() => { st.filter = input.value; st.limit = spec.page || 200; drawTable(t); }, 120);
+  });
+  wrap.addEventListener('click', e => {
+    const th = e.target.closest('th[data-sort]');
+    if (th) {
+      const id = th.dataset.sort;
+      if (st.sort === id) st.dir = -st.dir;
+      else { st.sort = id; st.dir = spec.columns.find(c => c.id === id).asc ? 1 : -1; }
+      drawTable(t);
+      return;
+    }
+    if (e.target.closest('[data-more]')) { st.limit += spec.page || 200; drawTable(t); }
+  });
+  if (chips) {
+    chips.addEventListener('click', e => {
+      const c = e.target.closest('[data-facet]');
+      if (!c) return;
+      st.facet = st.facet === c.dataset.facet ? '' : c.dataset.facet;
+      st.limit = spec.page || 200;
+      drawTable(t);
+    });
+  }
+  drawTable(t);
+}
+
+function tableRows({ spec, st, ft }) {
   let rows = spec.rows;
   const f = st.filter.trim().toLowerCase();
   if (f) {
     const terms = f.split(/\s+/);
-    rows = rows.filter(r => { const t = (r._ft || (r._ft = spec.text(r).toLowerCase())); return terms.every(x => t.includes(x)); });
+    const text = r => { let s = ft.get(r); if (s == null) ft.set(r, s = spec.text(r).toLowerCase()); return s; };
+    rows = rows.filter(r => { const s = text(r); return terms.every(x => s.includes(x)); });
   }
   // Exact-match facet (e.g. artifact type chips), separate from the free-text filter.
-  if (spec.facet && st.facet) rows = rows.filter(r => spec.facet(r) === st.facet);
+  if (spec.facet && st.facet) rows = rows.filter(r => spec.facet.of(r) === st.facet);
   const col = spec.columns.find(c => c.id === st.sort);
   if (col && col.sortVal) {
     const dir = st.dir;
@@ -139,59 +190,28 @@ function tableRows(spec, st) {
   return rows;
 }
 
-function drawTable(key) {
-  const spec = TABLES.get(key);
-  const st = TABLE_STATE.get(key);
-  const wrap = document.querySelector(`.table-wrap[data-table="${CSS.escape(key)}"]`);
-  if (!spec || !wrap) return;
-  const rows = tableRows(spec, st);
+function drawTable(t) {
+  const { spec, st, wrap, bar, chips } = t;
+  const rows = tableRows(t);
   const shown = rows.slice(0, st.limit);
   const head = spec.columns.map(c => {
     const sortable = !!c.sortVal;
     const arrow = st.sort === c.id ? `<span class="arrow">${st.dir < 0 ? '▼' : '▲'}</span>` : '';
     return `<th class="${sortable ? 'sortable ' : ''}${c.thCls || c.cls || ''}" ${sortable ? `data-sort="${c.id}"` : ''}>${esc(c.label)}${arrow}</th>`;
   }).join('');
-  // The title cell is a real link, so rows open from the keyboard and screen readers.
-  const cell = (c, r) => c.id === 'title' || c.id === 'name'
-    ? `<a class="cell-link" href="${esc(spec.href(r))}">${c.html(r)}</a>` : c.html(r);
+  const cell = (c, r) => c.link ? `<a class="cell-link" href="${esc(spec.href(r))}">${c.html(r)}</a>` : c.html(r);
   const body = shown.map(r => `<tr data-href="${esc(spec.href(r))}">${spec.columns.map(c => `<td class="${c.cls || ''}">${cell(c, r)}</td>`).join('')}</tr>`).join('');
   wrap.innerHTML = rows.length
     ? `<table class="list"><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table>` +
-      (rows.length > shown.length ? `<div class="more-row"><button class="btn small" type="button" data-table-more="${esc(key)}">Show ${fmtNum(Math.min(spec.page || 200, rows.length - shown.length))} more (${fmtNum(rows.length - shown.length)} left)</button></div>` : '')
+      (rows.length > shown.length ? `<div class="more-row"><button class="btn small" type="button" data-more>Show ${fmtNum(Math.min(spec.page || 200, rows.length - shown.length))} more (${fmtNum(rows.length - shown.length)} left)</button></div>` : '')
     : `<div class="empty">${st.filter || st.facet ? 'Nothing matches the filter.' : esc(spec.empty || 'Nothing here.')}</div>`;
-  const cnt = document.querySelector(`[data-table-count="${CSS.escape(key)}"]`);
-  if (cnt) cnt.textContent = st.filter || st.facet ? `${fmtNum(rows.length)} of ${fmtNum(spec.rows.length)}` : plural(spec.rows.length, spec.noun || 'item', spec.nounPlural);
-}
-
-function wireTable(key) {
-  drawTable(key);
-  const input = document.querySelector(`[data-table-filter="${CSS.escape(key)}"]`);
-  const wrap = document.querySelector(`.table-wrap[data-table="${CSS.escape(key)}"]`);
-  if (input) {
-    let t = null;
-    input.addEventListener('input', () => {
-      clearTimeout(t);
-      t = setTimeout(() => { const st = TABLE_STATE.get(key); st.filter = input.value; st.limit = TABLES.get(key).page || 200; drawTable(key); }, 120);
-    });
-  }
-  if (wrap) {
-    wrap.addEventListener('click', e => {
-      const th = e.target.closest('th[data-sort]');
-      if (th) {
-        const st = TABLE_STATE.get(key);
-        if (st.sort === th.dataset.sort) st.dir = -st.dir; else { st.sort = th.dataset.sort; st.dir = th.dataset.sort === 'title' || th.dataset.sort === 'name' || th.dataset.sort === 'owner' ? 1 : -1; }
-        drawTable(key);
-        return;
-      }
-      const more = e.target.closest('[data-table-more]');
-      if (more) { const st = TABLE_STATE.get(key); st.limit += TABLES.get(key).page || 200; drawTable(key); }
-    });
-  }
+  bar.querySelector('.count-note').textContent = st.filter || st.facet ? `${fmtNum(rows.length)} of ${fmtNum(spec.rows.length)}` : plural(spec.rows.length, spec.noun || 'item', spec.nounPlural);
+  if (chips) chips.querySelectorAll('[data-facet]').forEach(c => c.classList.toggle('on', c.dataset.facet === st.facet));
 }
 
 /* Column helpers */
 const COL = {
-  owner: { id: 'owner', label: 'Person', sortVal: r => (r.owner ? r.owner.name.toLowerCase() : ''), html: r => whoCell(r.owner), cls: 'hide-sm' },
+  owner: { id: 'owner', label: 'Person', asc: true, sortVal: r => (r.owner ? r.owner.name.toLowerCase() : ''), html: r => whoCell(r.owner), cls: 'hide-sm' },
   date: (id, label, get) => ({ id, label, sortVal: get, html: r => `<span title="${esc(fmtDateTime(get(r)))}">${esc(fmtDate(get(r)))}</span>`, cls: 'date' }),
   num: (id, label, get) => ({ id, label, sortVal: get, html: r => fmtNum(get(r)), cls: 'num' }),
 };
