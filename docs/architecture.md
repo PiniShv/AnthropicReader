@@ -154,7 +154,7 @@ sandbox="allow-scripts allow-popups allow-forms allow-modals"
 
 How a preview is built:
 
-- **Hydration.** `sandboxFrame()` stores the HTML in `TEXT_STASH` and writes only a key into the markup. `hydrateFrames()` sets `srcdoc` after the markup is in the page. This avoids putting megabytes of HTML into attribute strings.
+- **Frame HTML.** `sandboxFrame()` (widgets, HTML files and docs in chats and projects) writes the HTML into the escaped `srcdoc` attribute, so the frame loads when its block is put into the page. The artifact viewer and the new-tab view set the `srcdoc` property instead: their HTML can hold up to 120 MB of inlined files, and an escaped copy in a markup string would double that.
 - **Frame shim.** A `srcdoc` frame inherits the reader's URL as its base, so a `#section` link inside an artifact would load the reader itself. `withFrameShim()` adds a tiny script right after `<head>` (never before the doctype, which would switch the page to quirks mode) that makes such links scroll inside the frame.
 - **Single-file versions** are used as they are, plus the shim.
 - **Multi-file versions** (`inlineAssets()`): a sandboxed `srcdoc` frame cannot load files from the reader, so files that `index.html` refers to with literal `src`, `href`, `poster`, `url(…)` or `fetch(…)` paths are replaced by `data:` URLs. `url()` references inside stylesheets are resolved relative to the stylesheet. Limits: 120 MB of inlined data per preview, and large video or audio files stay out (they can be opened from the Files tab).

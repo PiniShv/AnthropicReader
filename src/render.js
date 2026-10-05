@@ -215,16 +215,6 @@ function jsonPretty(v) {
   try { return JSON.stringify(v, null, 2); } catch (e) { return String(v); }
 }
 
-// Large strings referenced from markup without inlining them twice.
-const TEXT_STASH = new Map();
-let stashSeq = 0;
-function stashText(text) {
-  const id = 's' + (++stashSeq);
-  TEXT_STASH.set(id, text);
-  if (TEXT_STASH.size > 400) TEXT_STASH.delete(TEXT_STASH.keys().next().value);
-  return id;
-}
-
 /* ---------- Search highlighting ---------- */
 
 function escapeRegex(s) { return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); }

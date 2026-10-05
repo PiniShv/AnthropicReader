@@ -363,7 +363,6 @@ function setupShell() {
     const body = d.querySelector(':scope > .blk-body');
     body.insertAdjacentHTML('beforeend', fn());
     delete d.dataset.lazy;
-    hydrateFrames(body);
     if (App.route.query.q) highlightIn(body, searchTerms(App.route.query.q));
   }, true);
 }

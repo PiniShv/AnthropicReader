@@ -238,7 +238,6 @@ function drawThread(conv, opts) {
     if (terms.length) highlightIn(frag, terms);
     while (frag.firstChild) thread.appendChild(frag.firstChild);
     i += n;
-    hydrateFrames(thread);
   };
   renderBatch(firstBatch);
   if (!path.length) thread.innerHTML = '<div class="empty">No messages.</div>';
@@ -648,17 +647,10 @@ function artifactLinkHtml(id, title, action) {
 
 /* ---------- Visible outputs: files, artifacts, widgets ---------- */
 
+// The HTML goes into the srcdoc attribute, escaped, and the browser decodes it back. The frame
+// loads when its block is put into the page.
 function sandboxFrame(html, height) {
-  const k = stashText(withFrameShim(html));
-  return `<iframe class="preview" sandbox="allow-scripts allow-popups allow-forms allow-modals" referrerpolicy="no-referrer" data-srcdoc-stash="${k}" style="height:${height || 420}px" title="Sandboxed preview"></iframe>`;
-}
-
-function hydrateFrames(root) {
-  (root || document).querySelectorAll('iframe[data-srcdoc-stash]').forEach(f => {
-    const html = TEXT_STASH.get(f.dataset.srcdocStash);
-    if (html != null) f.srcdoc = html;
-    delete f.dataset.srcdocStash;
-  });
+  return `<iframe class="preview" sandbox="allow-scripts allow-popups allow-forms allow-modals" referrerpolicy="no-referrer" style="height:${height || 420}px" title="Sandboxed preview" srcdoc="${esc(withFrameShim(html))}"></iframe>`;
 }
 
 function specialToolHtml(name, input, res, ctx, use) {
