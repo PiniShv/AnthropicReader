@@ -88,7 +88,7 @@ A few small pieces carry most of the app. When you add something, reach for thes
 
 ### Loading screen
 
-`importExport()` reports progress through a small `ui.set(key, label, fraction, value, state)` interface (the `Loader` in `app.js`). Files that cannot be read become warnings. If there are warnings, the loading screen lists them and offers **Continue anyway** instead of hiding the problem. If only a manifest was loaded, the page shows its download links and waits for the zips.
+`importExport()` reports progress through a small `ui.set(key, label, fraction, value, state)` interface (the `Loader` in `app.js`). Files that cannot be read become warnings. If there are warnings, the loading screen lists them and offers **Continue anyway** instead of hiding the problem. If only a manifest was loaded, the page shows its download links and waits for the zips. If nothing in the files is export data, the load fails with a clear message and leaves `DB` empty, so a failed attempt never shows up on the About page.
 
 ### The model
 

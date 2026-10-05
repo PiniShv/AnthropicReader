@@ -313,9 +313,17 @@ test('a broken zip becomes a warning and the rest still loads', async () => {
   assert.match(api.DB.warnings[0], /^export-002\.zip: .*not a ZIP file/);
 });
 
-test('nothing recognisable gives a clear error', async () => {
+test('nothing recognisable gives a clear error and leaves nothing behind', async () => {
   const app = loadApp();
-  await assert.rejects(app.api.importExport([looseFile('holiday.txt', 'photos')], { set() {} }), /No Claude export data found/);
+  const { DB, importExport } = app.api;
+  const broken = new File(['this is not a zip'], 'export-002.zip');
+  await assert.rejects(importExport([looseFile('holiday.txt', 'photos'), broken], { set() {} }), /No Claude export data found/);
+  // The failed attempt adds no rows to "About this export".
+  assert.deepEqual([DB.sources.length, DB.warnings.length, DB.ignored.length], [0, 0, 0]);
+  await importExport([looseFile('users.json', USERS)], { set() {} });
+  assert.deepEqual(plain(DB.sources).map(s => s.name), ['1 loose file']);
+  assert.deepEqual(plain(DB.ignored), []);
+  assert.deepEqual(plain(DB.warnings), []);
 });
 
 /* ---------- Design chats ---------- */

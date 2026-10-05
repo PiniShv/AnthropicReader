@@ -1599,20 +1599,25 @@ class Person {
   emailLocal() { return (this.email || '').split('@')[0]; }
 }
 
-// An import writes only the id Maps. finalize() builds the sorted lists from them.
-const DB = {
-  people: new Map(),
-  conversations: [], convById: new Map(),
-  projects: [], projectById: new Map(),
-  designChats: [], designById: new Map(),
-  memories: [], memoryByPerson: new Map(),
-  artifacts: [], artifactById: new Map(),
-  manifests: [],
-  sources: [],
-  warnings: [],
-  ignored: [],
+// Everything an import fills in, empty. An import writes only the id Maps; finalize() builds
+// the sorted lists from them.
+function emptyDB() {
+  return {
+    people: new Map(),
+    conversations: [], convById: new Map(),
+    projects: [], projectById: new Map(),
+    designChats: [], designById: new Map(),
+    memories: [], memoryByPerson: new Map(),
+    artifacts: [], artifactById: new Map(),
+    manifests: [],
+    sources: [],
+    warnings: [],
+    ignored: [],
+  };
+}
+const DB = Object.assign(emptyDB(), {
   generation: 0,   // goes up on every finalize(), so caches of derived data know to start again
-};
+});
 
 function personFor(id, hint) {
   if (!id) id = NO_OWNER;
@@ -2157,6 +2162,9 @@ async function importExport(files, ui) {
   finalize();
   ui.set('done', 'Ready in ' + fmtDuration(performance.now() - t0), 1, '', 'done');
   if (!hasRecords() && !DB.manifests.length) {
+    // Records are never removed, so nothing was loaded before this attempt either. Start
+    // clean, so the failed attempt leaves no sources, warnings or ignored files behind.
+    Object.assign(DB, emptyDB());
     throw new Error('No Claude export data found in what you picked. Choose the .zip files from the export, or the folder they were unpacked into.');
   }
 }
