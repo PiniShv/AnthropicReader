@@ -526,6 +526,30 @@ test('artifact content type is detected from the active version', async () => {
   assert.equal(person(api, BRAM).artifacts.length, 2);
 });
 
+test('platform files: one rule for the Files tab and the person zip', async () => {
+  const entries = {
+    'users.json': USERS,
+    [`artifacts/${art(5)}/artifact.json`]: artifactJson(ADA, [{ id: V(5), title: 'Skill kit' }]),
+    ...versionFolder(art(5), V(5), {
+      ...typedRuntime('slides'),   // SKILL.md and artifact-type/ at the top: the app's runtime
+      'index.html': '<!doctype html>',
+      'docs/SKILL.md': '# A skill the person wrote',
+      'SKILL.md.bak': 'Old notes',
+    }),
+  };
+  const { api } = await importFiles([await zip('skills.zip', entries)]);
+  const a = api.DB.artifactById.get(art(5));
+  // Files tab: platform files sit in the folded "platform files" block, the rest above it.
+  const [shown, folded] = api.versionFilesHtml(V(5), api.versionInfo(a, V(5))).split('platform files');
+  for (const p of ['index.html', 'docs/SKILL.md', 'SKILL.md.bak']) assert.ok(shown.includes('>' + p + '<'), p);
+  for (const p of ['SKILL.md', 'artifact-type/app.js', 'artifact-type/app.css']) assert.ok(folded.includes('>' + p + '<'), p);
+  // Person zip: the same platform files are left out.
+  const blob = await api.buildPersonZip(person(api, ADA), { allVersions: false }, () => {}, () => false);
+  const out = await api.ZipArchive.open(new File([blob], 'ada.zip'));
+  const files = Array.from(out.entries, e => e.name.split(`/versions/${V(5)}/`)[1]).filter(Boolean).sort();
+  assert.deepEqual(files, ['SKILL.md.bak', 'docs/SKILL.md', 'index.html']);
+});
+
 test('an artifact split across two zips is merged by path', async () => {
   const meta = artifactJson(ADA, [{ id: V(1), title: 'Split report' }]);
   const first = await zip('frames-000.zip', {

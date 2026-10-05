@@ -604,7 +604,7 @@ Multi-file versions refer to their files with plain relative paths (`img/chart.p
 
 It lists exactly the files in `versions/<vid>/`. `index.html` is the entry point by convention (it is not marked). Typed apps repeat the same runtime files in every version, so many files share a `sha256`.
 
-Typed apps also contain files that are **not user content**: `SKILL.md` (instructions for Claude), `artifact-type/app.js`, `app.css`, `dc-runtime.js` (the app runtime), `artifact-type/reference/*.md` (reference docs for Claude) and `artifact-type/thumbnail/thumbnail.json`. The reader hides them under "platform files". The typed `index.html` needs the claude.ai runtime and does not work offline, so the reader draws Slides and Design from their `project/` files instead.
+Typed apps also contain files that are **not user content**: `SKILL.md` (instructions for Claude), `artifact-type/app.js`, `app.css`, `dc-runtime.js` (the app runtime), `artifact-type/reference/*.md` (reference docs for Claude) and `artifact-type/thumbnail/thumbnail.json`. The reader hides them under "platform files" and leaves them out of the per-person zip. Only these names at the top of the version folder count (`isPlumbing()`); a `SKILL.md` deeper in the folder is user content. The typed `index.html` needs the claude.ai runtime and does not work offline, so the reader draws Slides and Design from their `project/` files instead.
 
 ### 9.4 Slides
 

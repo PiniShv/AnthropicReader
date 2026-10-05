@@ -154,12 +154,11 @@ function versionFilesHtml(vid, info) {
   if (s.single) rows.push(['versions/' + vid + '.html', s.single]);
   for (const [p, node] of s.folder) rows.push([p, node]);
   if (s.manifest) rows.push(['versions/' + vid + '.files.json', s.manifest]);
-  const plumbing = p => /^(SKILL\.md|artifact-type\/)/.test(p);
-  const shown = rows.filter(([p]) => !plumbing(p));
+  const shown = rows.filter(([p]) => !isPlumbing(p));
   const hidden = rows.length - shown.length;
   const li = ([p, node]) => `<tr><td class="mono" dir="auto">${esc(p)}</td><td class="num">${fmtBytes(node.size)}</td><td class="right"><button class="btn small" type="button" ${on(() => openArtifactFile(p, node))}>Open</button></td></tr>`;
   return `<table class="list" style="font-size:13px"><tbody>${shown.map(li).join('')}</tbody></table>
-    ${hidden ? `<details class="blk" style="margin-top:10px"><summary><span class="lbl">${hidden} platform files</span><span class="desc">the app runtime and instructions for Claude, not user content</span></summary><div class="blk-body"><table class="list" style="font-size:13px"><tbody>${rows.filter(([p]) => plumbing(p)).map(li).join('')}</tbody></table></div></details>` : ''}
+    ${hidden ? `<details class="blk" style="margin-top:10px"><summary><span class="lbl">${hidden} platform files</span><span class="desc">the app runtime and instructions for Claude, not user content</span></summary><div class="blk-body"><table class="list" style="font-size:13px"><tbody>${rows.filter(([p]) => isPlumbing(p)).map(li).join('')}</tbody></table></div></details>` : ''}
     <div id="art-file-view" style="margin-top:12px"></div>`;
 }
 

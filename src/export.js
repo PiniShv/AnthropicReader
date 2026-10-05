@@ -134,11 +134,10 @@ async function buildPersonZip(p, opts, progress, isCancelled) {
   for (const a of p.artifacts) {
     if (isCancelled()) return null;
     const base = 'artifacts/' + nameOf(0, a.title, a.id) + '/';
-    const skip = rel => /\/artifact-type\/|\/SKILL\.md$/.test(rel);
     for (const [rel, node] of a.files) {
-      if (skip(rel)) continue;
-      // Only the current version's files, unless every version was asked for.
       const v = parseVersionRel(rel);
+      if (v && v.part === 'folder' && isPlumbing(v.sub)) continue;   // the app's runtime, like the Files tab
+      // Only the current version's files, unless every version was asked for.
       if (!opts.allVersions && rel.startsWith('versions/') && !(v && v.vid === a.activeVersion)) continue;
       z.add(base + rel, await node.bytes());
     }
