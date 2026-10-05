@@ -32,6 +32,10 @@ class ZipEntry {
     this.localOffset = localOffset;
   }
 
+  // An entry is also a file node for the import (like FileNode in load.js).
+  get path() { return this.name; }
+  get container() { return this.zip.file.name; }   // the zip the person picked
+
   async _dataStart() {
     const head = await readSlice(this.zip.file, this.localOffset, this.localOffset + 30);
     const dv = new DataView(head.buffer);

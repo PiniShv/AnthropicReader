@@ -21,7 +21,7 @@ For the format of the export itself, see [export-format.md](export-format.md).
 | `vendor/marked.min.js` | Markdown to HTML. |
 | `vendor/purify.min.js` | DOMPurify: HTML sanitizer. |
 | `src/zip.js` | `ZipArchive` / `ZipEntry`: random-access zip reader. `ZipWriter`: small zip writer for downloads. |
-| `src/load.js` | `FileNode` / `ZipNode`: one interface for loose files and zip entries. File and folder picking, drag and drop, remembered file handles (`HandleStore`), and `parseJsonArrayStream()`. |
+| `src/load.js` | `FileNode`: a loose file with the same interface as a `ZipEntry` (`path`, `size`, `container`, `stream()`, `bytes()`, `text()`, `blob()`). File and folder picking, drag and drop, remembered file handles (`HandleStore`), and `parseJsonArrayStream()`. |
 | `src/render.js` | Escaping (`esc`), formatting of dates, numbers and sizes, Markdown (`mdToHtml`, `mdBlock`), sanitizing, search highlighting, the sandbox frame shim, small helpers (toast, copy, download, MIME types). |
 | `src/ui.js` | `App` (route and focus), `focusPerson()` / `focusScope()`, the `$` / `$$` shortcuts, and the lifetime of one drawn page: `VIEW`, `after()`, `viewKey()`, `on()` for click behaviour, and `blk()` for collapsible blocks. |
 | `src/model.js` | The in-memory model: `Person`, the `DB` object, `classify()`, one `add…()` function per record type, `importExport()` (the import pipeline), `finalize()` (links and derived data) and small queries such as `scopeOf()`. |
@@ -45,7 +45,7 @@ For the format of the export itself, see [export-format.md](export-format.md).
  files you pick or drop (zips, folders, loose JSON, or the sample export)
         │
         ▼
- nodesFromFiles()        zip → read the central directory only → one ZipNode per entry
+ nodesFromFiles()        zip → read the central directory only → one ZipEntry per file
         │                loose file → FileNode
         ▼
  classify(node)          by path: conversations, users, project, memory, design, manifest,
@@ -78,7 +78,7 @@ For the format of the export itself, see [export-format.md](export-format.md).
 
 `DB` holds arrays and id maps for conversations, projects, design chats, memories and artifacts, plus `people`, `manifests`, `sources`, `warnings` and `ignored` files. During an import, the `add…()` functions write only the id maps. `finalize()` builds the sorted arrays from them.
 
-Each record keeps the fields the views need, plus `raw` (the original JSON) and `source` (where it came from). Large content is **not** copied into the model: artifact files stay as `ZipNode`s and are read when they are opened.
+Each record keeps the fields the views need, plus `raw` (the original JSON) and `source` (where it came from). Large content is **not** copied into the model: artifact files stay as file nodes (`ZipEntry` or `FileNode`) and are read when they are opened.
 
 When the same item is loaded twice (two exports), the `add…()` functions keep the newer copy (see [export-format.md, section 12](export-format.md#12-older-export-formats)).
 

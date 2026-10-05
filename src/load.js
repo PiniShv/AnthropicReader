@@ -2,7 +2,7 @@
  * and streaming JSON parsing for very large top-level arrays. */
 'use strict';
 
-/* ---------- Virtual file nodes: one interface for loose files and zip entries ---------- */
+/* ---------- File nodes: loose files, with the same interface as zip entries (ZipEntry) ---------- */
 
 class FileNode {
   constructor(path, file, container) {
@@ -15,19 +15,6 @@ class FileNode {
   async bytes() { return new Uint8Array(await this.file.arrayBuffer()); }
   text() { return this.file.text(); }
   async blob(type) { return type ? new Blob([this.file], { type }) : this.file; }
-}
-
-class ZipNode {
-  constructor(entry, container) {
-    this.path = entry.name;
-    this.entry = entry;
-    this.size = entry.size;
-    this.container = container;
-  }
-  stream() { return this.entry.stream(); }
-  bytes() { return this.entry.bytes(); }
-  text() { return this.entry.text(); }
-  blob(type) { return this.entry.blob(type); }
 }
 
 function normPath(p) {
@@ -47,7 +34,7 @@ async function nodesFromFiles(files, onStatus) {
       try {
         const zip = await ZipArchive.open(f);
         const before = nodes.length;
-        for (const e of zip.entries) nodes.push(new ZipNode(e, f.name));
+        for (const e of zip.entries) nodes.push(e);
         sources.push({ name: f.name, kind: 'zip', size: f.size, entries: nodes.length - before });
       } catch (err) {
         sources.push({ name: f.name, kind: 'zip', size: f.size, error: String(err.message || err) });
@@ -146,6 +133,15 @@ const HandleStore = {
 
 /* ---------- Streaming parse of a huge top-level JSON array ---------- */
 
+// One byte array from several. A single part is returned as it is, without a copy.
+function concatBytes(parts) {
+  if (parts.length === 1) return parts[0];
+  const out = new Uint8Array(parts.reduce((n, p) => n + p.length, 0));
+  let o = 0;
+  for (const p of parts) { out.set(p, o); o += p.length; }
+  return out;
+}
+
 /* Calls onItem(value) for every element of the top-level array without ever building
  * one giant string (V8 caps strings near 512 MB). Works on raw UTF-8 bytes: every JSON
  * structural character is ASCII, so multi-byte characters can never be mistaken for one.
@@ -157,21 +153,14 @@ async function parseJsonArrayStream(stream, onItem, onProgress) {
   let inStr = false, esc = false;
   let inItem = false, itemIsContainer = false;
   let parts = [];         // byte chunks of the element being collected
-  let partsLen = 0;
   let mode = 'start';     // 'start' | 'array' | 'single' | 'done'
   let single = [];        // chunks when the document is not an array
   let done = 0;
 
   const flush = (chunk, from, to) => {
-    let buf;
-    if (!parts.length) buf = chunk.subarray(from, to);
-    else {
-      buf = new Uint8Array(partsLen + (to - from));
-      let o = 0;
-      for (const p of parts) { buf.set(p, o); o += p.length; }
-      buf.set(chunk.subarray(from, to), o);
-    }
-    parts = []; partsLen = 0;
+    parts.push(chunk.subarray(from, to));
+    const buf = concatBytes(parts);
+    parts = [];
     const text = dec.decode(buf).trim();
     if (text) onItem(JSON.parse(text), text);
   };
@@ -237,17 +226,13 @@ async function parseJsonArrayStream(stream, onItem, onProgress) {
     }
     if (inItem && segStart >= 0) {
       const tail = chunk.slice(segStart, n);  // copy: the stream may reuse its buffer
-      parts.push(tail); partsLen += tail.length;
+      parts.push(tail);
     }
     onProgress && onProgress(done);
   }
 
   if (mode === 'single') {
-    const total = single.reduce((a, b) => a + b.length, 0);
-    const buf = new Uint8Array(total);
-    let o = 0;
-    for (const p of single) { buf.set(p, o); o += p.length; }
-    const text = dec.decode(buf).trim();
+    const text = dec.decode(concatBytes(single)).trim();
     if (text) onItem(JSON.parse(text));
   } else if (mode === 'array' && depth !== 0) {
     throw new Error('JSON ended before the top-level array was closed (file may be truncated).');

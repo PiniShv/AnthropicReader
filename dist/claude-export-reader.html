@@ -671,6 +671,10 @@ class ZipEntry {
     this.localOffset = localOffset;
   }
 
+  // An entry is also a file node for the import (like FileNode in load.js).
+  get path() { return this.name; }
+  get container() { return this.zip.file.name; }   // the zip the person picked
+
   async _dataStart() {
     const head = await readSlice(this.zip.file, this.localOffset, this.localOffset + 30);
     const dv = new DataView(head.buffer);
@@ -880,7 +884,7 @@ class ZipArchive {
  * and streaming JSON parsing for very large top-level arrays. */
 'use strict';
 
-/* ---------- Virtual file nodes: one interface for loose files and zip entries ---------- */
+/* ---------- File nodes: loose files, with the same interface as zip entries (ZipEntry) ---------- */
 
 class FileNode {
   constructor(path, file, container) {
@@ -893,19 +897,6 @@ class FileNode {
   async bytes() { return new Uint8Array(await this.file.arrayBuffer()); }
   text() { return this.file.text(); }
   async blob(type) { return type ? new Blob([this.file], { type }) : this.file; }
-}
-
-class ZipNode {
-  constructor(entry, container) {
-    this.path = entry.name;
-    this.entry = entry;
-    this.size = entry.size;
-    this.container = container;
-  }
-  stream() { return this.entry.stream(); }
-  bytes() { return this.entry.bytes(); }
-  text() { return this.entry.text(); }
-  blob(type) { return this.entry.blob(type); }
 }
 
 function normPath(p) {
@@ -925,7 +916,7 @@ async function nodesFromFiles(files, onStatus) {
       try {
         const zip = await ZipArchive.open(f);
         const before = nodes.length;
-        for (const e of zip.entries) nodes.push(new ZipNode(e, f.name));
+        for (const e of zip.entries) nodes.push(e);
         sources.push({ name: f.name, kind: 'zip', size: f.size, entries: nodes.length - before });
       } catch (err) {
         sources.push({ name: f.name, kind: 'zip', size: f.size, error: String(err.message || err) });
@@ -1024,6 +1015,15 @@ const HandleStore = {
 
 /* ---------- Streaming parse of a huge top-level JSON array ---------- */
 
+// One byte array from several. A single part is returned as it is, without a copy.
+function concatBytes(parts) {
+  if (parts.length === 1) return parts[0];
+  const out = new Uint8Array(parts.reduce((n, p) => n + p.length, 0));
+  let o = 0;
+  for (const p of parts) { out.set(p, o); o += p.length; }
+  return out;
+}
+
 /* Calls onItem(value) for every element of the top-level array without ever building
  * one giant string (V8 caps strings near 512 MB). Works on raw UTF-8 bytes: every JSON
  * structural character is ASCII, so multi-byte characters can never be mistaken for one.
@@ -1035,21 +1035,14 @@ async function parseJsonArrayStream(stream, onItem, onProgress) {
   let inStr = false, esc = false;
   let inItem = false, itemIsContainer = false;
   let parts = [];         // byte chunks of the element being collected
-  let partsLen = 0;
   let mode = 'start';     // 'start' | 'array' | 'single' | 'done'
   let single = [];        // chunks when the document is not an array
   let done = 0;
 
   const flush = (chunk, from, to) => {
-    let buf;
-    if (!parts.length) buf = chunk.subarray(from, to);
-    else {
-      buf = new Uint8Array(partsLen + (to - from));
-      let o = 0;
-      for (const p of parts) { buf.set(p, o); o += p.length; }
-      buf.set(chunk.subarray(from, to), o);
-    }
-    parts = []; partsLen = 0;
+    parts.push(chunk.subarray(from, to));
+    const buf = concatBytes(parts);
+    parts = [];
     const text = dec.decode(buf).trim();
     if (text) onItem(JSON.parse(text), text);
   };
@@ -1115,17 +1108,13 @@ async function parseJsonArrayStream(stream, onItem, onProgress) {
     }
     if (inItem && segStart >= 0) {
       const tail = chunk.slice(segStart, n);  // copy: the stream may reuse its buffer
-      parts.push(tail); partsLen += tail.length;
+      parts.push(tail);
     }
     onProgress && onProgress(done);
   }
 
   if (mode === 'single') {
-    const total = single.reduce((a, b) => a + b.length, 0);
-    const buf = new Uint8Array(total);
-    let o = 0;
-    for (const p of single) { buf.set(p, o); o += p.length; }
-    const text = dec.decode(buf).trim();
+    const text = dec.decode(concatBytes(single)).trim();
     if (text) onItem(JSON.parse(text));
   } else if (mode === 'array' && depth !== 0) {
     throw new Error('JSON ended before the top-level array was closed (file may be truncated).');
@@ -2063,7 +2052,7 @@ async function importExport(files, ui) {
   const artifactNodes = [];
   for (const n of nodes) {
     const c = classify(n);
-    if (c.kind === 'artifact') { n.artId = c.id; n.rel = c.rel; artifactNodes.push(n); }
+    if (c.kind === 'artifact') artifactNodes.push({ n, id: c.id, rel: c.rel });
     else if (groups[c.kind]) groups[c.kind].push(n);
     else if (c.kind === 'other') DB.ignored.push(n.path);
   }
@@ -2133,19 +2122,19 @@ async function importExport(files, ui) {
     `${DB.projectById.size} projects · ${DB.memoryByPerson.size} memories · ${DB.designById.size} design chats`, 'done');
 
   // 4. Artifacts: index files, read the small metadata files only.
-  for (const n of artifactNodes) {
-    const a = artifactFor(n.artId);
-    if (!a.files.has(n.rel)) a.files.set(n.rel, n);
+  for (const { n, id, rel } of artifactNodes) {
+    const a = artifactFor(id);
+    if (!a.files.has(rel)) a.files.set(rel, n);
   }
-  const metaNodes = artifactNodes.filter(n => n.rel === 'artifact.json' || n.rel === 'comments.json' || n.rel === 'artifact_comments.json');
+  const metaNodes = artifactNodes.filter(x => x.rel === 'artifact.json' || x.rel === 'comments.json' || x.rel === 'artifact_comments.json');
   let metaDone = 0;
-  await mapLimit(metaNodes, 16, async n => {
-    const a = DB.artifactById.get(n.artId);
+  await mapLimit(metaNodes, 16, async ({ n, id, rel }) => {
+    const a = DB.artifactById.get(id);
     try {
       const v = await readJson(n);
-      if (n.rel === 'artifact.json') applyArtifactMeta(a, v);
-      else if (n.rel === 'comments.json') { if (a.comments === null && Array.isArray(v)) a.comments = v; }
-      else if (n.rel === 'artifact_comments.json') { if (a.threads === null && v && Array.isArray(v.threads)) a.threads = v.threads; }
+      if (rel === 'artifact.json') applyArtifactMeta(a, v);
+      else if (rel === 'comments.json') { if (a.comments === null && Array.isArray(v)) a.comments = v; }
+      else if (rel === 'artifact_comments.json') { if (a.threads === null && v && Array.isArray(v.threads)) a.threads = v.threads; }
     } catch (e) { DB.warnings.push(n.container + ': ' + n.path + ': ' + e.message); }
     metaDone++;
     if (metaDone % 50 === 0 || metaDone === metaNodes.length) ui.set('art', 'Artifacts', metaDone / metaNodes.length, fmtNum(metaDone) + ' / ' + fmtNum(metaNodes.length) + ' metadata files');

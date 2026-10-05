@@ -514,7 +514,7 @@ async function importExport(files, ui) {
   const artifactNodes = [];
   for (const n of nodes) {
     const c = classify(n);
-    if (c.kind === 'artifact') { n.artId = c.id; n.rel = c.rel; artifactNodes.push(n); }
+    if (c.kind === 'artifact') artifactNodes.push({ n, id: c.id, rel: c.rel });
     else if (groups[c.kind]) groups[c.kind].push(n);
     else if (c.kind === 'other') DB.ignored.push(n.path);
   }
@@ -584,19 +584,19 @@ async function importExport(files, ui) {
     `${DB.projectById.size} projects · ${DB.memoryByPerson.size} memories · ${DB.designById.size} design chats`, 'done');
 
   // 4. Artifacts: index files, read the small metadata files only.
-  for (const n of artifactNodes) {
-    const a = artifactFor(n.artId);
-    if (!a.files.has(n.rel)) a.files.set(n.rel, n);
+  for (const { n, id, rel } of artifactNodes) {
+    const a = artifactFor(id);
+    if (!a.files.has(rel)) a.files.set(rel, n);
   }
-  const metaNodes = artifactNodes.filter(n => n.rel === 'artifact.json' || n.rel === 'comments.json' || n.rel === 'artifact_comments.json');
+  const metaNodes = artifactNodes.filter(x => x.rel === 'artifact.json' || x.rel === 'comments.json' || x.rel === 'artifact_comments.json');
   let metaDone = 0;
-  await mapLimit(metaNodes, 16, async n => {
-    const a = DB.artifactById.get(n.artId);
+  await mapLimit(metaNodes, 16, async ({ n, id, rel }) => {
+    const a = DB.artifactById.get(id);
     try {
       const v = await readJson(n);
-      if (n.rel === 'artifact.json') applyArtifactMeta(a, v);
-      else if (n.rel === 'comments.json') { if (a.comments === null && Array.isArray(v)) a.comments = v; }
-      else if (n.rel === 'artifact_comments.json') { if (a.threads === null && v && Array.isArray(v.threads)) a.threads = v.threads; }
+      if (rel === 'artifact.json') applyArtifactMeta(a, v);
+      else if (rel === 'comments.json') { if (a.comments === null && Array.isArray(v)) a.comments = v; }
+      else if (rel === 'artifact_comments.json') { if (a.threads === null && v && Array.isArray(v.threads)) a.threads = v.threads; }
     } catch (e) { DB.warnings.push(n.container + ': ' + n.path + ': ' + e.message); }
     metaDone++;
     if (metaDone % 50 === 0 || metaDone === metaNodes.length) ui.set('art', 'Artifacts', metaDone / metaNodes.length, fmtNum(metaDone) + ' / ' + fmtNum(metaNodes.length) + ' metadata files');
