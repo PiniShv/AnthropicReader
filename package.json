@@ -1,0 +1,36 @@
+{
+  "name": "claude-export-reader",
+  "version": "1.0.0",
+  "description": "Read a Claude team data export in your browser: every person, conversation, artifact, project, design chat and memory. One offline HTML file; nothing is uploaded.",
+  "private": true,
+  "type": "module",
+  "license": "MIT",
+  "author": "Pini Shvartsman",
+  "homepage": "https://github.com/PiniShv/AnthropicReader#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/PiniShv/AnthropicReader.git"
+  },
+  "bugs": {
+    "url": "https://github.com/PiniShv/AnthropicReader/issues"
+  },
+  "keywords": [
+    "claude",
+    "anthropic",
+    "export",
+    "data-export",
+    "viewer",
+    "offline",
+    "privacy"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "build:check": "node scripts/build.mjs --check",
+    "test": "node --test",
+    "demo": "node scripts/make-demo-export.mjs",
+    "screenshots": "node scripts/screenshots.mjs"
+  }
+}

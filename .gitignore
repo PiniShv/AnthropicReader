@@ -1,0 +1,17 @@
+# Never commit real export data: it contains people's names, emails and conversations.
+*.zip
+manifest-*.json
+conversations.json
+users.json
+memories.json
+projects.json
+/demo/
+/export/
+/data*/
+
+# Local tooling
+.claude/
+node_modules/
+coverage/
+.DS_Store
+*.log

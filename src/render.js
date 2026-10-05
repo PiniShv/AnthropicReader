@@ -1,0 +1,364 @@
+/* Rendering helpers: escaping, markdown, formatting, highlighting. */
+'use strict';
+
+const ESC_MAP = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
+function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, c => ESC_MAP[c]); }
+
+/* ---------- Formatting ---------- */
+
+const DATE_FMT = new Intl.DateTimeFormat(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
+const DATETIME_FMT = new Intl.DateTimeFormat(undefined, { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+const TIME_FMT = new Intl.DateTimeFormat(undefined, { hour: '2-digit', minute: '2-digit' });
+const MONTH_FMT = new Intl.DateTimeFormat(undefined, { year: 'numeric', month: 'short' });
+const NUM_FMT = new Intl.NumberFormat();
+
+function toDate(v) {
+  if (v == null || v === '') return null;
+  if (v instanceof Date) return isNaN(v) ? null : v;
+  // Safari rejects more than 3 fraction digits ("…58.888842Z"), so trim them first.
+  const d = typeof v === 'number' ? new Date(v < 1e12 ? v * 1000 : v) : new Date(String(v).replace(/(\.\d{3})\d+/, '$1'));
+  return isNaN(d) ? null : d;
+}
+function fmtDate(v) { const d = toDate(v); return d ? DATE_FMT.format(d) : ''; }
+function fmtDateTime(v) { const d = toDate(v); return d ? DATETIME_FMT.format(d) : ''; }
+function fmtTime(v) { const d = toDate(v); return d ? TIME_FMT.format(d) : ''; }
+function fmtMonth(v) { const d = toDate(v); return d ? MONTH_FMT.format(d) : ''; }
+function fmtNum(n) { return NUM_FMT.format(n || 0); }
+function fmtBytes(n) {
+  if (n == null || isNaN(n)) return '';
+  if (n < 1024) return n + ' B';
+  const u = ['KB', 'MB', 'GB', 'TB'];
+  let i = -1;
+  do { n /= 1024; i++; } while (n >= 1024 && i < u.length - 1);
+  return (n >= 100 ? Math.round(n) : n.toFixed(1)) + ' ' + u[i];
+}
+function plural(n, one, many) { return fmtNum(n) + ' ' + (n === 1 ? one : (many || one + 's')); }
+function fmtRel(v) {
+  const d = toDate(v);
+  if (!d) return '';
+  const s = (Date.now() - d.getTime()) / 1000;
+  if (s < 60) return 'just now';
+  if (s < 3600) return Math.floor(s / 60) + ' min ago';
+  if (s < 86400) return Math.floor(s / 3600) + ' h ago';
+  if (s < 86400 * 30) return Math.floor(s / 86400) + ' d ago';
+  return fmtDate(d);
+}
+function fmtDuration(ms) {
+  if (!(ms >= 0)) return '';
+  const s = ms / 1000;
+  if (s < 60) return s.toFixed(s < 10 ? 1 : 0) + ' s';
+  const m = Math.floor(s / 60);
+  return m + ' min ' + Math.round(s % 60) + ' s';
+}
+
+function hashHue(str) {
+  let h = 0;
+  for (let i = 0; i < str.length; i++) h = (h * 31 + str.charCodeAt(i)) | 0;
+  return Math.abs(h) % 360;
+}
+function initials(name) {
+  const parts = String(name || '?').trim().split(/[\s._@-]+/).filter(Boolean);
+  if (!parts.length) return '?';
+  const a = Array.from(parts[0])[0] || '';
+  const b = parts.length > 1 ? (Array.from(parts[parts.length - 1])[0] || '') : '';
+  return (a + b).toUpperCase();
+}
+function avatarHtml(person, size) {
+  const cls = 'avatar' + (size ? ' ' + size : '') + (person && person.known ? '' : ' unknown');
+  const name = person ? person.name : '?';
+  const hue = person ? hashHue(person.id || name) : 0;
+  return `<span class="${cls}" style="--h:${hue}" aria-hidden="true">${esc(initials(name))}</span>`;
+}
+
+function truncate(s, n) {
+  s = String(s || '');
+  return s.length > n ? s.slice(0, n - 1).trimEnd() + '…' : s;
+}
+function oneLine(s) { return String(s || '').replace(/\s+/g, ' ').trim(); }
+
+/* ---------- Markdown ---------- */
+
+if (window.marked) {
+  marked.use({ gfm: true, breaks: false });
+}
+
+// Split YAML-style front matter (--- ... ---) off a markdown string.
+function splitFrontmatter(text) {
+  const m = /^---\r?\n([\s\S]*?)\r?\n---\r?\n?/.exec(text || '');
+  if (!m) return { front: '', body: text || '' };
+  return { front: m[1], body: text.slice(m[0].length) };
+}
+
+// Attributes that make the browser fetch a URL as soon as the element exists.
+const FETCHING_ATTRS = new Set(['src', 'srcset', 'poster', 'background', 'data', 'xlink:href', 'action', 'formaction']);
+
+if (window.DOMPurify && typeof DOMPurify.addHook === 'function') {
+  // The reader must not call out on its own: drop any attribute that would load a remote
+  // resource. <img> keeps its src for one step, because finishMarkdown() turns it into a link.
+  DOMPurify.addHook('uponSanitizeAttribute', (node, data) => {
+    const name = data.attrName;
+    const fetches = FETCHING_ATTRS.has(name) || (name === 'href' && node.nodeName !== 'A');
+    if (!fetches || (node.nodeName === 'IMG' && name === 'src')) return;
+    if (!/^(data:|blob:|#)/i.test(String(data.attrValue || '').trim())) data.keepAttr = false;
+  });
+}
+
+function sanitize(html) {
+  if (!window.DOMPurify) return esc(html);
+  return DOMPurify.sanitize(html, {
+    ADD_ATTR: ['target'],
+    FORBID_TAGS: ['style', 'form', 'input', 'button', 'textarea', 'select', 'video', 'audio', 'source', 'track', 'picture', 'image', 'object', 'embed', 'iframe', 'link', 'meta'],
+    FORBID_ATTR: ['style', 'srcset', 'ping'],
+    ALLOW_DATA_ATTR: false,
+  });
+}
+
+// Only web links from export data become clickable; anything else (javascript:, file:) does not.
+function safeUrl(u) {
+  return /^(https?:\/\/|mailto:)/i.test(String(u || '').trim()) ? String(u).trim() : '#';
+}
+
+// Post-process sanitized markdown HTML: links open in new tabs, blocks get dir=auto
+// (Hebrew/Arabic paragraphs render right-to-left), code blocks get a copy button.
+function finishMarkdown(html) {
+  const tpl = document.createElement('template');
+  tpl.innerHTML = html;
+  const root = tpl.content;
+  root.querySelectorAll('a[href]').forEach(a => {
+    // In-app links (#/…) stay in this tab; everything else opens a new one.
+    if ((a.getAttribute('href') || '').startsWith('#')) { a.removeAttribute('target'); return; }
+    a.setAttribute('target', '_blank');
+    a.setAttribute('rel', 'noopener noreferrer');
+  });
+  // The reader works offline and must not call home: remote images become plain links.
+  root.querySelectorAll('img').forEach(img => {
+    const src = img.getAttribute('src') || '';
+    if (/^(data:|blob:)/i.test(src)) return;
+    const a = document.createElement('a');
+    a.href = safeUrl(src);
+    a.target = '_blank';
+    a.rel = 'noopener noreferrer';
+    a.textContent = '🖼 ' + (img.getAttribute('alt') || 'image') + ' (online image, not loaded)';
+    img.replaceWith(a);
+  });
+  root.querySelectorAll('p,li,h1,h2,h3,h4,h5,h6,blockquote,td,th').forEach(el => el.setAttribute('dir', 'auto'));
+  root.querySelectorAll('pre').forEach(pre => {
+    const b = document.createElement('button');
+    b.className = 'btn small copy-code';
+    b.type = 'button';
+    b.dataset.action = 'copy-pre';
+    b.textContent = 'Copy';
+    pre.appendChild(b);
+  });
+  const div = document.createElement('div');
+  div.appendChild(root);
+  return div.innerHTML;
+}
+
+const MD_LIMIT = 400000;
+
+function mdToHtml(text, opts) {
+  text = String(text == null ? '' : text);
+  if (!text.trim()) return '';
+  if (text.length > MD_LIMIT) {
+    // Very long text: markdown parsing would stall the tab; show it as plain text.
+    return `<pre class="code wrap">${esc(text)}</pre>`;
+  }
+  let html;
+  try {
+    html = window.marked ? marked.parse(text, { breaks: !!(opts && opts.breaks) }) : `<p>${esc(text)}</p>`;
+  } catch (e) {
+    return `<pre class="code wrap">${esc(text)}</pre>`;
+  }
+  return finishMarkdown(sanitize(html));
+}
+
+function mdBlock(text, opts) {
+  const { front, body } = (opts && opts.frontmatter) ? splitFrontmatter(text) : { front: '', body: text };
+  return (front ? `<div class="frontmatter">${esc(front)}</div>` : '') + `<div class="md">${mdToHtml(body, opts)}</div>`;
+}
+
+// Plain text with preserved newlines and clickable URLs (used for human messages).
+function plainTextHtml(text) {
+  const s = esc(text);
+  return s.replace(/\bhttps?:\/\/[^\s<>"')\]]+/g, url => `<a href="${url}" target="_blank" rel="noopener noreferrer">${url}</a>`);
+}
+
+/* ---------- Code / JSON display ---------- */
+
+const PRE_LIMIT = 60000;
+
+// <pre> with large content cut to PRE_LIMIT and a "show all" button that expands in place.
+function preHtml(text, opts) {
+  text = String(text == null ? '' : text);
+  const wrap = opts && opts.wrap ? ' wrap' : '';
+  if (text.length <= PRE_LIMIT) return `<pre class="code${wrap}">${esc(text)}</pre>`;
+  const id = stashText(text);
+  return `<pre class="code${wrap}">${esc(text.slice(0, PRE_LIMIT))}</pre>
+    <div class="row" style="margin-top:6px"><span class="muted" style="font-size:13px">Showing ${fmtBytes(PRE_LIMIT)} of ${fmtBytes(text.length)}.</span>
+    <button class="btn small" type="button" data-action="expand-pre" data-stash="${id}">Show all</button></div>`;
+}
+
+function jsonPretty(v) {
+  try { return JSON.stringify(v, null, 2); } catch (e) { return String(v); }
+}
+
+// Large strings referenced from markup without inlining them twice.
+const TEXT_STASH = new Map();
+let stashSeq = 0;
+function stashText(text) {
+  const id = 's' + (++stashSeq);
+  TEXT_STASH.set(id, text);
+  if (TEXT_STASH.size > 400) TEXT_STASH.delete(TEXT_STASH.keys().next().value);
+  return id;
+}
+
+/* ---------- Search highlighting ---------- */
+
+function escapeRegex(s) { return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); }
+
+function termsRegex(terms) {
+  const list = (terms || []).filter(Boolean).sort((a, b) => b.length - a.length).map(escapeRegex);
+  return list.length ? new RegExp('(' + list.join('|') + ')', 'gi') : null;
+}
+
+// Wrap matches in <mark> inside a DOM subtree (text nodes only; skips code-copy buttons).
+// opts.firstOnly: mark only the first match of each term.
+function highlightIn(root, terms, opts) {
+  if (opts && opts.firstOnly) {
+    let n = 0;
+    for (const t of (terms || [])) n += highlightIn(root, [t], { limit: 1 });
+    return n;
+  }
+  const limit = opts && opts.limit ? opts.limit : Infinity;
+  const re = termsRegex(terms);
+  if (!re || !root) return 0;
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
+    acceptNode(n) {
+      const p = n.parentNode;
+      if (!p || p.nodeName === 'MARK' || p.nodeName === 'BUTTON' || p.nodeName === 'SCRIPT') return NodeFilter.FILTER_REJECT;
+      re.lastIndex = 0;
+      return re.test(n.nodeValue) ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_SKIP;
+    },
+  });
+  const nodes = [];
+  while (walker.nextNode()) nodes.push(walker.currentNode);
+  let count = 0;
+  for (const n of nodes) {
+    if (count >= limit) break;
+    const frag = document.createDocumentFragment();
+    const s = n.nodeValue;
+    let last = 0;
+    re.lastIndex = 0;
+    let m;
+    while (count < limit && (m = re.exec(s))) {
+      if (m.index > last) frag.appendChild(document.createTextNode(s.slice(last, m.index)));
+      const mk = document.createElement('mark');
+      mk.textContent = m[0];
+      frag.appendChild(mk);
+      last = m.index + m[0].length;
+      count++;
+      if (!m[0].length) re.lastIndex++;
+    }
+    if (last < s.length) frag.appendChild(document.createTextNode(s.slice(last)));
+    n.parentNode.replaceChild(frag, n);
+  }
+  return count;
+}
+
+// Escaped snippet around the first match, with <mark> on every match inside it.
+function snippetHtml(text, terms, radius) {
+  text = String(text || '');
+  radius = radius || 90;
+  const re = termsRegex(terms);
+  let idx = -1;
+  if (re) { re.lastIndex = 0; const m = re.exec(text); if (m) idx = m.index; }
+  let start = Math.max(0, idx - radius);
+  let end = Math.min(text.length, (idx < 0 ? 0 : idx) + radius * 2);
+  const s = oneLine(text.slice(start, end));
+  // Split the raw text on matches and escape each piece; never run the regex over escaped HTML.
+  let body = '';
+  if (re) {
+    let last = 0, m;
+    re.lastIndex = 0;
+    while ((m = re.exec(s))) {
+      body += esc(s.slice(last, m.index)) + '<mark>' + esc(m[0]) + '</mark>';
+      last = m.index + m[0].length;
+      if (!m[0].length) re.lastIndex++;
+    }
+    body += esc(s.slice(last));
+  } else body = esc(s);
+  return (start > 0 ? '…' : '') + body + (end < text.length ? '…' : '');
+}
+
+/* ---------- Sandboxed previews ---------- */
+
+/* A srcdoc frame inherits the reader's URL as its base, so "#section" links would load the
+ * reader itself and blank the preview. This script makes them scroll inside the frame. */
+const FRAME_SHIM = '<script>/* Claude Export Reader: in-page links */(function(){document.addEventListener("click",function(e){' +
+  'if(e.defaultPrevented)return;var a=e.target&&e.target.closest?e.target.closest("a[href]"):null;if(!a)return;' +
+  'var h=a.getAttribute("href")||"";if(h.charAt(0)!=="#")return;e.preventDefault();var id=h.slice(1);' +
+  'if(!id||id==="top"){scrollTo({top:0,behavior:"smooth"});return;}try{id=decodeURIComponent(id)}catch(x){}' +
+  'var t=document.getElementById(id)||document.getElementsByName(id)[0];if(t){t.scrollIntoView({behavior:"smooth"});}' +
+  'else{try{location.hash=h}catch(x){}}});})();<\/script>';
+
+// Insert helper scripts right after <head> (or the doctype), never before the doctype:
+// that would switch the page into quirks mode.
+function withFrameShim(html, extra) {
+  const shim = FRAME_SHIM + (extra || '');
+  const s = String(html == null ? '' : html);
+  const head = /<head(\s[^>]*)?>/i.exec(s);
+  if (head) return s.slice(0, head.index + head[0].length) + shim + s.slice(head.index + head[0].length);
+  const doctype = /^\s*<!doctype[^>]*>/i.exec(s);
+  if (doctype) return s.slice(0, doctype[0].length) + shim + s.slice(doctype[0].length);
+  return shim + s;
+}
+
+/* ---------- Misc ---------- */
+
+function toast(msg) {
+  const t = document.createElement('div');
+  t.className = 'toast';
+  t.textContent = msg;
+  document.body.appendChild(t);
+  setTimeout(() => t.remove(), 1800);
+}
+
+async function copyText(text) {
+  try { await navigator.clipboard.writeText(text); toast('Copied'); }
+  catch (e) {
+    const ta = document.createElement('textarea');
+    ta.value = text; document.body.appendChild(ta); ta.select();
+    try { document.execCommand('copy'); toast('Copied'); } catch (e2) { toast('Copy failed'); }
+    ta.remove();
+  }
+}
+
+function downloadBlob(blob, filename) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = filename;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 60000);
+}
+
+function safeFilename(s, fallback) {
+  const v = String(s || '').replace(/[\\/:*?"<>|\x00-\x1f]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 90);
+  return v || fallback || 'untitled';
+}
+
+function fileExt(name) {
+  const m = /\.([a-z0-9]+)$/i.exec(name || '');
+  return m ? m[1].toLowerCase() : '';
+}
+
+const MIME = {
+  html: 'text/html', htm: 'text/html', css: 'text/css', js: 'text/javascript', mjs: 'text/javascript',
+  json: 'application/json', md: 'text/markdown', txt: 'text/plain', csv: 'text/csv', svg: 'image/svg+xml',
+  png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif', webp: 'image/webp', avif: 'image/avif',
+  ico: 'image/x-icon', bmp: 'image/bmp', woff: 'font/woff', woff2: 'font/woff2', ttf: 'font/ttf', otf: 'font/otf',
+  pdf: 'application/pdf', mp4: 'video/mp4', webm: 'video/webm', mp3: 'audio/mpeg', wav: 'audio/wav',
+  xml: 'application/xml', yaml: 'text/yaml', yml: 'text/yaml', jsx: 'text/javascript', ts: 'text/plain', tsx: 'text/plain',
+};
+function mimeFor(name) { return MIME[fileExt(name)] || 'application/octet-stream'; }
+function isTextExt(ext) { return /^(html?|css|m?js|jsx|tsx?|json|md|markdown|txt|csv|svg|xml|ya?ml|py|sh|sql|java|go|rb|rs|c|h|cpp|cs|kt|swift|php|toml|ini|log|tsv)$/.test(ext); }

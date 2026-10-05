@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: "Warning: never upload real export data"
+    url: https://github.com/PiniShv/AnthropicReader/blob/main/CONTRIBUTING.md#before-anything-else-never-share-real-export-data
+    about: >-
+      Exports contain other people's names, emails and private conversations. Do not attach real
+      export files, or screenshots or snippets with real data, to any issue. Use the sample data
+      ("Try it with sample data" or npm run demo) or a small made-up example instead.
+  - name: Report a security problem privately
+    url: https://github.com/PiniShv/AnthropicReader/security/advisories/new
+    about: Please do not open a public issue for security problems. See SECURITY.md.

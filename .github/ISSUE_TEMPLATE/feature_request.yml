@@ -1,0 +1,47 @@
+name: Feature request
+description: An idea to make the reader more useful.
+labels: [enhancement]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        > [!WARNING]
+        > **Never upload real export data.** If your idea is about a field or file in the export, describe it with a small **made-up** example: invent the names, ids and text.
+
+  - type: checkboxes
+    id: no-real-data
+    attributes:
+      label: Data check
+      options:
+        - label: This request contains no real export data.
+          required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem would this solve?
+      description: What are you trying to do, and what makes it hard today?
+    validations:
+      required: true
+
+  - type: textarea
+    id: idea
+    attributes:
+      label: What would you like to happen?
+    validations:
+      required: true
+
+  - type: textarea
+    id: data-shape
+    attributes:
+      label: Export data involved (optional)
+      description: If the reader should show something new from the export, say which file it is in and give a short, made-up example of its shape.
+      render: json
+      placeholder: |
+        // design_chats/<chat uuid>.json, inside messages[].content
+        { "newField": "example value" }
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Other options you thought about (optional)

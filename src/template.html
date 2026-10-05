@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<title>Claude Export Reader</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23a9532f'/%3E%3Cpath d='M9 10h14M9 16h14M9 22h9' stroke='white' stroke-width='3' stroke-linecap='round'/%3E%3C/svg%3E">
+<style>/*__STYLES__*/</style>
+</head>
+<body>
+
+<section id="landing" class="landing">
+  <div class="landing-card">
+    <h1>Claude Export Reader</h1>
+    <p class="lede">Browse a Claude team data export: every person, conversation, project, artifact, design chat and memory. Everything runs inside this browser tab. Nothing is uploaded.</p>
+
+    <div id="dropzone" class="dropzone">
+      <div class="dz-icon" aria-hidden="true">⇩</div>
+      <div class="dz-title">Drop your export files here</div>
+      <div class="dz-sub">Select all the <b>.zip</b> files from the export (conversations, projects, memories, design_chats, frames, light_metadata) and drag them in. Unzipped folders work too.</div>
+      <div class="dz-actions">
+        <button id="pick-files" class="btn primary" type="button">Choose files…</button>
+        <button id="pick-folder" class="btn" type="button">Choose a folder…</button>
+        <button id="reopen" class="btn" type="button" hidden>Reopen last export</button>
+      </div>
+    </div>
+
+    <div id="load-progress" class="load-progress" hidden></div>
+
+    <details class="help">
+      <summary>Which files do I need?</summary>
+      <ul>
+        <li><b>conversations-000.zip</b>: all chats (the big one).</li>
+        <li><b>light_metadata-000.zip</b>: the people list (names and emails). Without it you see user IDs only.</li>
+        <li><b>projects-000.zip</b>, <b>memories-000.zip</b>, <b>design_chats-000.zip</b>: projects with their docs, Claude's memory per person, Claude Design chats.</li>
+        <li><b>frames-000.zip</b>, <b>frames-001.zip</b>, …: published artifacts with every saved version. They are large, but only the index is read until you open an artifact.</li>
+        <li>You can drop any subset. Missing parts just show as empty. Older export formats (<code>projects.json</code>, <code>memories.json</code>) also work.</li>
+        <li>Keep this tab open while you browse: the files are read on demand, so do not move or delete them meanwhile.</li>
+      </ul>
+    </details>
+    <p class="try-demo">No export at hand? <button id="try-demo" class="linklike" type="button">Try it with sample data</button>, made up from scratch.</p>
+    <p class="privacy">Works offline. Close the tab and the data is gone from memory.<br>
+      Claude Export Reader v__VERSION__ · <a href="https://github.com/PiniShv/AnthropicReader" target="_blank" rel="noopener noreferrer">Source on GitHub</a> · Not affiliated with Anthropic.</p>
+  </div>
+</section>
+
+<div id="shell" class="shell" hidden>
+  <header class="topbar">
+    <button class="btn ghost small menu-btn" id="menu-btn" type="button" aria-label="Menu">☰</button>
+    <a class="brand" href="#/"><span class="brand-mark" aria-hidden="true">≡</span><span class="txt">Export Reader</span></a>
+    <form class="topsearch" id="topsearch" role="search" autocomplete="off">
+      <input class="input" id="q" type="search" placeholder="Search everything…" aria-label="Search everything">
+      <kbd id="q-kbd">/</kbd>
+    </form>
+    <div class="top-actions">
+      <div style="position:relative">
+        <button class="btn small" id="person-btn" type="button" aria-haspopup="listbox" aria-label="Focus on a person">👤 <span id="person-btn-label">Focus on a person</span></button>
+        <div class="picker" id="picker" hidden></div>
+      </div>
+      <button class="btn small ghost" id="theme-btn" type="button" title="Switch light / dark">◐</button>
+      <button class="btn small ghost" id="load-btn" type="button" title="Open another export">⇪</button>
+    </div>
+  </header>
+  <nav class="sidebar" id="sidebar" aria-label="Sections"></nav>
+  <main class="main" id="main" tabindex="-1"></main>
+</div>
+
+<input type="file" id="file-input" multiple hidden>
+<input type="file" id="folder-input" webkitdirectory multiple hidden>
+
+<!--__SCRIPTS__-->
+</body>
+</html>
