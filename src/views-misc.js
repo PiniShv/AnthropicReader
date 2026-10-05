@@ -246,7 +246,7 @@ function drawSearchResults(res, q, t, deep) {
       <div class="r-snip" dir="auto">${d ? '<b>' + esc(d.filename) + ':</b> ' + snippetHtml(d.content, terms) : snippetHtml(x.description || x.name, terms)}</div>
       <div class="r-meta">${avatarHtml(x.owner, 'sm')}<span>${esc(x.owner.name)}</span></div></a>`;
   };
-  const des = ({ item: d, text }) => `<a class="result" href="#/d/${encodeURIComponent(d.id)}${qs}"><div class="r-title"><span dir="auto">${esc(d.title)}</span><span class="chip">✎ ${esc(d.project.name)}</span></div>
+  const des = ({ item: d, text }) => `<a class="result" href="#/d/${encodeURIComponent(d.id)}${qs}"><div class="r-title"><span dir="auto">${esc(d.title)}</span><span class="chip">✎ ${esc(d.project.name || 'design project')}</span></div>
     <div class="r-snip" dir="auto">${snippetHtml(text, terms)}</div>
     <div class="r-meta">${avatarHtml(d.owner, 'sm')}<span>${esc(d.owner.name)}</span><span>${esc(fmtDate(d.lastTs))}</span></div></a>`;
   const mem = ({ item: m, text }) => {
