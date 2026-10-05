@@ -12,9 +12,26 @@ const BRANCH_CHOICE = new Map();   // convId -> Map(parentId -> chosen child id)
 const TREE = new WeakMap();
 
 // A message's parent, or ROOT_PARENT when it has none or its parent is not in the export.
-const parentKey = (t, m) => (m.parent_message_uuid && t.byId.has(m.parent_message_uuid) ? m.parent_message_uuid : ROOT_PARENT);
+// ids: anything with has(uuid), such as a tree's byId.
+const parentKey = (ids, m) => (m.parent_message_uuid && ids.has(m.parent_message_uuid) ? m.parent_message_uuid : ROOT_PARENT);
 
-/* msgs: the raw messages. byId: uuid -> message. children: parent key -> messages.
+/* The branch rule: parent key -> child messages, in array order. null when no message has a
+ * parent, because then the array order is the conversation. The thread (buildTree) and the
+ * fork count (addConversation in model.js) both use it, so the "branch points" chip always
+ * matches the branch arrows. */
+function childrenByParent(msgs) {
+  if (!msgs.some(m => m.parent_message_uuid)) return null;
+  const ids = new Set(msgs.map(m => m.uuid));
+  const children = new Map();
+  for (const m of msgs) {
+    const p = parentKey(ids, m);
+    if (!children.has(p)) children.set(p, []);
+    children.get(p).push(m);
+  }
+  return children;
+}
+
+/* msgs: the raw messages. byId: uuid -> message. children: childrenByParent(), or empty.
  * newest: uuid -> highest array index anywhere in that message's subtree. linear: no message
  * has a parent, so the array order is the conversation. created: path -> the create_file
  * tool_use that wrote it (to resolve present_files). */
@@ -22,20 +39,15 @@ function buildTree(conv) {
   let t = TREE.get(conv);
   if (t) return t;
   const msgs = conv.raw.chat_messages || [];
-  t = { msgs, byId: new Map(), children: new Map(), newest: new Map(), linear: true, created: new Map() };
+  const children = childrenByParent(msgs);
+  t = { msgs, byId: new Map(), children: children || new Map(), newest: new Map(), linear: !children, created: new Map() };
   for (const m of msgs) {
     t.byId.set(m.uuid, m);
-    if (m.parent_message_uuid) t.linear = false;
     for (const b of (Array.isArray(m.content) ? m.content : [])) {
       if (b && b.type === 'tool_use' && b.name === 'create_file' && b.input && b.input.path) t.created.set(b.input.path, b);
     }
   }
   if (!t.linear) {
-    for (const m of msgs) {
-      const p = parentKey(t, m);
-      if (!t.children.has(p)) t.children.set(p, []);
-      t.children.get(p).push(m);
-    }
     // Children always come after their parent in the array, so a reverse pass is enough.
     for (let i = msgs.length - 1; i >= 0; i--) {
       const m = msgs[i];
@@ -80,7 +92,7 @@ function selectBranchFor(conv, msgId) {
   const guard = new Set();
   while (cur && !guard.has(cur.uuid)) {
     guard.add(cur.uuid);
-    const p = parentKey(t, cur);
+    const p = parentKey(t.byId, cur);
     choice.set(p, cur.uuid);
     if (p === ROOT_PARENT) break;
     cur = t.byId.get(p);
@@ -91,7 +103,7 @@ function selectBranchFor(conv, msgId) {
 function siblingsOf(conv, m) {
   const t = buildTree(conv);
   if (t.linear) return [m];
-  return t.children.get(parentKey(t, m)) || [m];
+  return t.children.get(parentKey(t.byId, m)) || [m];
 }
 
 /* ---------- Tools ---------- */

@@ -170,18 +170,10 @@ function addConversation(c, source, rawText) {
     }
     if (!firstHuman && m.sender === 'human' && m.text && m.text.trim()) firstHuman = m.text;
   }
-  // Branch points as the thread shows them (see buildTree): a message whose parent is not in
-  // the export hangs off the start (null here), and with no parents at all the chat is one line.
+  // Branch points as the thread shows them: the same rule as buildTree (conversation.js).
   let forks = 0;
-  if (msgs.some(m => m.parent_message_uuid)) {
-    const ids = new Set(msgs.map(m => m.uuid));
-    const kids = new Map();
-    for (const m of msgs) {
-      const p = m.parent_message_uuid && ids.has(m.parent_message_uuid) ? m.parent_message_uuid : null;
-      kids.set(p, (kids.get(p) || 0) + 1);
-    }
-    for (const n of kids.values()) if (n > 1) forks++;
-  }
+  const children = childrenByParent(msgs);
+  if (children) for (const kids of children.values()) if (kids.length > 1) forks++;
   const artRefs = new Set();
   if (rawText && rawText.indexOf('artifact') >= 0) {
     RE_ART_REF.lastIndex = 0;
