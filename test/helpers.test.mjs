@@ -243,6 +243,18 @@ test('classify recognises each kind of export file', () => {
   assert.equal(kind('a/._users.json'), 'junk');
 });
 
+test('parseVersionRel reads the three kinds of version path', () => {
+  const vid = '1767225600-0a1b';
+  const parse = rel => plain(api.parseVersionRel(rel));
+  assert.deepEqual(parse(`versions/${vid}.html`), { vid, part: 'single' });
+  assert.deepEqual(parse(`versions/${vid}.HTM`), { vid, part: 'single' });
+  assert.deepEqual(parse(`versions/${vid}.files.json`), { vid, part: 'manifest' });
+  assert.deepEqual(parse(`versions/${vid}/assets/app.js`), { vid, part: 'folder', sub: 'assets/app.js' });
+  assert.deepEqual(parse('versions/v.2.html'), { vid: 'v.2', part: 'single' });
+  assert.equal(parse('versions/readme.txt'), null);
+  assert.equal(parse('page.md'), null);
+});
+
 /* ---------- Conversation branches ---------- */
 
 // m1 → m2 → m3 → m4 is the first try; m3b is an edit of m3 with its own answer m4b.

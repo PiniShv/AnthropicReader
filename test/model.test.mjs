@@ -486,9 +486,10 @@ test('artifact content type is detected from the active version', async () => {
     [`artifacts/${art(7)}/artifact.json`]: artifactJson(ADA, [{ id: V(7), title: 'Old' }, { id: V(8), title: 'Price list', created_at: '2026-01-05T00:00:00Z' }]),
     [`artifacts/${art(7)}/versions/${V(7)}.html`]: '<!doctype html><p>v1</p>',
     ...versionFolder(art(7), V(8), { 'index.html': '<!doctype html><p>v2</p>' }),
-    // Files only, no artifact.json (a partial export).
+    // Files only, no artifact.json (a partial export). A stray file under versions/ is not a version.
     [`artifacts/${art(8)}/versions/1767225600-aaaa.html`]: '<p>first</p>',
     [`artifacts/${art(8)}/versions/1767312000-bbbb.html`]: '<p>second</p>',
+    [`artifacts/${art(8)}/versions/readme.txt`]: 'Fictional notes',
   };
   const { api } = await importFiles([await zip('artifacts.zip', entries)]);
   const { DB } = api;

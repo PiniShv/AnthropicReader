@@ -137,8 +137,9 @@ async function buildPersonZip(p, opts, progress, isCancelled) {
     const skip = rel => /\/artifact-type\/|\/SKILL\.md$/.test(rel);
     for (const [rel, node] of a.files) {
       if (skip(rel)) continue;
-      const vm = /^versions\/([^/.]+(?:-[0-9a-f]+)?)/.exec(rel);
-      if (vm && !opts.allVersions && vm[1] !== a.activeVersion) continue;
+      // Only the current version's files, unless every version was asked for.
+      const v = parseVersionRel(rel);
+      if (!opts.allVersions && rel.startsWith('versions/') && !(v && v.vid === a.activeVersion)) continue;
       z.add(base + rel, await node.bytes());
     }
     progress(`Artifacts ${++i} / ${p.artifacts.length}`);

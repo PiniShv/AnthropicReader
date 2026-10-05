@@ -434,22 +434,27 @@ function setArtifactDates(a, updated) {
   a.created = a.versions.reduce((min, v) => (v.created && (!min || v.created < min) ? v.created : min), 0) || updated;
 }
 
-// Group an artifact's files per version: a single versions/<vid>.html, or a folder
-// versions/<vid>/... (entry index.html) with a versions/<vid>.files.json manifest.
+// A version file's place: a single versions/<vid>.html, or a folder versions/<vid>/<sub>
+// (entry index.html) with a versions/<vid>.files.json manifest. Null for any other path.
+function parseVersionRel(rel) {
+  let m = /^versions\/([^/]+)\.files\.json$/.exec(rel);
+  if (m) return { vid: m[1], part: 'manifest' };
+  m = /^versions\/([^/]+)\/(.+)$/.exec(rel);
+  if (m) return { vid: m[1], part: 'folder', sub: m[2] };
+  m = /^versions\/([^/]+)\.html?$/i.exec(rel);
+  if (m) return { vid: m[1], part: 'single' };
+  return null;
+}
+
+// Group an artifact's files per version (see parseVersionRel).
 function indexArtifactVersions(a) {
   a.vfiles = new Map();
-  const slot = vid => {
-    let s = a.vfiles.get(vid);
-    if (!s) { s = { single: null, manifest: null, folder: new Map() }; a.vfiles.set(vid, s); }
-    return s;
-  };
   for (const [rel, node] of a.files) {
-    let m = /^versions\/([^/]+)\.files\.json$/.exec(rel);
-    if (m) { slot(m[1]).manifest = node; continue; }
-    m = /^versions\/([^/]+)\/(.+)$/.exec(rel);
-    if (m) { slot(m[1]).folder.set(m[2], node); continue; }
-    m = /^versions\/([^/]+)\.(html?)$/i.exec(rel);
-    if (m) { slot(m[1]).single = node; continue; }
+    const v = parseVersionRel(rel);
+    if (!v) continue;
+    if (!a.vfiles.has(v.vid)) a.vfiles.set(v.vid, { single: null, manifest: null, folder: new Map() });
+    const s = a.vfiles.get(v.vid);
+    if (v.part === 'folder') s.folder.set(v.sub, node); else s[v.part] = node;
   }
 }
 
@@ -717,17 +722,15 @@ function finalize() {
     for (const p of d.authors) { p.designChats.push(d); p.touch(d.created); p.touch(d.lastTs); }
   }
   for (const a of DB.artifacts) {
+    indexArtifactVersions(a);
     if (!a.meta) {
       // Files without artifact.json (partial export): still show them, dated by their version ids.
-      const vids = new Set();
-      for (const rel of a.files.keys()) { const m = /^versions\/([^/]+?)(?:\.files\.json|\.[a-z0-9]+|\/.*)$/i.exec(rel); if (m) vids.add(m[1]); }
-      a.versions = Array.from(vids).sort().reverse().map(id => ({ id, title: '', description: '', created: parseTime(Number(id.split('-')[0]) || 0), raw: {} }));
+      a.versions = Array.from(a.vfiles.keys()).sort().reverse().map(id => ({ id, title: '', description: '', created: parseTime(Number(id.split('-')[0]) || 0), raw: {} }));
       a.activeVersion = a.versions[0] ? a.versions[0].id : '';
       setArtifactDates(a, 0);
       if (a.files.has('page.md')) a.kind = 'page';
     }
     a.pageNode = a.files.get('page.md') || null;
-    indexArtifactVersions(a);
     a.contentType = a.kind === 'page' ? 'Doc' : versionInfo(a, a.activeVersion).type;
     a.owner = personFor(a.ownerId);
     if (!a.title) a.title = a.pageNode ? 'Untitled page' : 'Untitled artifact';
