@@ -86,24 +86,25 @@ function classify(node) {
   if (m) return { kind: 'artifact', id: m[1].toLowerCase(), rel: m[2] };
   if (base === 'conversations.json') return { kind: 'conversations' };
   if (base === 'users.json') return { kind: 'users' };
-  if (base === 'projects.json') return { kind: 'projects-array' };
-  if (base === 'memories.json') return { kind: 'memories-array' };
+  if (base === 'projects.json') return { kind: 'projects' };
+  if (base === 'memories.json') return { kind: 'memories' };
   if (/^manifest.*\.json$/.test(base)) return { kind: 'manifest' };
   if (RE_DESIGN.test(path)) return { kind: 'design' };
-  if (RE_PROJECT.test(path)) return { kind: 'project' };
-  if (RE_MEMORY.test(path)) return { kind: 'memory' };
+  if (RE_PROJECT.test(path)) return { kind: 'projects' };
+  if (RE_MEMORY.test(path)) return { kind: 'memories' };
   if (base.endsWith('.json') && node.size < 64 * 1024 * 1024) return { kind: 'sniff' };
   return { kind: 'other' };
 }
 
-// Classify a parsed JSON value by its shape (for files with unexpected names).
+// Classify a parsed JSON value by its shape (for files with unexpected names). Like classify(),
+// it gives one kind per record type: a file may hold one record or a list of them.
 function sniffShape(v) {
   const first = Array.isArray(v) ? v.find(x => x && typeof x === 'object') : v;
   if (!first || typeof first !== 'object') return null;
-  if ('chat_messages' in first) return Array.isArray(v) ? 'conversations' : 'conversation';
+  if ('chat_messages' in first) return 'conversations';
   if ('email_address' in first && 'uuid' in first) return 'users';
-  if ('docs' in first && 'creator' in first) return Array.isArray(v) ? 'projects-array' : 'project';
-  if ('account_uuid' in first && ('memory_files' in first || 'conversations_memory' in first || 'project_memories' in first)) return Array.isArray(v) ? 'memories-array' : 'memory';
+  if ('docs' in first && 'creator' in first) return 'projects';
+  if ('account_uuid' in first && ('memory_files' in first || 'conversations_memory' in first || 'project_memories' in first)) return 'memories';
   if ('messages' in first && 'project' in first) return 'design';
   if ('data_files' in first) return 'manifest';
   return null;
@@ -111,16 +112,13 @@ function sniffShape(v) {
 
 /* ---------- Ingest: each record type ---------- */
 
-function addUsers(list) {
-  if (!Array.isArray(list)) return;
-  for (const u of list) {
-    if (!u || !u.uuid) continue;
-    const p = personFor(u.uuid);
-    p.known = true;
-    if (u.full_name && String(u.full_name).trim()) p.fullName = String(u.full_name).trim();
-    if (u.email_address) p.email = u.email_address;
-    if (u.verified_phone_number) p.phone = u.verified_phone_number;
-  }
+function addUser(u) {
+  if (!u || !u.uuid) return;
+  const p = personFor(u.uuid);
+  p.known = true;
+  if (u.full_name && String(u.full_name).trim()) p.fullName = String(u.full_name).trim();
+  if (u.email_address) p.email = u.email_address;
+  if (u.verified_phone_number) p.phone = u.verified_phone_number;
 }
 
 /* Tools whose output the person saw: name -> a function that gives the output's chip in the
@@ -489,15 +487,18 @@ async function readJson(node) {
 // An artifact's files that a newer export can change (a version's files never change).
 const BUNDLE_FILES = new Set(['artifact.json', 'comments.json', 'artifact_comments.json', 'page.md']);
 
-// Many small files: how to add one parsed file of each kind, in the order they are read.
+// Many small files: how to add one record of each kind (a file holds one record or a list).
 const SMALL_INGEST = new Map([
-  ['project', addProject],
-  ['projects-array', (v, src) => (Array.isArray(v) ? v : [v]).forEach(p => addProject(p, src))],
-  ['memory', addMemory],
-  ['memories-array', (v, src) => (Array.isArray(v) ? v : [v]).forEach(m => addMemory(m, src))],
+  ['projects', addProject],
+  ['memories', addMemory],
   ['design', addDesignChat],
   ['manifest', addManifest],
 ]);
+
+// Calls fn for the record, or for each record when v is a list.
+function each(v, fn) {
+  for (const x of Array.isArray(v) ? v : [v]) fn(x);
+}
 
 async function importExport(files, ui) {
   const t0 = performance.now();
@@ -506,7 +507,7 @@ async function importExport(files, ui) {
   DB.sources.push(...sources);
   for (const s of sources) if (s.error) DB.warnings.push(s.name + ': ' + s.error);
 
-  const groups = { conversations: [], users: [], 'projects-array': [], 'memories-array': [], manifest: [], design: [], project: [], memory: [], sniff: [] };
+  const groups = { users: [], conversations: [], projects: [], memories: [], design: [], manifest: [], sniff: [] };
   const artifactNodes = [];
   for (const n of nodes) {
     const c = classify(n);
@@ -516,21 +517,18 @@ async function importExport(files, ui) {
   }
   ui.set('scan', 'Found ' + plural(nodes.length, 'file') + ' in ' + plural(sources.length, 'source'), 1, '', 'done');
 
-  // Shape-sniff stray JSON files and fold them into the right group.
-  const sniffed = new Map();
-  await mapLimit(groups.sniff, 6, async n => {
-    try {
-      const v = await readJson(n);
-      const kind = sniffShape(v);
-      if (kind) sniffed.set(n, { kind, value: v }); else DB.ignored.push(n.path);
-    } catch (e) { DB.ignored.push(n.path); }
+  // Shape-sniff stray JSON files. Each one joins the group of its kind, after the named files,
+  // and is read again there like any other file of that kind.
+  const sniffed = [];
+  await mapLimit(groups.sniff, 6, async (n, i) => {
+    try { sniffed[i] = sniffShape(await readJson(n)); } catch (e) { sniffed[i] = null; }
   });
+  groups.sniff.forEach((n, i) => (sniffed[i] ? groups[sniffed[i]].push(n) : DB.ignored.push(n.path)));
 
-  // 1. People first, so later records can attach to them.
+  // 1. People. Only finalize() has to come last: no add…() function reads another kind.
   for (const n of groups.users) {
-    try { addUsers(await readJson(n)); } catch (e) { DB.warnings.push(n.path + ': ' + e.message); }
+    try { each(await readJson(n), addUser); } catch (e) { DB.warnings.push(n.path + ': ' + e.message); }
   }
-  for (const [, s] of sniffed) if (s.kind === 'users') addUsers(s.value);
   ui.set('users', 'People', 1, plural(DB.people.size, 'person', 'people'), 'done');
 
   // 2. Conversations: streamed, one chat at a time.
@@ -555,27 +553,19 @@ async function importExport(files, ui) {
       ui.set('conv', label + ': ' + e.message, 1, '', 'error');
     }
   }
-  for (const [, s] of sniffed) {
-    if (s.kind === 'conversations') s.value.forEach(c => addConversation(c, 'loose file'));
-    if (s.kind === 'conversation') addConversation(s.value, 'loose file');
-  }
   if (convNodes.length || DB.convById.size) ui.set('conv', 'Conversations', 1, fmtNum(DB.convById.size) + ' chats', 'done');
 
   // 3. Projects, memories, design chats: many small files.
   const small = [...SMALL_INGEST.keys()].flatMap(kind => groups[kind].map(n => [kind, n]));
   let smallDone = 0;
   await mapLimit(small, 8, async ([kind, n]) => {
-    try { SMALL_INGEST.get(kind)(await readJson(n), n.container); }
+    try { each(await readJson(n), x => SMALL_INGEST.get(kind)(x, n.container)); }
     catch (e) { DB.warnings.push(n.path + ': ' + e.message); }
     smallDone++;
     if (smallDone % 10 === 0 || smallDone === small.length) {
       ui.set('small', 'Projects, memories, design chats', smallDone / small.length, smallDone + ' / ' + small.length + ' files');
     }
   });
-  for (const [n, s] of sniffed) {
-    const add = SMALL_INGEST.get(s.kind);   // users and conversations were added above
-    if (add) add(s.value, n.container);
-  }
   if (small.length) ui.set('small', 'Projects, memories, design chats', 1,
     `${DB.projectById.size} projects · ${DB.memoryByPerson.size} memories · ${DB.designById.size} design chats`, 'done');
 

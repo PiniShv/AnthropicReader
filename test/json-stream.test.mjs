@@ -103,6 +103,10 @@ test('passes each item\'s own JSON text to the callback', async () => {
   const texts = [];
   await parseJsonArrayStream(chunkedStream(enc.encode('[ {"a" : 1} , "b" ]'), () => 4), (v, text) => texts.push(text));
   assert.deepEqual(texts, ['{"a" : 1}', '"b"']);
+  // A document that is not an array passes its text too.
+  const single = [];
+  await parseJsonArrayStream(chunkedStream(enc.encode(' {"c" : 2}\n'), () => 3), (v, text) => single.push(text));
+  assert.deepEqual(single, ['{"c" : 2}']);
 });
 
 /* ---------- Fuzz: random documents in random chunk sizes, compared with JSON.parse ---------- */

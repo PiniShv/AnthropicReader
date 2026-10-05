@@ -142,7 +142,7 @@ function concatBytes(parts) {
   return out;
 }
 
-/* Calls onItem(value) for every element of the top-level array without ever building
+/* Calls onItem(value, text) for every element of the top-level array without ever building
  * one giant string (V8 caps strings near 512 MB). Works on raw UTF-8 bytes: every JSON
  * structural character is ASCII, so multi-byte characters can never be mistaken for one.
  * If the document is not an array, the whole value is passed to onItem once. */
@@ -233,7 +233,7 @@ async function parseJsonArrayStream(stream, onItem, onProgress) {
 
   if (mode === 'single') {
     const text = dec.decode(concatBytes(single)).trim();
-    if (text) onItem(JSON.parse(text));
+    if (text) onItem(JSON.parse(text), text);
   } else if (mode === 'array' && depth !== 0) {
     throw new Error('JSON ended before the top-level array was closed (file may be truncated).');
   }

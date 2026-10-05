@@ -224,12 +224,13 @@ test('classify recognises each kind of export file', () => {
   const id = '0a1b2c3d-0000-4000-8000-00000000abcd';
   assert.equal(kind('conversations.json'), 'conversations');
   assert.equal(kind('export/users.json'), 'users');
-  assert.equal(kind('projects.json'), 'projects-array');
-  assert.equal(kind('memories.json'), 'memories-array');
+  // One kind per record type: a file may hold one record or a list (old projects.json, memories.json).
+  assert.equal(kind('projects.json'), 'projects');
+  assert.equal(kind('memories.json'), 'memories');
   assert.equal(kind('manifest-2026-10-01.json'), 'manifest');
   assert.equal(kind('design_chats/x.json'), 'design');
-  assert.equal(kind('projects/x.json'), 'project');
-  assert.equal(kind('memories/x.json'), 'memory');
+  assert.equal(kind('projects/x.json'), 'projects');
+  assert.equal(kind('memories/x.json'), 'memories');
   assert.equal(kind(`artifacts/${id}/artifact.json`), 'artifact');
   assert.equal(kind(`artifacts/${id}/versions/1767225600-0a1b/index.html`), 'artifact');
   assert.equal(kind(`artifacts/${id.toUpperCase()}/page.md`), 'artifact');

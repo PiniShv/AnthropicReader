@@ -280,16 +280,27 @@ test('junk files (.DS_Store, __MACOSX, ._*) are skipped without warnings', async
 });
 
 test('JSON files with unexpected names are recognised by their shape', async () => {
+  const linked = id => conversation(id, BRAM, 'Recovered chat', [message(id.slice(-2) + '-m', 'human', `See https://claude.ai/artifact/${art(1)}`)]);
   const files = [
     looseFile('backup/team-members.json', USERS),
-    looseFile('backup/chats-copy.json', [chat(conv(1), BRAM, 'Recovered chat', 2)]),
+    looseFile('backup/chats-copy.json', [linked(conv(1))]),
+    looseFile('backup/one-chat.json', linked(conv(2))),
+    // A conversations.json that holds one chat, not a list.
+    looseFile('other/conversations.json', linked(conv(3))),
     looseFile('backup/notes.json', { hello: 'world' }),
   ];
   const { api } = await importFiles(files);
   const { DB } = api;
   assert.equal(person(api, BRAM).name, 'Bram Okafor');
-  assert.equal(DB.conversations.length, 1);
-  assert.equal(DB.conversations[0].owner, person(api, BRAM));
+  assert.equal(DB.conversations.length, 3);
+  // Every chat is read the same way as one in conversations.json: links to artifacts count.
+  for (const [n, folder] of [[1, 'backup'], [2, 'backup'], [3, 'other']]) {
+    const c = DB.convById.get(conv(n));
+    assert.equal(c.owner, person(api, BRAM));
+    assert.deepEqual(Array.from(c.artRefs), [art(1)], 'chat ' + n);
+    assert.equal(c.outputCount, 1, 'chat ' + n);
+    assert.equal(c.source, folder, 'chat ' + n);
+  }
   assert.deepEqual(plain(DB.ignored), ['backup/notes.json']);
 });
 

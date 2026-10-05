@@ -63,8 +63,9 @@ A few small pieces carry most of the app. When you add something, reach for thes
  nodesFromFiles()        zip → read the central directory only → one ZipEntry per file
         │                loose file → FileNode
         ▼
- classify(node)          by path: conversations, users, project, memory, design, manifest,
-        │                artifact file, junk, or "sniff" (unknown .json, recognised by shape)
+ classify(node)          by path: users, conversations, projects, memories, design, manifest,
+        │                artifact file, junk, or "sniff" (unknown .json: recognised by shape,
+        │                then read with the files of its kind)
         ▼
  ingest, in order        1. users.json                 → people
         │                2. conversations.json          → streamed, one chat at a time
