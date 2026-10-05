@@ -42,13 +42,13 @@ function convTable(list, key, showOwner) {
 }
 
 function viewConversations() {
-  const fp = focusPerson();
-  const list = fp ? fp.conversations : DB.conversations;
+  const s = focusScope();
+  const list = s.conversations;
   return `<div class="page">
     <div class="page-head"><div class="grow"><h1>Conversations</h1>
-      <div class="sub">${fp ? `<span>Only ${personLink(fp)}’s</span>` : `<span>All people</span>`}<span>${plural(list.filter(c => !c.empty).length, 'conversation')}${list.some(c => c.empty) ? ` <span class="faint">+ ${fmtNum(list.filter(c => c.empty).length)} without content</span>` : ''}</span>
+      <div class="sub">${s.person ? `<span>Only ${personLink(s.person)}’s</span>` : `<span>All people</span>`}<span>${plural(list.filter(c => !c.empty).length, 'conversation')}${list.some(c => c.empty) ? ` <span class="faint">+ ${fmtNum(list.filter(c => c.empty).length)} without content</span>` : ''}</span>
       <span>${fmtNum(list.reduce((a, c) => a + c.msgCount, 0))} messages</span></div></div></div>
-    ${convTable(list, 'conv-' + (fp ? fp.id : 'all'), !fp)}
+    ${convTable(list, 'conv-' + s.key, !s.person)}
   </div>`;
 }
 

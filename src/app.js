@@ -227,11 +227,12 @@ window.addEventListener('hashchange', onNav);
 
 /* ---------- Focus (person scope) ---------- */
 
-function setFocus(id) {
+// The one place that changes the focus. Then it opens `go`, or draws the current page again.
+function setFocus(id, go) {
   App.focus = id && DB.people.has(id) ? id : null;
   try { sessionStorage.setItem('cer-focus', App.focus || ''); } catch (e) { /* ignore */ }
   updateFocusButton();
-  onRoute();
+  if (go) navigate(go); else onRoute();
 }
 
 function updateFocusButton() {
@@ -274,13 +275,10 @@ function openPicker() {
   input.focus();
 }
 
+// A person from the picker opens their page; the empty choice shows everyone again.
 function pickPerson(id) {
   closePicker();
-  if (!id) { setFocus(null); return; }
-  App.focus = id;
-  try { sessionStorage.setItem('cer-focus', id); } catch (e) { /* ignore */ }
-  updateFocusButton();
-  navigate('#/person/' + encodeURIComponent(id));
+  setFocus(id, id ? '#/person/' + encodeURIComponent(id) : null);
 }
 
 /* ---------- Global events ---------- */

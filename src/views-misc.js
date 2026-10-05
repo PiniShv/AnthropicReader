@@ -23,12 +23,12 @@ function projectTable(list, key, showOwner) {
 }
 
 function viewProjects() {
-  const fp = focusPerson();
-  const list = fp ? fp.projects : DB.projects;
+  const s = focusScope();
+  const list = s.projects;
   return `<div class="page"><div class="page-head"><div class="grow"><h1>Projects</h1>
-    <div class="sub">${fp ? `<span>Only ${personLink(fp)}’s</span>` : ''}<span>${plural(list.length, 'project')}</span><span>${fmtNum(list.reduce((a, x) => a + x.docs.length, 0))} docs</span></div></div></div>
+    <div class="sub">${s.person ? `<span>Only ${personLink(s.person)}’s</span>` : ''}<span>${plural(list.length, 'project')}</span><span>${fmtNum(list.reduce((a, x) => a + x.docs.length, 0))} docs</span></div></div></div>
     <p class="muted" style="font-size:13.5px;margin:-6px 0 14px">The export does not say which conversations belong to a project, so chats are not listed here.</p>
-    ${projectTable(list, 'proj-' + (fp ? fp.id : 'all'), !fp)}</div>`;
+    ${projectTable(list, 'proj-' + s.key, !s.person)}</div>`;
 }
 
 // Memory about a project: the owner's project_memories entry and /projects/<id>/ memory files.
@@ -88,7 +88,7 @@ function viewMemories() {
   const fp = focusPerson();
   if (fp) {
     return `<div class="page narrow"><div class="page-head"><div class="grow"><h1>Memory</h1><div class="sub"><span>Only ${personLink(fp)}</span></div></div></div>
-      ${fp.memory ? memoryBody(fp.memory) : '<div class="card empty">No memory for this person in this export.</div>'}</div>`;
+      ${KIND.memory.personTab(fp)}</div>`;
   }
   return `<div class="page"><div class="page-head"><div class="grow"><h1>Memory</h1>
     <div class="sub"><span>What Claude remembers about each person: ${plural(DB.memories.length, 'person', 'people')}</span></div></div></div>
@@ -209,11 +209,11 @@ function designTable(list, key, showOwner) {
 }
 
 function viewDesignChats() {
-  const fp = focusPerson();
-  const list = fp ? fp.designChats : DB.designChats;
+  const s = focusScope();
+  const list = s.designChats;
   return `<div class="page"><div class="page-head"><div class="grow"><h1>Design chats</h1>
-    <div class="sub">${fp ? `<span>Only ${personLink(fp)}’s</span>` : ''}<span>${plural(list.length, 'chat')} from Claude Design</span><span>${new Set(list.map(d => d.project.id)).size} design projects</span></div></div></div>
-    ${designTable(list, 'design-' + (fp ? fp.id : 'all'), !fp)}</div>`;
+    <div class="sub">${s.person ? `<span>Only ${personLink(s.person)}’s</span>` : ''}<span>${plural(list.length, 'chat')} from Claude Design</span><span>${new Set(list.map(d => d.project.id)).size} design projects</span></div></div></div>
+    ${designTable(list, 'design-' + s.key, !s.person)}</div>`;
 }
 
 const DESIGN_NOISE = /^(<i><\/i>|<details>|<ant\w*)$/;
@@ -569,11 +569,6 @@ async function artifactPlainText(a) {
   return out.slice(0, ARTIFACT_TEXT_CAP);
 }
 
-const SEARCH_TYPES = [
-  ['all', 'Everything'], ['conversations', 'Conversations'], ['artifacts', 'Artifacts'], ['projects', 'Projects'],
-  ['design', 'Design chats'], ['memory', 'Memory'], ['people', 'People'],
-];
-
 function viewSearch(q, t) {
   const deep = App.route.query.deep === '1';
   // The type as it is in the URL: the default 'all' must not be added to it.
@@ -602,13 +597,11 @@ function viewSearch(q, t) {
 
 function drawSearchResults(res, q, t, deep) {
   const terms = res.terms;
-  const counts = {
-    conversations: res.conversations.length, artifacts: res.artifacts.length, projects: res.projects.length,
-    design: res.design.length, memory: res.memory.length, people: res.people.length,
-  };
-  const total = Object.values(counts).reduce((a, b) => a + b, 0);
+  // Result lists are keyed like the kinds (res.conversations … res.memory), plus res.people.
+  const total = KINDS.reduce((n, k) => n + res[k.key].length, res.people.length);
   const base = '#/search?q=' + encodeURIComponent(q) + (deep ? '&deep=1' : '');
-  $('#search-tabs').innerHTML = SEARCH_TYPES.map(([k, l]) => `<a class="chip${t === k ? ' on' : ''}" href="${base}&t=${k}">${l} <b>${fmtNum(k === 'all' ? total : counts[k])}</b></a>`).join('');
+  const tab = (k, label, n) => `<a class="chip${t === k ? ' on' : ''}" href="${base}&t=${k}">${label} <b>${fmtNum(n)}</b></a>`;
+  $('#search-tabs').innerHTML = tab('all', 'Everything', total) + KINDS.map(k => tab(k.key, esc(k.searchTab || k.label), res[k.key].length)).join('') + tab('people', 'People', res.people.length);
   const limit = t === 'all' ? 5 : 200;
   const qs = '?q=' + encodeURIComponent(q);
   const sec = (k, title, items, fn) => {
@@ -646,13 +639,9 @@ function drawSearchResults(res, q, t, deep) {
       <div class="r-snip" dir="auto">${snippetHtml(f ? f.body : r.mem._text, terms)}</div></a>`;
   };
   const ppl = r => `<a class="result" href="#/person/${encodeURIComponent(r.p.id)}"><div class="r-title">${avatarHtml(r.p, 'sm')}<span>${esc(r.p.name)}</span></div><div class="r-meta"><span>${esc(r.p.email || '')}</span><span>${plural(r.p.total(), 'item')}</span></div></a>`;
+  const resultHtml = { conversations: conv, artifacts: art, projects: proj, design: des, memory: mem };
   $('#search-results').innerHTML = (total ? '' : `<div class="card empty">Nothing found for “${esc(q)}”.${deep ? '' : ' Try ticking “Deep search”.'}</div>`) +
-    sec('people', 'People', res.people, ppl) +
-    sec('conversations', 'Conversations', res.conversations, conv) +
-    sec('artifacts', 'Artifacts & pages', res.artifacts, art) +
-    sec('projects', 'Projects', res.projects, proj) +
-    sec('design', 'Design chats', res.design, des) +
-    sec('memory', 'Memory', res.memory, mem);
+    sec('people', 'People', res.people, ppl) + KINDS.map(k => sec(k.key, esc(k.label), res[k.key], resultHtml[k.key])).join('');
 }
 
 /* ======================= About ======================= */

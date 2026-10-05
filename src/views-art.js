@@ -40,12 +40,12 @@ function artifactTable(list, key, showOwner, facet) {
 }
 
 function viewArtifacts() {
-  const fp = focusPerson();
-  const list = fp ? fp.artifacts : DB.artifacts;
+  const s = focusScope();
+  const list = s.artifacts;
   return `<div class="page">
     <div class="page-head"><div class="grow"><h1>Artifacts & pages</h1>
-      <div class="sub">${fp ? `<span>Only ${personLink(fp)}’s</span>` : ''}<span>${plural(list.length, 'artifact')}</span>${!DB.artifacts.length ? '<span>Load the <b>frames-*.zip</b> files to see artifacts.</span>' : ''}</div></div></div>
-    ${artifactTable(list, 'art-' + (fp ? fp.id : 'all'), !fp, { of: a => a.contentType })}
+      <div class="sub">${s.person ? `<span>Only ${personLink(s.person)}’s</span>` : ''}<span>${plural(list.length, 'artifact')}</span>${!DB.artifacts.length ? '<span>Load the <b>frames-*.zip</b> files to see artifacts.</span>' : ''}</div></div></div>
+    ${artifactTable(list, 'art-' + s.key, !s.person, { of: a => a.contentType })}
   </div>`;
 }
 

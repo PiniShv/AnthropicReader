@@ -762,6 +762,14 @@ function peopleMatching(q) {
   return all.filter(p => p.name.toLowerCase().includes(q) || (p.email || '').toLowerCase().includes(q) || p.id.startsWith(q));
 }
 
+// The records in view: one person's (finalize() linked them), or everyone's when p is null.
+// key names the scope in table state keys ('conv-all', 'conv-<person id>').
+function scopeOf(p) {
+  return p
+    ? { person: p, key: p.id, conversations: p.conversations, projects: p.projects, artifacts: p.artifacts, designChats: p.designChats, memories: p.memory ? [p.memory] : [] }
+    : { person: null, key: 'all', conversations: DB.conversations, projects: DB.projects, artifacts: DB.artifacts, designChats: DB.designChats, memories: DB.memories };
+}
+
 function projectName(id) {
   const p = DB.projectById.get(id);
   return p ? (p.name || 'Untitled project') : '';

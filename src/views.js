@@ -1,9 +1,46 @@
-/* Views: router dispatch, sidebar, shared table component, home, people, person. */
+/* Views: the kind registry, router dispatch, sidebar, shared table component, home, people, person. */
 'use strict';
 
-const ICONS = {
-  home: '⌂', people: '👥', conversation: '💬', project: '📁', artifact: '◧', design: '✎', memory: '🧠', search: '⌕', about: 'ⓘ', comment: '🗨',
-};
+const ICONS = { home: '⌂', people: '👥', search: '⌕', about: 'ⓘ' };
+
+/* The five kinds of records, in the order every list of them uses (sidebar, person tabs and
+ * card, search tabs and sections). key: person tab and search type. list / item: the route
+ * names of the list page and of one item. allCount / personCount: the sidebar badge without
+ * and with focus; personCount is also the person page's number. The view functions live in
+ * later files, so they are called through arrows. */
+const KINDS = [
+  {
+    key: 'conversations', list: 'conversations', item: 'c', icon: '💬', label: 'Conversations', noun: ['chat', 'chats'],
+    allCount: () => DB.conversations.filter(c => !c.empty).length, personCount: p => p.convCount(),
+    listView: () => viewConversations(), itemView: b => viewConversation(b), personTab: p => convTable(p.conversations, 'pc-' + p.id, false),
+  },
+  {
+    key: 'artifacts', list: 'artifacts', item: 'a', icon: '◧', label: 'Artifacts & pages', searchTab: 'Artifacts', noun: ['artifact', 'artifacts'],
+    allCount: () => DB.artifacts.length, personCount: p => p.artifacts.length,
+    listView: () => viewArtifacts(), itemView: (b, c) => viewArtifact(b, c), personTab: p => artifactTable(p.artifacts, 'pa-' + p.id, false),
+  },
+  {
+    key: 'projects', list: 'projects', item: 'p', icon: '📁', label: 'Projects', noun: ['project', 'projects'],
+    allCount: () => DB.projects.length, personCount: p => p.projects.length,
+    listView: () => viewProjects(), itemView: b => viewProject(b), personTab: p => projectTable(p.projects, 'pp-' + p.id, false),
+  },
+  {
+    key: 'design', list: 'design', item: 'd', icon: '✎', label: 'Design chats', noun: ['design chat', 'design chats'],
+    allCount: () => DB.designChats.length, personCount: p => p.designChats.length,
+    listView: () => viewDesignChats(), itemView: b => viewDesignChat(b), personTab: p => designTable(p.designChats, 'pd-' + p.id, false),
+  },
+  {
+    // Without focus the badge counts people with memory; with focus, that person's memory items.
+    key: 'memory', list: 'memories', item: 'memory', icon: '🧠', label: 'Memory', noun: ['memory item', 'memory items'],
+    allCount: () => DB.memories.length, personCount: p => p.memoryCount(),
+    listView: () => viewMemories(), itemView: b => viewMemory(b),
+    personTab: p => (p.memory ? memoryBody(p.memory) : '<div class="card empty">No memory for this person in this export.</div>'),
+  },
+];
+const KIND = Object.fromEntries(KINDS.map(k => [k.key, k]));
+
+// What a person's page and card show: every kind, plus the comments they wrote.
+const PERSON_SECTIONS = [...KINDS, { key: 'comments', label: 'Comments', noun: ['comment', 'comments'], personCount: p => p.comments.length, personTab: personComments }];
 
 function personLink(p, opts) {
   if (!p) return '<span class="faint">—</span>';
@@ -28,20 +65,12 @@ function unknownBadge(p) {
 function renderRoute(r) {
   const [a, b, c] = r.path;
   try {
+    const k = KINDS.find(x => x.list === a || x.item === a);
+    if (k) return a === k.list ? k.listView() : k.itemView(b, c);
     switch (a) {
       case undefined: case '': return viewHome();
       case 'people': return viewPeople();
       case 'person': return viewPerson(b, c || 'overview');
-      case 'conversations': return viewConversations();
-      case 'c': return viewConversation(b);
-      case 'projects': return viewProjects();
-      case 'p': return viewProject(b);
-      case 'artifacts': return viewArtifacts();
-      case 'a': return viewArtifact(b, c);
-      case 'design': return viewDesignChats();
-      case 'd': return viewDesignChat(b);
-      case 'memories': return viewMemories();
-      case 'memory': return viewMemory(b);
       case 'search': return viewSearch(r.query.q || '', r.query.t || 'all');
       case 'about': return viewAbout();
       default: return notFound('That page does not exist.');
@@ -62,13 +91,6 @@ function renderSidebar() {
   const r = App.route.path;
   const sec = r[0] || '';
   const fp = focusPerson();
-  const n = {
-    conv: fp ? fp.convCount() : DB.conversations.filter(c => !c.empty).length,
-    proj: fp ? fp.projects.length : DB.projects.length,
-    art: fp ? fp.artifacts.length : DB.artifacts.length,
-    design: fp ? fp.designChats.length : DB.designChats.length,
-    mem: fp ? fp.memoryCount() : DB.memories.length,
-  };
   const link = (href, ico, label, count, active) =>
     `<a class="nav-link${active ? ' active' : ''}" href="${href}"><span class="ico">${ico}</span>${esc(label)}${count != null ? `<span class="badge">${fmtNum(count)}</span>` : ''}</a>`;
   const activeFor = (...names) => names.includes(sec);
@@ -86,11 +108,7 @@ function renderSidebar() {
     </div>
     <div class="nav-group">
       <div class="nav-title">${fp ? 'Their data' : 'Everything'}</div>
-      ${link('#/conversations', ICONS.conversation, 'Conversations', n.conv, activeFor('conversations', 'c'))}
-      ${link('#/artifacts', ICONS.artifact, 'Artifacts & pages', n.art, activeFor('artifacts', 'a'))}
-      ${link('#/projects', ICONS.project, 'Projects', n.proj, activeFor('projects', 'p'))}
-      ${link('#/design', ICONS.design, 'Design chats', n.design, activeFor('design', 'd'))}
-      ${link('#/memories', ICONS.memory, 'Memory', n.mem, activeFor('memories', 'memory'))}
+      ${KINDS.map(k => link('#/' + k.list, k.icon, k.label, fp ? k.personCount(fp) : k.allCount(), activeFor(k.list, k.item))).join('')}
     </div>
     <div class="nav-group">
       ${link('#/search', ICONS.search, 'Search', null, sec === 'search')}
@@ -290,11 +308,7 @@ function stripMd(s) {
 /* ---------- People ---------- */
 
 function personCardHtml(p) {
-  const counts = [
-    [p.convCount(), 'chat', 'chats'], [p.artifacts.length, 'artifact', 'artifacts'], [p.projects.length, 'project', 'projects'],
-    [p.designChats.length, 'design chat', 'design chats'], [p.memoryCount(), 'memory item', 'memory items'],
-    [p.comments.length, 'comment', 'comments'],
-  ].filter(x => x[0]);
+  const counts = PERSON_SECTIONS.map(s => [s.personCount(p), ...s.noun]).filter(x => x[0]);
   return `<a class="person-card${p.total() ? '' : ' inactive'}" href="#/person/${encodeURIComponent(p.id)}">
     ${avatarHtml(p)}
     <div class="grow">
@@ -354,30 +368,17 @@ function viewPeople() {
 
 /* ---------- Person ---------- */
 
-const PERSON_TABS = [
-  ['overview', 'Overview'], ['conversations', 'Conversations'], ['artifacts', 'Artifacts & pages'],
-  ['projects', 'Projects'], ['design', 'Design chats'], ['memory', 'Memory'], ['comments', 'Comments'],
-];
-
 function viewPerson(id, tab) {
   const p = DB.people.get(id);
   if (!p) return notFound('No person with this id in the loaded export.');
-  const counts = {
-    conversations: p.convCount(), artifacts: p.artifacts.length, projects: p.projects.length,
-    design: p.designChats.length, memory: p.memoryCount(),
-    comments: p.comments.length,
-  };
+  const counts = Object.fromEntries(PERSON_SECTIONS.map(s => [s.key, s.personCount(p)]));
   const isFocus = App.focus === p.id;
-  const tabs = PERSON_TABS.map(([k, l]) => `<a class="tab${tab === k ? ' active' : ''}" href="#/person/${encodeURIComponent(p.id)}${k === 'overview' ? '' : '/' + k}">${l}${k !== 'overview' ? ` <span class="badge">${fmtNum(counts[k])}</span>` : ''}</a>`).join('');
-  let body = '';
-  if (tab === 'overview') body = personOverview(p, counts);
-  else if (tab === 'conversations') body = convTable(p.conversations, 'pc-' + p.id, false);
-  else if (tab === 'artifacts') body = artifactTable(p.artifacts, 'pa-' + p.id, false);
-  else if (tab === 'projects') body = projectTable(p.projects, 'pp-' + p.id, false);
-  else if (tab === 'design') body = designTable(p.designChats, 'pd-' + p.id, false);
-  else if (tab === 'memory') body = p.memory ? memoryBody(p.memory) : '<div class="card empty">No memory for this person in this export.</div>';
-  else if (tab === 'comments') body = personComments(p);
-  else return notFound('Unknown tab.');
+  const base = '#/person/' + encodeURIComponent(p.id);
+  const tabs = `<a class="tab${tab === 'overview' ? ' active' : ''}" href="${base}">Overview</a>` +
+    PERSON_SECTIONS.map(s => `<a class="tab${tab === s.key ? ' active' : ''}" href="${base}/${s.key}">${esc(s.label)} <span class="badge">${fmtNum(counts[s.key])}</span></a>`).join('');
+  const sec = PERSON_SECTIONS.find(s => s.key === tab);
+  if (tab !== 'overview' && !sec) return notFound('Unknown tab.');
+  const body = sec ? sec.personTab(p) : personOverview(p, counts);
 
   const firstLast = p.first ? `Active ${esc(fmtDate(p.first))} – ${esc(fmtDate(p.last))}` : 'No dated activity';
   return `<div class="page">
@@ -433,10 +434,10 @@ function personOverview(p, counts) {
 
   // Recent activity timeline.
   const events = [];
-  p.conversations.filter(c => !c.empty).forEach(c => events.push({ t: c.lastTs, ico: ICONS.conversation, html: `<a href="#/c/${encodeURIComponent(c.id)}" dir="auto">${esc(c.title || 'Untitled conversation')}</a> <span class="faint">· ${plural(c.msgCount, 'message')}</span>` }));
-  p.artifacts.forEach(a => events.push({ t: a.updated, ico: ICONS.artifact, html: `<a href="#/a/${encodeURIComponent(a.id)}" dir="auto">${esc(a.title)}</a> <span class="faint">· ${a.kind === 'page' ? 'page' : 'artifact'}, ${plural(a.versions.length, 'version')}</span>` }));
-  p.projects.forEach(x => events.push({ t: x.updated, ico: ICONS.project, html: `<a href="#/p/${encodeURIComponent(x.id)}" dir="auto">${esc(x.name || 'Untitled project')}</a> <span class="faint">· project</span>` }));
-  p.designChats.forEach(d => events.push({ t: d.lastTs, ico: ICONS.design, html: `<a href="#/d/${encodeURIComponent(d.id)}" dir="auto">${esc(d.title)}</a> <span class="faint">· design chat in ${esc(d.project.name || 'a design project')}</span>` }));
+  p.conversations.filter(c => !c.empty).forEach(c => events.push({ t: c.lastTs, ico: KIND.conversations.icon, html: `<a href="#/c/${encodeURIComponent(c.id)}" dir="auto">${esc(c.title || 'Untitled conversation')}</a> <span class="faint">· ${plural(c.msgCount, 'message')}</span>` }));
+  p.artifacts.forEach(a => events.push({ t: a.updated, ico: KIND.artifacts.icon, html: `<a href="#/a/${encodeURIComponent(a.id)}" dir="auto">${esc(a.title)}</a> <span class="faint">· ${a.kind === 'page' ? 'page' : 'artifact'}, ${plural(a.versions.length, 'version')}</span>` }));
+  p.projects.forEach(x => events.push({ t: x.updated, ico: KIND.projects.icon, html: `<a href="#/p/${encodeURIComponent(x.id)}" dir="auto">${esc(x.name || 'Untitled project')}</a> <span class="faint">· project</span>` }));
+  p.designChats.forEach(d => events.push({ t: d.lastTs, ico: KIND.design.icon, html: `<a href="#/d/${encodeURIComponent(d.id)}" dir="auto">${esc(d.title)}</a> <span class="faint">· design chat in ${esc(d.project.name || 'a design project')}</span>` }));
   events.sort((a, b) => b.t - a.t);
 
   const profile = p.memory && p.memory.files.find(f => /^\/profile\.md$/i.test(f.path));

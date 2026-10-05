@@ -23,9 +23,9 @@ For the format of the export itself, see [export-format.md](export-format.md).
 | `src/zip.js` | `ZipArchive` / `ZipEntry`: random-access zip reader. `ZipWriter`: small zip writer for downloads. |
 | `src/load.js` | `FileNode` / `ZipNode`: one interface for loose files and zip entries. File and folder picking, drag and drop, remembered file handles (`HandleStore`), and `parseJsonArrayStream()`. |
 | `src/render.js` | Escaping (`esc`), formatting of dates, numbers and sizes, Markdown (`mdToHtml`, `mdBlock`), sanitizing, search highlighting, the sandbox frame shim, small helpers (toast, copy, download, MIME types). |
-| `src/ui.js` | `App` (route and focus), the `$` / `$$` shortcuts, and the lifetime of one drawn page: `VIEW`, `after()`, `viewKey()`, `on()` for click behaviour, and `blk()` for collapsible blocks. |
-| `src/model.js` | The in-memory model: `Person`, the `DB` object, `classify()`, one `add…()` function per record type, `importExport()` (the import pipeline) and `finalize()` (links and derived data). |
-| `src/views.js` | Router dispatch (`renderRoute`), sidebar, the shared sortable table, start page, people list and person page. |
+| `src/ui.js` | `App` (route and focus), `focusPerson()` / `focusScope()`, the `$` / `$$` shortcuts, and the lifetime of one drawn page: `VIEW`, `after()`, `viewKey()`, `on()` for click behaviour, and `blk()` for collapsible blocks. |
+| `src/model.js` | The in-memory model: `Person`, the `DB` object, `classify()`, one `add…()` function per record type, `importExport()` (the import pipeline), `finalize()` (links and derived data) and small queries such as `scopeOf()`. |
+| `src/views.js` | The kind registry (`KINDS`: routes, labels, icons, counts and views of the five record kinds), router dispatch (`renderRoute`), sidebar, the shared sortable table, start page, people list and person page. |
 | `src/views-conv.js` | Conversation list, message tree and branches, message and tool rendering, the "What Claude produced here" box, Markdown export. |
 | `src/views-art.js` | Artifact list and page, version viewer, asset inlining, Slides, Design, Claude Docs pages, artifact comments. |
 | `src/views-misc.js` | Projects, memory, design chats, search, "About this export", manifest download links, and the per-person zip. |
@@ -187,7 +187,7 @@ The app uses hash routes, so it works from `file://` and a reload keeps your pla
 
 `navigate()` uses `history.pushState` / `replaceState` and draws the page. `onRoute()` ends the old view, draws the new one, runs its `after()` hooks and redraws the sidebar. Because a link click fires both `popstate` and `hashchange`, the app draws only when the hash really changed.
 
-**Focus mode** keeps the focused person's id in `App.focus` (and in `sessionStorage` for this tab). Lists, sidebar counts and search read it to limit what they show.
+**Focus mode** keeps the focused person's id in `App.focus` (and in `sessionStorage` for this tab). Only `setFocus()` changes it. Lists and sidebar counts read `focusScope()`: the focused person's records, which `finalize()` linked to them, or everyone's (`scopeOf()`). Search reads the focused person too.
 
 ## Search
 

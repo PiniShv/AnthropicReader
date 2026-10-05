@@ -11,6 +11,8 @@ const $ = (sel, root) => (root || document).querySelector(sel);
 const $$ = (sel, root) => Array.from((root || document).querySelectorAll(sel));
 
 const focusPerson = () => (App.focus ? DB.people.get(App.focus) || null : null);
+// What lists show: the focused person's records, or everyone's.
+const focusScope = () => scopeOf(focusPerson());
 
 /* Everything that lives exactly as long as one drawn page. onRoute() aborts the old view and
  * starts a new one: listeners added with its signal go away, and async drawers stop at their
