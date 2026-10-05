@@ -81,7 +81,7 @@ A few small pieces carry most of the app. When you add something, reach for thes
 
 ### Gathering input
 
-- **Drag and drop** walks dropped folders with `webkitGetAsEntry`. In Chrome and Edge it also asks for persistent file handles (`getAsFileSystemHandle`).
+- **Drag and drop** walks dropped folders with `webkitGetAsEntry`. Files are read in parallel but kept in folder order, so the same drop always gives the same result. In Chrome and Edge it also asks for persistent file handles (`getAsFileSystemHandle`).
 - **Choose files / Choose a folder** use the File System Access API when it exists (`showOpenFilePicker`, `showDirectoryPicker`) and fall back to `<input type="file">`.
 - File handles are stored in IndexedDB (`HandleStore`), so **Reopen last export** can open the same files after a reload. Only handles are stored, never content.
 - Dropping files on an open export asks first, then adds them to the same model. That is how several exports are merged.

@@ -48,34 +48,31 @@ async function nodesFromFiles(files, onStatus) {
   return { nodes, sources };
 }
 
-// Recursively read a drag-and-drop directory entry (webkitGetAsEntry API).
-function readDropEntry(entry, out) {
-  return new Promise((resolve) => {
-    if (entry.isFile) {
-      entry.file(f => { f.relPath = entry.fullPath; out.push(f); resolve(); }, () => resolve());
-    } else if (entry.isDirectory) {
-      const reader = entry.createReader();
-      const all = [];
-      const next = () => reader.readEntries(batch => {
-        if (!batch.length) {
-          Promise.all(all.map(e => readDropEntry(e, out))).then(() => resolve());
-        } else { all.push(...batch); next(); }
-      }, () => resolve());
-      next();
-    } else resolve();
-  });
+// The files of a drag-and-drop entry (webkitGetAsEntry API), in folder order. The files are
+// read in parallel, but the order does not depend on which read finishes first, so dropping
+// the same folder twice gives the same result (the import keeps the first copy of a file).
+async function readDropEntry(entry) {
+  if (entry.isFile) {
+    return new Promise(resolve => entry.file(f => { f.relPath = entry.fullPath; resolve([f]); }, () => resolve([])));
+  }
+  if (!entry.isDirectory) return [];
+  const reader = entry.createReader();
+  const children = [];
+  try {
+    for (;;) {
+      const batch = await new Promise((resolve, reject) => reader.readEntries(resolve, reject));
+      if (!batch.length) break;
+      children.push(...batch);
+    }
+  } catch (e) { return []; }   // a folder that cannot be listed adds nothing
+  return (await Promise.all(children.map(readDropEntry))).flat();
 }
 
 async function filesFromDataTransfer(dt) {
-  const out = [];
   const items = Array.from(dt.items || []).filter(i => i.kind === 'file');
-  const entries = items.map(i => (i.webkitGetAsEntry ? i.webkitGetAsEntry() : null));
-  if (entries.some(Boolean)) {
-    await Promise.all(entries.filter(Boolean).map(e => readDropEntry(e, out)));
-  } else {
-    out.push(...Array.from(dt.files || []));
-  }
-  return out;
+  const entries = items.map(i => (i.webkitGetAsEntry ? i.webkitGetAsEntry() : null)).filter(Boolean);
+  if (entries.length) return (await Promise.all(entries.map(readDropEntry))).flat();
+  return Array.from(dt.files || []);
 }
 
 // File System Access API handles (Chrome/Edge): lets us offer "Reopen last export".
