@@ -211,3 +211,5 @@ The app uses hash routes, so it works from `file://` and a reload keeps your pla
 ## Testing hook
 
 `app.js` exposes `window.ExportReader = { load(files), DB() }` for scripted use. The tests in `test/` do not use a browser: `test/harness.mjs` runs the same scripts in a Node `vm` context with small stubs, and tests the zip reader, the parser and the import pipeline directly.
+
+The tests cannot check the HTML the views draw. For that, `scripts/snapshot.mjs` opens the built page with the sample data in headless Chrome. It visits every page (also with focus on one person), opens every collapsed block, and saves the HTML of the main area and the sidebar, and the `srcdoc` of every preview frame. Attributes that only carry click data (`data-action`, ids in `data-*`, lazy keys) are left out, so a refactor that keeps the pages the same gives the same files. `scripts/lib/chrome.mjs` is the small DevTools-protocol driver it shares with `scripts/screenshots.mjs`.

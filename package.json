@@ -31,6 +31,7 @@
     "build:check": "node scripts/build.mjs --check",
     "test": "node --test",
     "demo": "node scripts/make-demo-export.mjs",
-    "screenshots": "node scripts/screenshots.mjs"
+    "screenshots": "node scripts/screenshots.mjs",
+    "snapshot": "node scripts/snapshot.mjs"
   }
 }

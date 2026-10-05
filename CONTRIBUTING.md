@@ -37,6 +37,7 @@ cd AnthropicReader
 | `npm run build:check` | Fails if `dist/claude-export-reader.html` does not match the sources. CI runs this. |
 | `npm test` | Runs the tests in `test/` with Node's built-in test runner. |
 | `npm run demo` | Writes the made-up sample export (six zip parts and a manifest) to `demo/`, for trying the reader on real files. `npm run demo -- <folder>` writes them somewhere else. |
+| `npm run snapshot -- --out <folder>` | Saves the HTML of every page of the sample data, with every block opened, using headless Chrome (Node 22+; set `CHROME=<path>` if Chrome is not found). Run it before a refactor. After it, `npm run snapshot -- --compare <folder>` fails if any page changed. |
 
 To try your change, run `npm run build` and open `dist/claude-export-reader.html` in a browser. Load the sample data, and test with your own export if you have one (keep it on your computer).
 
