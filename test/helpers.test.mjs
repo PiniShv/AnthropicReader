@@ -39,6 +39,22 @@ test('decodeEntities', () => {
   assert.equal(decodeEntities(null), null);
 });
 
+test('names from the export never find something on Object.prototype', () => {
+  assert.equal(decodeEntities('&constructor; &toString; &hasOwnProperty;'), '&constructor; &toString; &hasOwnProperty;');
+  assert.equal(api.mimeFor('x.constructor'), 'application/octet-stream');
+  assert.equal(api.mimeFor('x.valueof'), 'application/octet-stream');
+  assert.equal(api.mimeFor('x.PNG'), 'image/png');
+  assert.match(api.visChip({ visibility: 'constructor' }), /title="Visibility">constructor</);
+  const manifest = { files: ['constructor', 'toString', 'conversations'].map(category => ({ category, filename: category + '-000.zip' })) };
+  assert.deepEqual(plain(api.missingFiles(manifest).map(f => f.category)), ['constructor', 'toString', 'conversations']);
+  // An in-app link from the export can put any key into the route's query.
+  const app = loadApp({ files: BUILD_ORDER });
+  app.window.location.hash = '#/search?q=a&__proto__=x&constructor=y';
+  const { query } = app.api.parseHash();
+  assert.deepEqual(Object.keys(query), ['q', '__proto__', 'constructor']);
+  assert.equal(Object.getPrototypeOf(query), app.run('Object.prototype'));
+});
+
 test('esc escapes the five HTML characters', () => {
   assert.equal(esc(`<a href="x">Tom & 'Jerry'</a>`), '&lt;a href=&quot;x&quot;&gt;Tom &amp; &#39;Jerry&#39;&lt;/a&gt;');
   assert.equal(esc(null), '');

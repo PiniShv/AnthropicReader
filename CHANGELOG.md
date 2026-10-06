@@ -47,7 +47,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - The start page no longer fails in Chrome and Edge for an export with more than about 120,000 conversations.
 - One tool call or block of an unexpected shape, such as a chart whose labels are not a list or a question list with `null` in it, no longer hides its whole conversation or design chat. A part that still cannot be drawn shows as a notice with its data from the export, and a part that fails after the page is drawn (such as the search) says so on the page instead of only in the browser console.
 - A message whose blocks, attachments or files are not a list (for example `{}`) no longer leaves the search page on "Searching…" forever or breaks the Markdown export and the per-person zip. A chat, project, memory or design chat whose id is a number opens like any other.
-- A time that no date can hold, such as `1e20`, counts as unknown. Before, it broke the person page ("Invalid time value") and the per-person zip.
+- A time that no date can hold, such as `1e20`, counts as unknown.
+- Values from the export that are names of JavaScript internals, such as `&constructor;` in a description, the visibility or file extension `constructor`, or the manifest category `constructor`, no longer show "function Object() { [native code] }" or count a missing part as loaded. Before, it broke the person page ("Invalid time value") and the per-person zip.
 - The users, projects, memories and design chat files are read one record at a time, like `conversations.json`, so a very large old-format `projects.json` or `memories.json` also loads in Chrome and Edge.
 - "Copied" is shown only when the copy worked, and **Copy Markdown** on a Docs page also works in Safari.
 - On phones, the end of the page no longer sits under the browser's toolbar.

@@ -100,7 +100,7 @@ function designAttachments(atts, showHidden) {
 
 function designQuestionCard(spec, receipt) {
   const qs = objects(spec && spec.questions);
-  const ans = receipt && receipt.payload ? receipt.payload : null;
+  const ans = receipt && isObj(receipt.payload) ? receipt.payload : null;
   const fmtAns = v => {
     if (!v) return '<span class="faint">skipped</span>';
     const x = v.choice != null ? v.choice : v.choices || v.selected || v.text || v.file || v.localFolders;
@@ -112,7 +112,7 @@ function designQuestionCard(spec, receipt) {
     ${spec && spec.prompt ? `<p class="muted" dir="auto" style="margin:0 0 6px">${esc(spec.prompt)}</p>` : ''}
     ${qs.map(q => `<div style="margin-top:8px"><div dir="auto"><b>${esc(q.title || q.question || q.id)}</b></div>
       ${Array.isArray(q.options) && q.options.length ? `<div class="faint" style="font-size:12.5px" dir="auto">Options: ${q.options.map(o => esc(typeof o === 'string' ? o : JSON.stringify(o))).join(' · ')}</div>` : ''}
-      ${ans ? `<div style="margin-top:3px">Answer: ${fmtAns(ans[q.id])}</div>` : ''}</div>`).join('')}
+      ${ans ? `<div style="margin-top:3px">Answer: ${fmtAns(Object.hasOwn(ans, q.id) ? ans[q.id] : null)}</div>` : ''}</div>`).join('')}
     ${!ans ? '<p class="faint" style="margin:8px 0 0;font-size:13px">No answer recorded.</p>' : ''}</div>`;
 }
 

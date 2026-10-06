@@ -360,11 +360,11 @@ function artifactMeta(j) {
 }
 
 // Descriptions arrive HTML-escaped (e.g. "&amp;"); decode for display as text (views-art.js and
-// the search use it too).
-const NAMED_ENTITIES = {
+// the search use it too). A Map, so "&constructor;" is not looked up on Object.prototype.
+const NAMED_ENTITIES = new Map(Object.entries({
   amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", nbsp: '\u00a0', mdash: '—', ndash: '–',
   hellip: '…', lsquo: '‘', rsquo: '’', ldquo: '“', rdquo: '”', middot: '·', bull: '•', copy: '©', reg: '®', trade: '™',
-};
+}));
 
 function decodeEntities(s) {
   if (!s || s.indexOf('&') < 0) return s;
@@ -373,7 +373,7 @@ function decodeEntities(s) {
       const n = e[1] === 'x' || e[1] === 'X' ? parseInt(e.slice(2), 16) : parseInt(e.slice(1), 10);
       try { return String.fromCodePoint(n); } catch (err) { return all; }
     }
-    const v = NAMED_ENTITIES[e.toLowerCase()];
+    const v = NAMED_ENTITIES.get(e.toLowerCase());
     return v != null ? v : all;
   });
 }

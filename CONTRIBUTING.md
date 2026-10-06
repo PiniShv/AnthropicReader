@@ -65,6 +65,7 @@ Read [docs/architecture.md](docs/architecture.md) for the full picture. In short
   - render Markdown only through `mdToHtml()` / `mdBlock()`, which sanitize with DOMPurify
   - show HTML from the export only in a sandboxed iframe (`sandboxFrame()`, or a frame with the `FRAME_SANDBOX` tokens), never with `allow-same-origin`
   - make links from export data clickable only through `safeUrl()`
+  - look values from the export up in a `Map`, or check them with `Object.hasOwn()`, never as keys of a plain object: `"constructor"` would find `Object.prototype`
 - Keep big exports fast. Do not read large files up front. Render big blocks lazily (`blk()` with a render function), and cut very long text with `preHtml()`.
 - Use `dir="auto"` on blocks of user text, so right-to-left languages display correctly.
 - Keep it accessible (WCAG 2.2 AA): every control is a real `<button>`, link or form field, so it works from the keyboard. Give icon-only buttons an `aria-label`, take colours from the theme tokens in `styles.css`, and keep the focus in place when you draw a part of the page again. See [Accessibility](docs/architecture.md#accessibility).

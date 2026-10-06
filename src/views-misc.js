@@ -120,7 +120,7 @@ function viewMemory(personId) {
   </div>`;
 }
 
-const MEM_FOLDERS = { '': 'Profile', people: 'People', areas: 'Work areas', topics: 'Topics', projects: 'Projects' };
+const MEM_FOLDERS = new Map([['', 'Profile'], ['people', 'People'], ['areas', 'Work areas'], ['topics', 'Topics'], ['projects', 'Projects']]);
 
 function memoryBody(mem) {
   const groups = new Map();
@@ -142,7 +142,7 @@ function memoryBody(mem) {
       const idx = mem.files.find(f => f.path === '/projects/' + pid + '/index.md');
       return 'Project: ' + (projectName(pid) || (idx && idx.meta.name) || pid.slice(0, 8));
     }
-    return MEM_FOLDERS[g] || g;
+    return MEM_FOLDERS.get(g) || g;
   };
   let i = 0;
   const groupsHtml = keys.map(g => `<h2 class="section-title" style="font-size:14.5px">${esc(label(g))} <span class="badge">${groups.get(g).length}</span></h2>
@@ -165,13 +165,13 @@ function memoryFileCard(f, mem, i) {
   return blk({
     cls: 'mem-file', id: memSlugId(mem, f.path),
     summary: `<span class="lbl" dir="auto">${esc(title)}</span><span class="desc" dir="auto">${esc(f.meta.description || '')}</span>
-      <span class="meta">${sources.map(s => `<span class="chip" style="font-size:11px" title="${esc(SOURCE_HELP[s] || '')}">${esc(s)}</span>`).join(' ')} ${f.updated ? esc(fmtDate(f.updated)) : ''}</span>`,
+      <span class="meta">${sources.map(s => `<span class="chip" style="font-size:11px" title="${esc(SOURCE_HELP.get(s) || '')}">${esc(s)}</span>`).join(' ')} ${f.updated ? esc(fmtDate(f.updated)) : ''}</span>`,
     body: aliases.length ? `<p class="faint" style="font-size:12.5px;margin:0 0 6px">Also called: ${aliases.map(esc).join(', ')}</p>` : '',
   }, () => (f.body.trim() ? memoryText(f.body, mem) : '<p class="faint">(empty)</p>') +
     sourceBlk(f.content, { label: 'Raw file', desc: `<span class="desc mono">${esc(f.path)}</span>`, wrap: true, gap: 10 }));
 }
 
-const SOURCE_HELP = { backfill: 'Seeded from older chat history', chat: 'Learned in a claude.ai chat', cowork: 'Learned in Cowork' };
+const SOURCE_HELP = new Map([['backfill', 'Seeded from older chat history'], ['chat', 'Learned in a claude.ai chat'], ['cowork', 'Learned in Cowork']]);
 
 /* Memory markdown: "[stated]" at the start of a list item becomes a small tag, [[slug]] becomes
  * a link to that memory file. The sanitizer removes every class, so a tag goes through it as

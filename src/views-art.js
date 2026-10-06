@@ -1,7 +1,7 @@
 /* Artifacts & pages: list, artifact page, version viewer and Docs pages. Previews are built in preview.js. */
 'use strict';
 
-const VIS_LABEL = { private: 'Private', organization: 'Whole team', invited: 'Shared with invited', agent: 'Agent' };
+const VIS_LABEL = new Map([['private', 'Private'], ['organization', 'Whole team'], ['invited', 'Shared with invited'], ['agent', 'Agent']]);
 // Descriptions that are the artifact type's own blurb, not something the author wrote.
 const TYPE_BLURB = /^(Living docs —|Design canvas for websites|Presentation decks: 16:9 slides)/;
 
@@ -9,7 +9,7 @@ function visChip(a) {
   const v = a.visibility || 'private';
   const sw = a.sharedWith;
   const extra = sw ? ` · ${plural(sw.viewers || 0, 'viewer')}${sw.editors ? ', ' + plural(sw.editors, 'editor') : ''}` : '';
-  return `<span class="chip${v === 'private' ? '' : ' on'}" title="Visibility">${esc(VIS_LABEL[v] || v)}${esc(extra)}</span>`;
+  return `<span class="chip${v === 'private' ? '' : ' on'}" title="Visibility">${esc(VIS_LABEL.get(v) || v)}${esc(extra)}</span>`;
 }
 
 function artifactTable(list, key, showOwner, facet) {
@@ -26,7 +26,7 @@ function artifactTable(list, key, showOwner, facet) {
   return tableHtml({
     key, rows: list, columns, sort: 'updated', dir: -1, noun: 'artifact', facet,
     href: a => '#/a/' + encodeURIComponent(a.id),
-    text: a => [artifactTitle(a), a.description, a.contentType, a.kind, a.visibility, VIS_LABEL[a.visibility], a.owner && a.owner.name, a.owner && a.owner.email, a.id, ...a.versions.map(v => v.title)].join(' '),
+    text: a => [artifactTitle(a), a.description, a.contentType, a.kind, a.visibility, VIS_LABEL.get(a.visibility), a.owner && a.owner.name, a.owner && a.owner.email, a.id, ...a.versions.map(v => v.title)].join(' '),
     placeholder: 'Filter: title, type (slides, doc, html), visibility, person…',
     empty: 'No artifacts.',
   });

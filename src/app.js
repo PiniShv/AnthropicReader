@@ -159,8 +159,8 @@ function parseHash() {
   const raw = location.hash.replace(/^#\/?/, '');
   const [pathPart, queryPart] = raw.split('?');
   const path = pathPart.split('/').filter(Boolean).map(decodeURIComponent);
-  const query = {};
-  new URLSearchParams(queryPart || '').forEach((v, k) => { query[k] = v; });
+  // fromEntries defines own properties, so a key such as "__proto__" in a link stays a key.
+  const query = Object.fromEntries(new URLSearchParams(queryPart || ''));
   return { path, query };
 }
 

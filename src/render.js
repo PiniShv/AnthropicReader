@@ -397,13 +397,15 @@ function fileExt(name) {
   return m ? m[1].toLowerCase() : '';
 }
 
-const MIME = {
+// By file extension. A Map: an extension from the export such as ".constructor" must not find
+// something on Object.prototype.
+const MIME = new Map(Object.entries({
   html: 'text/html', htm: 'text/html', css: 'text/css', js: 'text/javascript', mjs: 'text/javascript',
   json: 'application/json', md: 'text/markdown', txt: 'text/plain', csv: 'text/csv', svg: 'image/svg+xml',
   png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif', webp: 'image/webp', avif: 'image/avif',
   ico: 'image/x-icon', bmp: 'image/bmp', woff: 'font/woff', woff2: 'font/woff2', ttf: 'font/ttf', otf: 'font/otf',
   pdf: 'application/pdf', mp4: 'video/mp4', webm: 'video/webm', mp3: 'audio/mpeg', wav: 'audio/wav',
   xml: 'application/xml', yaml: 'text/yaml', yml: 'text/yaml', jsx: 'text/javascript', ts: 'text/plain', tsx: 'text/plain',
-};
-function mimeFor(name) { return MIME[fileExt(name)] || 'application/octet-stream'; }
+}));
+function mimeFor(name) { return MIME.get(fileExt(name)) || 'application/octet-stream'; }
 function isTextExt(ext) { return /^(html?|css|m?js|jsx|tsx?|json|md|markdown|txt|csv|svg|xml|ya?ml|py|sh|sql|java|go|rb|rs|c|h|cpp|cs|kt|swift|php|toml|ini|log|tsv)$/.test(ext); }

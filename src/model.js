@@ -185,15 +185,16 @@ function latestManifest() {
 function missingFiles(m) {
   const okZips = new Set(DB.sources.filter(s => s.kind === 'zip' && !s.error).map(s => s.name));
   const framesZips = DB.sources.some(s => s.kind === 'zip' && !s.error && /^frames-/i.test(s.name));
-  const has = {
-    conversations: DB.conversations.length > 0,
-    design_chats: DB.designChats.length > 0,
-    memories: DB.memories.length > 0,
-    projects: DB.projects.length > 0,
-    light_metadata: Array.from(DB.people.values()).some(p => p.known),
-    frames: DB.artifacts.length > 0 && !framesZips,
-  };
-  return m.files.filter(f => !okZips.has(f.filename) && !has[f.category]);
+  // A Map: the category comes from the manifest, and "constructor" must not count as loaded.
+  const has = new Map([
+    ['conversations', DB.conversations.length > 0],
+    ['design_chats', DB.designChats.length > 0],
+    ['memories', DB.memories.length > 0],
+    ['projects', DB.projects.length > 0],
+    ['light_metadata', Array.from(DB.people.values()).some(p => p.known)],
+    ['frames', DB.artifacts.length > 0 && !framesZips],
+  ]);
+  return m.files.filter(f => !okZips.has(f.filename) && !has.get(f.category));
 }
 
 /* ---------- Linking & derived data ---------- */
