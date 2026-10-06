@@ -142,7 +142,9 @@ async function assetLookup(files, inlined, enc, opts) {
   return lookup;
 }
 
-// In-frame lookup for files whose paths are only known at run time.
+/* In-frame lookup for files whose paths are only known at run time. A path set from a script
+ * (img.src = …, setAttribute) is swapped before the browser tries to load it; one written into
+ * HTML is swapped by the MutationObserver, after the browser may have tried. */
 function assetLookupScript(lookup) {
   if (!lookup || !Object.keys(lookup).length) return '';
   const json = JSON.stringify(lookup).replace(/</g, '\\u003c');
@@ -151,6 +153,10 @@ function assetLookupScript(lookup) {
     'u=u.replace(/^\\.\\//,"").split("#")[0].split("?")[0];return Object.prototype.hasOwnProperty.call(M,u)?M[u]:null}' +
     'var F=window.fetch;if(F)window.fetch=function(u,o){var d=k(typeof u==="string"?u:(u&&u.url));return d?F.call(this,d,o):F.apply(this,arguments)};' +
     'var O=XMLHttpRequest.prototype.open;XMLHttpRequest.prototype.open=function(m,u){var d=k(u);if(d)arguments[1]=d;return O.apply(this,arguments)};' +
+    'var S=Element.prototype.setAttribute;Element.prototype.setAttribute=function(n,v){if(/^(src|href|poster)$/i.test(n)){var d=k(v);if(d)v=d}return S.call(this,n,v)};' +
+    'function wrap(C,p){var P=window[C]&&window[C].prototype,D=P&&Object.getOwnPropertyDescriptor(P,p);if(!D||!D.set)return;' +
+    'Object.defineProperty(P,p,{configurable:true,enumerable:D.enumerable,get:D.get,set:function(v){D.set.call(this,k(v)||v)}})}' +
+    '[["HTMLImageElement","src"],["HTMLScriptElement","src"],["HTMLMediaElement","src"],["HTMLSourceElement","src"],["HTMLVideoElement","poster"],["HTMLLinkElement","href"]].forEach(function(x){wrap(x[0],x[1])});' +
     'function fix(el){if(!el.getAttribute)return;["src","href","poster"].forEach(function(a){var d=k(el.getAttribute(a));if(d)el.setAttribute(a,d)})}' +
     'new MutationObserver(function(ms){ms.forEach(function(m){if(m.type==="attributes")fix(m.target);else m.addedNodes.forEach(function(n){if(n.nodeType===1){fix(n);if(n.querySelectorAll)n.querySelectorAll("[src],[href],[poster]").forEach(fix)}})})})' +
     '.observe(document.documentElement,{subtree:true,childList:true,attributes:true,attributeFilter:["src","href","poster"]});})();<\/script>';

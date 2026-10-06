@@ -31,6 +31,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Fixed
 
+- In the preview of a multi-file artifact, an image or script path that the artifact builds while it runs (`img.src = 'icons/' + name`) is swapped for the exported file before the browser tries to load it. Before, the browser tried the path first, which logged errors such as "Not allowed to load local resource".
 - Counts of chats and messages agree everywhere. The start page, the person page, the conversation list and "About this export" count only the messages of chats with content, next to the number of those chats. The download dialog and `person.json` in the per-person zip count chats with content and without, like the person page. Before, they counted every chat as a conversation.
 - The Markdown of each chat in the per-person zip always follows the newest branch. Before, it followed the branches you had opened in the tab, so the same download could differ.
 - In the preview of a multi-file artifact, a stylesheet's images and fonts no longer break other paths that contain the same name. Before, inlining `a.png` also changed `data.png` and any other text with `a.png` in it.

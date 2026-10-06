@@ -1,6 +1,7 @@
 // Small pure helpers from src/render.js, src/model.js, src/ingest.js and the view scripts.
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import vm from 'node:vm';
 import { loadApp, plain, BUILD_ORDER } from './harness.mjs';
 
 const { api } = loadApp();
@@ -310,6 +311,25 @@ test('a stylesheet gets only its own url() paths inlined, never the same text el
   const out = Buffer.from(e.url.split(',')[1], 'base64').toString();
   const png = s => 'data:image/png;base64,' + Buffer.from(s).toString('base64');
   assert.equal(out, `.a{background:url(${png('PNG-A')})} .b{background:url("${png('PNG-D')}")} .c{content:"a.png"} .d{background:url( '${png('PNG-A')}' )} .e{background:url(a.png?v=1)}`);
+});
+
+test('the lookup script swaps a path set from a script before the browser loads it', () => {
+  const html = api.assetLookupScript({ 'icons/a.png': 'data:image/png;base64,QQ==' });
+  const code = html.slice('<script>'.length, -'</script>'.length);
+  // A stand-in for the frame: every src the "browser" sees is a load it would start.
+  const loads = [];
+  class Element { setAttribute(n, v) { loads.push(n + '=' + v); } getAttribute() { return null; } }
+  class HTMLImageElement extends Element {}
+  Object.defineProperty(HTMLImageElement.prototype, 'src', { configurable: true, get() { return this.s; }, set(v) { loads.push('src=' + v); this.s = v; } });
+  const frame = { Element, HTMLImageElement, XMLHttpRequest: class { open() {} }, MutationObserver: class { observe() {} }, document: { documentElement: {} } };
+  frame.window = frame;
+  vm.runInNewContext(code, frame);
+  const img = new HTMLImageElement();
+  img.src = './icons/a.png?v=2';
+  img.setAttribute('src', 'icons/a.png');
+  img.setAttribute('alt', 'icons/a.png');
+  img.src = 'https://example.com/other.png';
+  assert.deepEqual(loads, ['src=data:image/png;base64,QQ==', 'src=data:image/png;base64,QQ==', 'alt=icons/a.png', 'src=https://example.com/other.png']);
 });
 
 /* ---------- Conversation branches ---------- */
