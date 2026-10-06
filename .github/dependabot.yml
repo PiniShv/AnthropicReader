@@ -1,0 +1,15 @@
+# Keeps the GitHub Actions in .github/workflows/ current.
+# The project has no npm dependencies, so actions are the only thing to update.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    # One pull request a week for all actions, not one per action.
+    groups:
+      github-actions:
+        patterns:
+          - '*'
+    commit-message:
+      prefix: CI
