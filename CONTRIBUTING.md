@@ -39,6 +39,7 @@ cd AnthropicReader
 | `node scripts/check-vendor.mjs` | Checks that the files in `vendor/` are the official npm builds named in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md), and lists known security advisories and newer releases. Needs the network. A weekly workflow (`.github/workflows/vendor-check.yml`) runs it too, so a new advisory shows up as a failed run. |
 | `npm run demo` | Writes the made-up sample export (six zip parts and a manifest) to `demo/`, for trying the reader on real files. `npm run demo -- <folder>` writes them somewhere else. |
 | `npm run a11y` | Checks accessibility (WCAG 2.2 AA) with axe-core and a few keyboard checks, on the sample data in headless Chrome. Needs the network the first time. CI runs it. See [Checking accessibility](#checking-accessibility). |
+| `npm run security` | Feeds hostile, made-up export text to every renderer and every kind of page of the built reader in headless Chrome, with the network cut off. Fails on any script that runs, any network request, any tag or attribute outside the allow-list, and any iframe without its sandbox. CI runs it. See [Checking security](#checking-security). |
 | `npm run snapshot -- --out <folder>` | Saves the HTML of every page of the sample data, with every block opened, using headless Chrome (set `CHROME=<path>` if Chrome is not found). Run it before a refactor. After it, `npm run snapshot -- --compare <folder>` fails if any page changed. |
 
 To try your change, run `npm run build` and open `dist/claude-export-reader.html` in a browser. Load the sample data, and test with your own export if you have one (keep it on your computer).
@@ -86,6 +87,23 @@ It prints each problem with the element it found and exits with code 1. A clean 
 axe-core is not a dependency and is not in the repository. The first run downloads the pinned version from jsDelivr into your temp folder and checks its SHA-256 before it runs it. Offline, download `axe.min.js` of that version yourself and pass `--axe <file>`. To move to a newer axe-core, change `AXE_VERSION` and `AXE_SHA256` at the top of the script, and fix what the new rules find.
 
 Automated checks find only part of the problems. For a bigger UI change, also try the page with the keyboard alone and with a screen reader (VoiceOver on a Mac, NVDA on Windows).
+
+## Checking security
+
+After a change to how export text is drawn (`src/render.js`, a view, the sanitizer settings, a new frame), and after an update of DOMPurify or marked, run:
+
+```bash
+npm run build && npm run security
+```
+
+`scripts/security.mjs` opens the built reader in headless Chrome with the network cut off (a proxy that is not there, and no DNS). It uses made-up data only:
+
+- **Renderers.** About 60 hostile inputs go through `mdToHtml()`, `mdBlock()`, `plainTextHtml()`, `snippetHtml()` and `memoryText()`: event handlers, `javascript:`, `data:` and `vbscript:` links, remote images and media, `<iframe>`, `<base>`, `<meta>`, SVG and MathML tricks (`mask`, `fill`, `marker-end`, CSS escapes, `image-set()`), `style`, forms, known mutation XSS samples, forged `data-on` keys and ids, and Markdown links and images. Every tag and attribute in the output must be on the script's allow-list.
+- **Pages.** It loads a hostile export with the same text in every field (messages, thinking, tool calls, attachments, projects, memory, design chats, Docs pages and comments), opens every kind of page with every block open, and looks for event handlers, unsafe links, attributes that load files, and forged ids.
+- **Frames.** Every iframe, in `src/` and in the pages (also **Open in new tab**), must have a sandbox with only the allowed tokens, never `allow-same-origin`. A probe inside each frame tries to reach the reader.
+- **Scripts and network.** Every payload calls a trap function that only the reader's page has, and every request from the page or any frame in it is recorded. Either one fails the run.
+
+It exits with code 1 on any problem and takes about 15 seconds. When you add a new way to draw export text, add it to the check. When you learn a new trick, add it to `CORPUS`.
 
 ## Adding support for a new export field
 
@@ -144,7 +162,7 @@ Update a library when it has a security fix, and keep DOMPurify current: it is t
    npm run build && npm test && npm run snapshot -- --compare ../snapshot-before
    ```
 
-   The sample data does not try to break the sanitizer. So also open the old and the new build in a browser and, in the console, compare what `mdToHtml()` returns for some hostile input (event handlers, `javascript:` links, remote images, `<iframe>`, `<svg>`). In the pull request, explain every page and every output that changed. A sanitizer update must never let more through without a reason.
+   The sample data does not try to break the sanitizer, so also run `npm run security`, which does (see [Checking security](#checking-security)). In the pull request, explain every page and every output that changed. A sanitizer update must never let more through without a reason.
 
 8. **Write it down.** Add a line under **Unreleased** in [CHANGELOG.md](CHANGELOG.md) (under **Security** for a security fix). Commit `vendor/`, `dist/`, THIRD_PARTY_NOTICES.md and CHANGELOG.md together.
 

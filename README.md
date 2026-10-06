@@ -183,7 +183,7 @@ src/
   demo-artifacts.js  sample artifacts
   app.js             start-up, loading screen, routing, global events
 vendor/              marked and DOMPurify, vendored (see THIRD_PARTY_NOTICES.md)
-scripts/             build, sample export and maintainer checks (snapshot, accessibility, screenshots, vendor)
+scripts/             build, sample export and maintainer checks (snapshot, accessibility, security, screenshots, vendor)
 test/                tests (node --test)
 dist/                the built single-file reader (committed)
 docs/                export format reference, architecture notes, screenshots

@@ -52,7 +52,9 @@ test('every inlined script block parses', () => {
   }
 });
 
-test('the page loads nothing from the network', () => {
+// Only the static page. What it loads at run time, also from hostile export text, is checked
+// in a browser by npm run security (scripts/security.mjs).
+test('the page has no external scripts or stylesheets', () => {
   assert.equal(scripts.filter(s => /\bsrc\s*=/.test(s.attrs)).length, 0, 'no external scripts');
   assert.ok(!/<link\b[^>]*rel=["']?stylesheet[^>]*href=["']?https?:/i.test(html), 'no external stylesheets');
 });

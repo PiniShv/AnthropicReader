@@ -1,5 +1,5 @@
 // A small headless Chrome driver over the DevTools protocol (CDP), shared by the dev scripts
-// (screenshots, snapshot). No dependencies: Node 22+ has a global WebSocket.
+// (screenshots, snapshot, a11y, security). No dependencies: Node 22+ has a global WebSocket.
 
 import { spawn } from 'node:child_process';
 import { mkdtempSync, rmSync } from 'node:fs';
@@ -12,11 +12,12 @@ export const DEFAULT_CHROME = process.env.CHROME ||
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
 // Starts Chrome with a throwaway profile. Always call close() (use try/finally).
-export async function launchChrome(path = DEFAULT_CHROME) {
+// args: more command-line switches (the security check uses them to cut off the network).
+export async function launchChrome(path = DEFAULT_CHROME, { args = [] } = {}) {
   const profile = mkdtempSync(join(tmpdir(), 'cer-chrome-'));
   const chrome = spawn(path, [
     '--headless=new', '--disable-gpu', '--no-first-run', '--no-default-browser-check', '--hide-scrollbars',
-    '--remote-debugging-port=0', `--user-data-dir=${profile}`, 'about:blank',
+    '--remote-debugging-port=0', `--user-data-dir=${profile}`, ...args, 'about:blank',
   ], { stdio: ['ignore', 'ignore', 'pipe'] });
   const exited = new Promise(r => { chrome.once('exit', r); chrome.once('error', r); });
   const removeProfile = async () => {
@@ -102,5 +103,6 @@ export async function launchChrome(path = DEFAULT_CHROME) {
     await removeProfile();
   }
 
-  return { openPage, close };
+  // send() and on() talk to the whole browser, for sessions that are not a page (frames).
+  return { openPage, close, send, on: fn => listeners.add(fn) };
 }

@@ -66,6 +66,7 @@ Only the latest release, and the current `main` branch, get security fixes. The 
 - **Narrow messages from frames.** The reader listens to one kind of message from a preview: a request to switch to another board of the same Design canvas. It accepts it only from the preview frame that is open, and only as a board name.
 - **"Open in new tab".** The new tab holds only a sandboxed iframe with the artifact, so the artifact is just as isolated there.
 - **Robust parsing.** The zip reader reads only the central directory up front, checks every header signature, and supports only the STORED and DEFLATE methods. The JSON parser streams huge arrays and reports files that end too early. A file that cannot be read becomes a warning, and the rest of the export still loads.
+- **Tested with hostile input.** `npm run security` (`scripts/security.mjs`) feeds hostile, made-up export text through every renderer, and a whole hostile export through every kind of page, in headless Chrome with the network cut off. It fails on any script that runs in the reader, any network request, any tag or attribute outside the allow-list, and any frame without its sandbox. CI runs it on every pull request and every push to `main`.
 - **Safe file names in downloads.** In the per-person zip, item names, project doc paths and memory file paths are cleaned: `.` and `..` path parts and characters that file systems reject are replaced.
 
 ### Known limits
