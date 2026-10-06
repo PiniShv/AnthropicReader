@@ -63,10 +63,10 @@ function docHtml(d) {
     const dl = `<div class="row" style="margin-bottom:8px"><span class="faint" style="font-size:12.5px">Added ${esc(fmtDateTime(d.created))}</span><span class="grow"></span><button class="btn small" type="button" ${on(() => downloadText(d.filename.split('/').pop(), d.content))}>Download</button></div>`;
     if (ext === 'md' || ext === 'markdown' || ext === 'pptx' || ext === 'docx' || ext === 'pdf') {
       return dl + (ext !== 'md' && ext !== 'markdown' ? `<p class="notice" style="margin:0 0 8px">Text extracted from the ${esc(ext)} file. The original file is not in the export.</p>` : '') + mdBlock(d.content) +
-        `<details class="blk" style="margin-top:10px"><summary><span class="lbl">Raw text</span></summary><div class="blk-body">${preHtml(d.content, { wrap: true })}</div></details>`;
+        sourceBlk(d.content, { label: 'Raw text', wrap: true, gap: 10 });
     }
     if (ext === 'html' || ext === 'htm') {
-      return dl + sandboxFrame(d.content, 520) + `<details class="blk" style="margin-top:10px"><summary><span class="lbl">Source</span></summary><div class="blk-body">${preHtml(d.content)}</div></details>`;
+      return dl + sandboxFrame(d.content, 520) + sourceBlk(d.content, { gap: 10 });
     }
     return dl + preHtml(d.content);
   });
@@ -166,7 +166,8 @@ function memoryFileCard(f, mem, i) {
     summary: `<span class="lbl" dir="auto">${esc(title)}</span><span class="desc" dir="auto">${esc(f.meta.description || '')}</span>
       <span class="meta">${sources.map(s => `<span class="chip" style="font-size:11px" title="${esc(SOURCE_HELP[s] || '')}">${esc(s)}</span>`).join(' ')} ${f.updated ? esc(fmtDate(f.updated)) : ''}</span>`,
     body: aliases.length ? `<p class="faint" style="font-size:12.5px;margin:0 0 6px">Also called: ${aliases.map(esc).join(', ')}</p>` : '',
-  }, () => (f.body.trim() ? memoryText(f.body, mem) : '<p class="faint">(empty)</p>') + `<details class="blk" style="margin-top:10px"><summary><span class="lbl">Raw file</span><span class="desc mono">${esc(f.path)}</span></summary><div class="blk-body">${preHtml(f.content, { wrap: true })}</div></details>`);
+  }, () => (f.body.trim() ? memoryText(f.body, mem) : '<p class="faint">(empty)</p>') +
+    sourceBlk(f.content, { label: 'Raw file', desc: `<span class="desc mono">${esc(f.path)}</span>`, wrap: true, gap: 10 }));
 }
 
 const SOURCE_HELP = { backfill: 'Seeded from older chat history', chat: 'Learned in a claude.ai chat', cowork: 'Learned in Cowork' };

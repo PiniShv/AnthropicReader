@@ -116,7 +116,7 @@ function designMessageHtml(m, d, receipts) {
     if (c.kind === 'question-receipt') return '';   // shown inside its question card
     if (c.pill === true) {
       const att = designAttachments(c.attachments, true);
-      return `<div class="row" style="justify-content:center"><details class="blk" style="max-width:640px;width:100%"><summary><span class="lbl">⚑ ${esc(oneLine(c.content || 'Notice'))}</span><span class="meta">${esc(time)}</span></summary><div class="blk-body">${att || '<p class="faint">No details.</p>'}</div></details></div>`;
+      return `<div class="row" style="justify-content:center">${blk({ style: 'max-width:640px;width:100%', summary: `<span class="lbl">⚑ ${esc(oneLine(c.content || 'Notice'))}</span><span class="meta">${esc(time)}</span>`, body: att || '<p class="faint">No details.</p>' })}</div>`;
     }
     const who = designAuthor(c, d);
     return `<article class="msg human" id="m-${esc(m.uuid)}"><div class="msg-head">${avatarHtml(who, 'sm')}<span class="who">${who ? personLink(who) : esc(c.authorName || 'User')}</span><span>${esc(time)}</span>${snip}</div>
@@ -138,10 +138,8 @@ function designMessageHtml(m, d, receipts) {
     let group = [];
     const flush = () => {
       if (!group.length) return;
-      const items = group.map(designToolHtml).join('');
-      out.push(group.length > 2
-        ? `<details class="blk"><summary><span class="lbl">${group.length} tool calls</span><span class="desc">${esc(Array.from(new Set(group.map(g => g.name))).slice(0, 6).join(', '))}</span></summary><div class="blk-body tool-group">${items}</div></details>`
-        : items);
+      const items = group.map(designToolHtml);
+      out.push(group.length > 2 ? toolGroupHtml(items, group.map(g => g.name), 0) : items.join(''));
       group = [];
     };
     for (const b of blocks) {
@@ -152,7 +150,7 @@ function designMessageHtml(m, d, receipts) {
       else if (b.type === 'error') out.push(`<div class="notice warn" style="color:var(--err)">Error: ${esc(typeof b.message === 'string' ? b.message : JSON.stringify(b.message))}</div>`);
       else if (b.type === 'user_interjection' && b.message && b.message.pill === true) {
         // An automation notice that arrived mid-turn, not something the person typed.
-        out.push(`<details class="blk"><summary><span class="lbl">⚑ ${esc(oneLine(b.message.content || 'Notice'))}</span><span class="meta">${esc(fmtDateTime(b.message.timestamp))}</span></summary><div class="blk-body">${designAttachments(b.message.attachments, true) || '<p class="faint">No details.</p>'}</div></details>`);
+        out.push(blk({ summary: `<span class="lbl">⚑ ${esc(oneLine(b.message.content || 'Notice'))}</span><span class="meta">${esc(fmtDateTime(b.message.timestamp))}</span>`, body: designAttachments(b.message.attachments, true) || '<p class="faint">No details.</p>' }));
       } else if (b.type === 'user_interjection' && b.message) {
         const who = DB.people.get(d.ownerId);
         out.push(`<div class="msg human" style="margin-left:24px"><div class="msg-head">${avatarHtml(who, 'sm')}<span class="who">${who ? esc(who.name) : 'User'}</span><span class="faint">added while Claude was working · ${esc(fmtDateTime(b.message.timestamp))}</span></div><div class="msg-body">${designUserContent(b.message.content)}${designAttachments(b.message.attachments, false)}</div></div>`);

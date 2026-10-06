@@ -314,10 +314,8 @@ function assistantBody(m, ctx) {
     if (!group.length) return;
     let run = [];
     const flushRun = () => {
-      if (run.length > 3) {
-        const errs = run.filter(g => g.error).length;
-        out.push(`<details class="blk"><summary><span class="lbl">${run.length} tool calls</span><span class="desc">${esc(Array.from(new Set(run.map(g => toolLabel(g.use.name)))).slice(0, 6).join(', '))}</span>${errs ? `<span class="meta" style="color:var(--err)">${errs} failed</span>` : ''}</summary><div class="blk-body tool-group">${run.map(g => g.html).join('')}</div></details>`);
-      } else out.push(...run.map(g => g.html));
+      if (run.length > 3) out.push(toolGroupHtml(run.map(g => g.html), run.map(g => toolLabel(g.use.name)), run.filter(g => g.error).length));
+      else out.push(...run.map(g => g.html));
       run = [];
     };
     for (const g of group) {
@@ -408,6 +406,14 @@ function thinkingHtml(b) {
 // tools than OUTPUTS (model.js): questions, charts, maps and artifact links are shown too.
 function isOutputTool(b) {
   return /^(create_file|artifacts|visualize:show_widget|message_compose_v1|ask_user_input_v0|chart_display_v0|places_map_display_v0|Artifact|present_files)$/.test(b.name || '');
+}
+
+// Many tool calls folded into one "N tool calls" block, named by their first 6 tool names, with
+// the number that failed. Conversations and design chats both use it. Hand-written, because
+// the body has its own class (tool-group), which blk() does not set.
+function toolGroupHtml(htmls, names, failed) {
+  return `<details class="blk"><summary><span class="lbl">${htmls.length} tool calls</span><span class="desc">${esc(Array.from(new Set(names)).slice(0, 6).join(', '))}</span>` +
+    `${failed ? `<span class="meta" style="color:var(--err)">${failed} failed</span>` : ''}</summary><div class="blk-body tool-group">${htmls.join('')}</div></details>`;
 }
 
 function toolCallHtml(use, res, ctx) {
@@ -524,7 +530,10 @@ function toolResultHtml(res, ctx) {
   const sc = res.structured_content;
   if (sc && typeof sc === 'object' && Object.keys(sc).length) {
     if (sc.artifact_id) out.push(artifactLinkHtml(sc.artifact_id, sc.title));
-    out.push(`<details class="blk"${stub ? ' open' : ''}><summary><span class="lbl">Structured data</span><span class="desc">${stub ? 'the full result (the text above is only a stub)' : 'raw JSON returned by the tool'}</span><span class="meta">${fmtBytes(JSON.stringify(sc).length)}</span></summary><div class="blk-body">${preHtml(jsonPretty(sc))}</div></details>`);
+    out.push(blk({
+      open: stub, body: preHtml(jsonPretty(sc)),
+      summary: `<span class="lbl">Structured data</span><span class="desc">${stub ? 'the full result (the text above is only a stub)' : 'raw JSON returned by the tool'}</span><span class="meta">${fmtBytes(JSON.stringify(sc).length)}</span>`,
+    }));
   }
   return out.join('') || '<p class="faint">(empty result)</p>';
 }
@@ -563,7 +572,7 @@ function specialToolHtml(name, input, res, ctx, use) {
     // Starts open, so its body is drawn right away.
     return blk({ cls: 'artifact', id: tid, open: true, summary: `<span class="lbl">◧ Artifact</span><span class="desc" dir="auto">${esc(title)}</span><span class="meta">${esc(input.command || '')} · ${esc(type.replace('application/vnd.ant.', ''))}</span>` }, () => {
       if (/markdown/.test(type)) return mdBlock(content);
-      if (/html/.test(type)) return `${sandboxFrame(content, 520)}<details class="blk" style="margin-top:8px"><summary><span class="lbl">Source</span></summary><div class="blk-body">${preHtml(content)}</div></details>`;
+      if (/html/.test(type)) return sandboxFrame(content, 520) + sourceBlk(content);
       return `<p class="muted" style="margin:0 0 6px">${esc(type)} source (React components cannot run offline)</p>${preHtml(content)}`;
     });
   }
@@ -572,14 +581,14 @@ function specialToolHtml(name, input, res, ctx, use) {
     const ext = fileExt(path);
     return blk({ cls: 'artifact', id: tid, summary: `<span class="lbl">📄 Created file</span><span class="desc mono" dir="auto">${esc(path.split('/').pop())}</span><span class="meta">${fmtBytes(input.file_text.length)}</span>` }, () => {
       const dl = `<div class="row" style="margin-bottom:8px"><span class="muted" style="font-size:12.5px">${esc(path)}</span><button class="btn small" type="button" ${on(() => downloadText(path.split('/').pop(), input.file_text))}>Download</button></div>`;
-      if (ext === 'md' || ext === 'markdown') return `${dl}${mdBlock(input.file_text)}<details class="blk" style="margin-top:8px"><summary><span class="lbl">Source</span></summary><div class="blk-body">${preHtml(input.file_text)}</div></details>`;
-      if (ext === 'html' || ext === 'htm' || ext === 'svg') return `${dl}${sandboxFrame(input.file_text, 520)}<details class="blk" style="margin-top:8px"><summary><span class="lbl">Source</span></summary><div class="blk-body">${preHtml(input.file_text)}</div></details>`;
+      if (ext === 'md' || ext === 'markdown') return dl + mdBlock(input.file_text) + sourceBlk(input.file_text);
+      if (ext === 'html' || ext === 'htm' || ext === 'svg') return dl + sandboxFrame(input.file_text, 520) + sourceBlk(input.file_text);
       return dl + preHtml(input.file_text);
     });
   }
   if (name === 'visualize:show_widget' && input.widget_code) {
     return blk({ cls: 'artifact', id: tid, summary: `<span class="lbl">▦ Widget</span><span class="desc" dir="auto">${esc(input.title || 'Interactive widget')}</span><span class="meta">open to render</span>` },
-      () => `${sandboxFrame(`<!doctype html><html><head><meta charset="utf-8"><style>${WIDGET_CSS}</style></head><body>${input.widget_code}</body></html>`, 460)}<details class="blk" style="margin-top:8px"><summary><span class="lbl">Source</span></summary><div class="blk-body">${preHtml(input.widget_code)}</div></details>`);
+      () => sandboxFrame(`<!doctype html><html><head><meta charset="utf-8"><style>${WIDGET_CSS}</style></head><body>${input.widget_code}</body></html>`, 460) + sourceBlk(input.widget_code));
   }
   if (name === 'message_compose_v1') {
     const variants = composeVariants(input);

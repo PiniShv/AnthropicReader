@@ -46,13 +46,20 @@ function dropKeys(root) {
 const on = fn => `data-on="${viewKey(fn)}"`;
 on.change = fn => `data-on-change="${viewKey(fn)}"`;
 
-/* A collapsible block. summary is HTML; id is escaped here. render() draws the rest of the body
- * after `body`: the first time the block opens (the toggle listener in app.js), or right away
- * when it starts open. Big content stays out of the page until someone asks for it. */
-function blk({ cls = '', id = '', open = false, summary, body = '' }, render) {
+/* A collapsible block. summary and body are HTML; id is escaped here; style is CSS from the
+ * code, never from the export. render() draws the rest of the body after `body`: the first time
+ * the block opens (the toggle listener in app.js), or right away when it starts open. Big
+ * content stays out of the page until someone asks for it. */
+function blk({ cls = '', id = '', style = '', open = false, summary, body = '' }, render) {
   const lazy = render && !open ? ` data-lazy="${viewKey(render)}"` : '';
-  return `<details class="blk${cls ? ' ' + cls : ''}"${id ? ` id="${esc(id)}"` : ''}${open ? ' open' : ''}${lazy}>` +
+  return `<details class="blk${cls ? ' ' + cls : ''}"${id ? ` id="${esc(id)}"` : ''}${style ? ` style="${style}"` : ''}${open ? ' open' : ''}${lazy}>` +
     `<summary>${summary}</summary><div class="blk-body">${body}${render && open ? render() : ''}</div></details>`;
+}
+
+/* The raw text behind a preview or rendered Markdown, folded away below it. opts: label, desc
+ * (HTML after the label), wrap (long lines wrap), gap (px above the block). */
+function sourceBlk(text, { label = 'Source', desc = '', wrap = false, gap = 8 } = {}) {
+  return blk({ style: `margin-top:${gap}px`, summary: `<span class="lbl">${label}</span>${desc}`, body: preHtml(text, { wrap }) });
 }
 
 function mountView(v) {

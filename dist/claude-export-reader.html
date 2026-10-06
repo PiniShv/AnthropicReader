@@ -1547,13 +1547,20 @@ function dropKeys(root) {
 const on = fn => `data-on="${viewKey(fn)}"`;
 on.change = fn => `data-on-change="${viewKey(fn)}"`;
 
-/* A collapsible block. summary is HTML; id is escaped here. render() draws the rest of the body
- * after `body`: the first time the block opens (the toggle listener in app.js), or right away
- * when it starts open. Big content stays out of the page until someone asks for it. */
-function blk({ cls = '', id = '', open = false, summary, body = '' }, render) {
+/* A collapsible block. summary and body are HTML; id is escaped here; style is CSS from the
+ * code, never from the export. render() draws the rest of the body after `body`: the first time
+ * the block opens (the toggle listener in app.js), or right away when it starts open. Big
+ * content stays out of the page until someone asks for it. */
+function blk({ cls = '', id = '', style = '', open = false, summary, body = '' }, render) {
   const lazy = render && !open ? ` data-lazy="${viewKey(render)}"` : '';
-  return `<details class="blk${cls ? ' ' + cls : ''}"${id ? ` id="${esc(id)}"` : ''}${open ? ' open' : ''}${lazy}>` +
+  return `<details class="blk${cls ? ' ' + cls : ''}"${id ? ` id="${esc(id)}"` : ''}${style ? ` style="${style}"` : ''}${open ? ' open' : ''}${lazy}>` +
     `<summary>${summary}</summary><div class="blk-body">${body}${render && open ? render() : ''}</div></details>`;
+}
+
+/* The raw text behind a preview or rendered Markdown, folded away below it. opts: label, desc
+ * (HTML after the label), wrap (long lines wrap), gap (px above the block). */
+function sourceBlk(text, { label = 'Source', desc = '', wrap = false, gap = 8 } = {}) {
+  return blk({ style: `margin-top:${gap}px`, summary: `<span class="lbl">${label}</span>${desc}`, body: preHtml(text, { wrap }) });
 }
 
 function mountView(v) {
@@ -4051,10 +4058,8 @@ function assistantBody(m, ctx) {
     if (!group.length) return;
     let run = [];
     const flushRun = () => {
-      if (run.length > 3) {
-        const errs = run.filter(g => g.error).length;
-        out.push(`<details class="blk"><summary><span class="lbl">${run.length} tool calls</span><span class="desc">${esc(Array.from(new Set(run.map(g => toolLabel(g.use.name)))).slice(0, 6).join(', '))}</span>${errs ? `<span class="meta" style="color:var(--err)">${errs} failed</span>` : ''}</summary><div class="blk-body tool-group">${run.map(g => g.html).join('')}</div></details>`);
-      } else out.push(...run.map(g => g.html));
+      if (run.length > 3) out.push(toolGroupHtml(run.map(g => g.html), run.map(g => toolLabel(g.use.name)), run.filter(g => g.error).length));
+      else out.push(...run.map(g => g.html));
       run = [];
     };
     for (const g of group) {
@@ -4145,6 +4150,14 @@ function thinkingHtml(b) {
 // tools than OUTPUTS (model.js): questions, charts, maps and artifact links are shown too.
 function isOutputTool(b) {
   return /^(create_file|artifacts|visualize:show_widget|message_compose_v1|ask_user_input_v0|chart_display_v0|places_map_display_v0|Artifact|present_files)$/.test(b.name || '');
+}
+
+// Many tool calls folded into one "N tool calls" block, named by their first 6 tool names, with
+// the number that failed. Conversations and design chats both use it. Hand-written, because
+// the body has its own class (tool-group), which blk() does not set.
+function toolGroupHtml(htmls, names, failed) {
+  return `<details class="blk"><summary><span class="lbl">${htmls.length} tool calls</span><span class="desc">${esc(Array.from(new Set(names)).slice(0, 6).join(', '))}</span>` +
+    `${failed ? `<span class="meta" style="color:var(--err)">${failed} failed</span>` : ''}</summary><div class="blk-body tool-group">${htmls.join('')}</div></details>`;
 }
 
 function toolCallHtml(use, res, ctx) {
@@ -4261,7 +4274,10 @@ function toolResultHtml(res, ctx) {
   const sc = res.structured_content;
   if (sc && typeof sc === 'object' && Object.keys(sc).length) {
     if (sc.artifact_id) out.push(artifactLinkHtml(sc.artifact_id, sc.title));
-    out.push(`<details class="blk"${stub ? ' open' : ''}><summary><span class="lbl">Structured data</span><span class="desc">${stub ? 'the full result (the text above is only a stub)' : 'raw JSON returned by the tool'}</span><span class="meta">${fmtBytes(JSON.stringify(sc).length)}</span></summary><div class="blk-body">${preHtml(jsonPretty(sc))}</div></details>`);
+    out.push(blk({
+      open: stub, body: preHtml(jsonPretty(sc)),
+      summary: `<span class="lbl">Structured data</span><span class="desc">${stub ? 'the full result (the text above is only a stub)' : 'raw JSON returned by the tool'}</span><span class="meta">${fmtBytes(JSON.stringify(sc).length)}</span>`,
+    }));
   }
   return out.join('') || '<p class="faint">(empty result)</p>';
 }
@@ -4300,7 +4316,7 @@ function specialToolHtml(name, input, res, ctx, use) {
     // Starts open, so its body is drawn right away.
     return blk({ cls: 'artifact', id: tid, open: true, summary: `<span class="lbl">◧ Artifact</span><span class="desc" dir="auto">${esc(title)}</span><span class="meta">${esc(input.command || '')} · ${esc(type.replace('application/vnd.ant.', ''))}</span>` }, () => {
       if (/markdown/.test(type)) return mdBlock(content);
-      if (/html/.test(type)) return `${sandboxFrame(content, 520)}<details class="blk" style="margin-top:8px"><summary><span class="lbl">Source</span></summary><div class="blk-body">${preHtml(content)}</div></details>`;
+      if (/html/.test(type)) return sandboxFrame(content, 520) + sourceBlk(content);
       return `<p class="muted" style="margin:0 0 6px">${esc(type)} source (React components cannot run offline)</p>${preHtml(content)}`;
     });
   }
@@ -4309,14 +4325,14 @@ function specialToolHtml(name, input, res, ctx, use) {
     const ext = fileExt(path);
     return blk({ cls: 'artifact', id: tid, summary: `<span class="lbl">📄 Created file</span><span class="desc mono" dir="auto">${esc(path.split('/').pop())}</span><span class="meta">${fmtBytes(input.file_text.length)}</span>` }, () => {
       const dl = `<div class="row" style="margin-bottom:8px"><span class="muted" style="font-size:12.5px">${esc(path)}</span><button class="btn small" type="button" ${on(() => downloadText(path.split('/').pop(), input.file_text))}>Download</button></div>`;
-      if (ext === 'md' || ext === 'markdown') return `${dl}${mdBlock(input.file_text)}<details class="blk" style="margin-top:8px"><summary><span class="lbl">Source</span></summary><div class="blk-body">${preHtml(input.file_text)}</div></details>`;
-      if (ext === 'html' || ext === 'htm' || ext === 'svg') return `${dl}${sandboxFrame(input.file_text, 520)}<details class="blk" style="margin-top:8px"><summary><span class="lbl">Source</span></summary><div class="blk-body">${preHtml(input.file_text)}</div></details>`;
+      if (ext === 'md' || ext === 'markdown') return dl + mdBlock(input.file_text) + sourceBlk(input.file_text);
+      if (ext === 'html' || ext === 'htm' || ext === 'svg') return dl + sandboxFrame(input.file_text, 520) + sourceBlk(input.file_text);
       return dl + preHtml(input.file_text);
     });
   }
   if (name === 'visualize:show_widget' && input.widget_code) {
     return blk({ cls: 'artifact', id: tid, summary: `<span class="lbl">▦ Widget</span><span class="desc" dir="auto">${esc(input.title || 'Interactive widget')}</span><span class="meta">open to render</span>` },
-      () => `${sandboxFrame(`<!doctype html><html><head><meta charset="utf-8"><style>${WIDGET_CSS}</style></head><body>${input.widget_code}</body></html>`, 460)}<details class="blk" style="margin-top:8px"><summary><span class="lbl">Source</span></summary><div class="blk-body">${preHtml(input.widget_code)}</div></details>`);
+      () => sandboxFrame(`<!doctype html><html><head><meta charset="utf-8"><style>${WIDGET_CSS}</style></head><body>${input.widget_code}</body></html>`, 460) + sourceBlk(input.widget_code));
   }
   if (name === 'message_compose_v1') {
     const variants = composeVariants(input);
@@ -4573,7 +4589,10 @@ function versionFilesHtml(vid, info) {
   const hidden = rows.length - shown.length;
   const li = ([p, node]) => `<tr><td class="mono" dir="auto">${esc(p)}</td><td class="num">${fmtBytes(node.size)}</td><td class="right"><button class="btn small" type="button" ${on(() => openArtifactFile(p, node))}>Open</button></td></tr>`;
   return `<table class="list" style="font-size:13px"><tbody>${shown.map(li).join('')}</tbody></table>
-    ${hidden ? `<details class="blk" style="margin-top:10px"><summary><span class="lbl">${hidden} platform files</span><span class="desc">the app runtime and instructions for Claude, not user content</span></summary><div class="blk-body"><table class="list" style="font-size:13px"><tbody>${rows.filter(([p]) => isPlumbing(p)).map(li).join('')}</tbody></table></div></details>` : ''}
+    ${hidden ? blk({
+      style: 'margin-top:10px', summary: `<span class="lbl">${hidden} platform files</span><span class="desc">the app runtime and instructions for Claude, not user content</span>`,
+      body: `<table class="list" style="font-size:13px"><tbody>${rows.filter(([p]) => isPlumbing(p)).map(li).join('')}</tbody></table>`,
+    }) : ''}
     <div id="art-file-view" style="margin-top:12px"></div>`;
 }
 
@@ -4825,7 +4844,7 @@ function designMessageHtml(m, d, receipts) {
     if (c.kind === 'question-receipt') return '';   // shown inside its question card
     if (c.pill === true) {
       const att = designAttachments(c.attachments, true);
-      return `<div class="row" style="justify-content:center"><details class="blk" style="max-width:640px;width:100%"><summary><span class="lbl">⚑ ${esc(oneLine(c.content || 'Notice'))}</span><span class="meta">${esc(time)}</span></summary><div class="blk-body">${att || '<p class="faint">No details.</p>'}</div></details></div>`;
+      return `<div class="row" style="justify-content:center">${blk({ style: 'max-width:640px;width:100%', summary: `<span class="lbl">⚑ ${esc(oneLine(c.content || 'Notice'))}</span><span class="meta">${esc(time)}</span>`, body: att || '<p class="faint">No details.</p>' })}</div>`;
     }
     const who = designAuthor(c, d);
     return `<article class="msg human" id="m-${esc(m.uuid)}"><div class="msg-head">${avatarHtml(who, 'sm')}<span class="who">${who ? personLink(who) : esc(c.authorName || 'User')}</span><span>${esc(time)}</span>${snip}</div>
@@ -4847,10 +4866,8 @@ function designMessageHtml(m, d, receipts) {
     let group = [];
     const flush = () => {
       if (!group.length) return;
-      const items = group.map(designToolHtml).join('');
-      out.push(group.length > 2
-        ? `<details class="blk"><summary><span class="lbl">${group.length} tool calls</span><span class="desc">${esc(Array.from(new Set(group.map(g => g.name))).slice(0, 6).join(', '))}</span></summary><div class="blk-body tool-group">${items}</div></details>`
-        : items);
+      const items = group.map(designToolHtml);
+      out.push(group.length > 2 ? toolGroupHtml(items, group.map(g => g.name), 0) : items.join(''));
       group = [];
     };
     for (const b of blocks) {
@@ -4861,7 +4878,7 @@ function designMessageHtml(m, d, receipts) {
       else if (b.type === 'error') out.push(`<div class="notice warn" style="color:var(--err)">Error: ${esc(typeof b.message === 'string' ? b.message : JSON.stringify(b.message))}</div>`);
       else if (b.type === 'user_interjection' && b.message && b.message.pill === true) {
         // An automation notice that arrived mid-turn, not something the person typed.
-        out.push(`<details class="blk"><summary><span class="lbl">⚑ ${esc(oneLine(b.message.content || 'Notice'))}</span><span class="meta">${esc(fmtDateTime(b.message.timestamp))}</span></summary><div class="blk-body">${designAttachments(b.message.attachments, true) || '<p class="faint">No details.</p>'}</div></details>`);
+        out.push(blk({ summary: `<span class="lbl">⚑ ${esc(oneLine(b.message.content || 'Notice'))}</span><span class="meta">${esc(fmtDateTime(b.message.timestamp))}</span>`, body: designAttachments(b.message.attachments, true) || '<p class="faint">No details.</p>' }));
       } else if (b.type === 'user_interjection' && b.message) {
         const who = DB.people.get(d.ownerId);
         out.push(`<div class="msg human" style="margin-left:24px"><div class="msg-head">${avatarHtml(who, 'sm')}<span class="who">${who ? esc(who.name) : 'User'}</span><span class="faint">added while Claude was working · ${esc(fmtDateTime(b.message.timestamp))}</span></div><div class="msg-body">${designUserContent(b.message.content)}${designAttachments(b.message.attachments, false)}</div></div>`);
@@ -4970,10 +4987,10 @@ function docHtml(d) {
     const dl = `<div class="row" style="margin-bottom:8px"><span class="faint" style="font-size:12.5px">Added ${esc(fmtDateTime(d.created))}</span><span class="grow"></span><button class="btn small" type="button" ${on(() => downloadText(d.filename.split('/').pop(), d.content))}>Download</button></div>`;
     if (ext === 'md' || ext === 'markdown' || ext === 'pptx' || ext === 'docx' || ext === 'pdf') {
       return dl + (ext !== 'md' && ext !== 'markdown' ? `<p class="notice" style="margin:0 0 8px">Text extracted from the ${esc(ext)} file. The original file is not in the export.</p>` : '') + mdBlock(d.content) +
-        `<details class="blk" style="margin-top:10px"><summary><span class="lbl">Raw text</span></summary><div class="blk-body">${preHtml(d.content, { wrap: true })}</div></details>`;
+        sourceBlk(d.content, { label: 'Raw text', wrap: true, gap: 10 });
     }
     if (ext === 'html' || ext === 'htm') {
-      return dl + sandboxFrame(d.content, 520) + `<details class="blk" style="margin-top:10px"><summary><span class="lbl">Source</span></summary><div class="blk-body">${preHtml(d.content)}</div></details>`;
+      return dl + sandboxFrame(d.content, 520) + sourceBlk(d.content, { gap: 10 });
     }
     return dl + preHtml(d.content);
   });
@@ -5073,7 +5090,8 @@ function memoryFileCard(f, mem, i) {
     summary: `<span class="lbl" dir="auto">${esc(title)}</span><span class="desc" dir="auto">${esc(f.meta.description || '')}</span>
       <span class="meta">${sources.map(s => `<span class="chip" style="font-size:11px" title="${esc(SOURCE_HELP[s] || '')}">${esc(s)}</span>`).join(' ')} ${f.updated ? esc(fmtDate(f.updated)) : ''}</span>`,
     body: aliases.length ? `<p class="faint" style="font-size:12.5px;margin:0 0 6px">Also called: ${aliases.map(esc).join(', ')}</p>` : '',
-  }, () => (f.body.trim() ? memoryText(f.body, mem) : '<p class="faint">(empty)</p>') + `<details class="blk" style="margin-top:10px"><summary><span class="lbl">Raw file</span><span class="desc mono">${esc(f.path)}</span></summary><div class="blk-body">${preHtml(f.content, { wrap: true })}</div></details>`);
+  }, () => (f.body.trim() ? memoryText(f.body, mem) : '<p class="faint">(empty)</p>') +
+    sourceBlk(f.content, { label: 'Raw file', desc: `<span class="desc mono">${esc(f.path)}</span>`, wrap: true, gap: 10 }));
 }
 
 const SOURCE_HELP = { backfill: 'Seeded from older chat history', chat: 'Learned in a claude.ai chat', cowork: 'Learned in Cowork' };

@@ -50,7 +50,7 @@ A few small pieces carry most of the app. When you add something, reach for thes
 |---|---|---|
 | `VIEW`, `after(fn)` | `ui.js` | Everything that lives as long as one drawn page: its `AbortController`, its handlers, and hooks that run once its HTML is in the page. |
 | `on(fn)`, `on.change(fn)` | `ui.js` | Bind click (or change) behaviour where the markup is made. The markup gets only a short key. |
-| `blk({ summary }, render)` | `ui.js` | A collapsible block whose body is drawn the first time it opens. |
+| `blk({ summary }, render)` | `ui.js` | A collapsible block whose body is drawn the first time it opens. `sourceBlk(text)` is the folded raw text under a preview or rendered Markdown. |
 | `tableHtml(spec)` | `views.js` | The sortable, filterable, paged table, with optional type chips (`spec.facet`). It keeps its own state per table key. |
 | `KINDS` | `views.js` | The five record kinds (conversations, artifacts, projects, design chats, memory): routes, labels, icons, counts, list and person views. |
 | `scopeOf(p)`, `focusScope()` | `model.js`, `ui.js` | The records in view: one person's, or everyone's. Lists, sidebar counts and search use it. |
