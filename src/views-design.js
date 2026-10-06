@@ -25,6 +25,13 @@ function viewDesignChats() {
     ${designTable(list, 'design-' + s.key, !s.person)}</div>`;
 }
 
+// One design chat in the search results; it opens with the words highlighted (qs).
+function designResult({ item: d, text }, terms, qs) {
+  return `<a class="result" href="#/d/${encodeURIComponent(d.id)}${qs}"><div class="r-title"><span dir="auto">${esc(d.title)}</span><span class="chip">✎ ${esc(d.project.name || 'design project')}</span></div>
+    <div class="r-snip" dir="auto">${snippetHtml(text, terms)}</div>
+    <div class="r-meta">${avatarHtml(d.owner, 'sm')}<span>${esc(d.owner.name)}</span><span>${esc(fmtDate(d.lastTs))}</span></div></a>`;
+}
+
 const DESIGN_NOISE = /^(<i><\/i>|<details>|<ant\w*)$/;
 
 function viewDesignChat(id) {

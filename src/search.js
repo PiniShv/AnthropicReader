@@ -1,5 +1,6 @@
 /* Search: the searchable text of each record, an index of it, and the engine (runSearch).
- * No DOM: the search page in views-misc.js draws the results. */
+ * No DOM: the search page in views-misc.js draws the results, each with the searchResult()
+ * of its kind (KINDS). */
 'use strict';
 
 function searchTerms(q) {
@@ -103,7 +104,10 @@ function findByText(items, terms, textOf, keepText) {
  * changed) before the search ends. */
 async function runSearch(q, { deep, scope, signal, onProgress }) {
   const terms = searchTerms(q);
-  const res = { conversations: [], artifacts: [], projects: [], design: [], memory: [], people: [], terms };
+  // One list of hits per kind of record (KINDS in views.js, by key), plus people. Every kind
+  // gets a list, even one this engine does not search yet, so the search page can draw it.
+  const res = { terms, people: [] };
+  for (const k of KINDS) res[k.key] = [];
   if (!terms.length) return res;
   const has = s => { const l = String(s || '').toLowerCase(); return terms.every(t => l.includes(t)); };
 

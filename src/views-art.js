@@ -42,6 +42,13 @@ function viewArtifacts() {
   </div>`;
 }
 
+// One artifact in the search results. inContent: the words are only inside its files.
+function artifactResult({ item: a, text, inContent }, terms) {
+  return `<a class="result" href="#/a/${encodeURIComponent(a.id)}"><div class="r-title"><span dir="auto">${esc(artifactTitle(a))}</span><span class="chip">${esc(a.contentType)}</span></div>
+    <div class="r-snip" dir="auto">${snippetHtml(text, terms)}</div>
+    <div class="r-meta">${avatarHtml(a.owner, 'sm')}<span>${esc(a.owner.name)}</span><span>${esc(fmtDate(a.updated))}</span>${inContent ? '<span class="chip">inside the artifact</span>' : ''}</div></a>`;
+}
+
 /* ---------- Artifact page ---------- */
 
 function viewArtifact(id, vid) {

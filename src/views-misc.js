@@ -214,7 +214,7 @@ function viewSearch(q, t) {
 
 function drawSearchResults(res, q, t, deep) {
   const terms = res.terms;
-  // Result lists are keyed like the kinds (res.conversations … res.memory), plus res.people.
+  // One list of hits per kind (res[k.key], built from KINDS by runSearch), plus res.people.
   const total = KINDS.reduce((n, k) => n + res[k.key].length, res.people.length);
   const tab = (k, label, n) => `<a class="chip${t === k ? ' on' : ''}" href="${searchHref({ q, deep, t: k })}">${label} <b>${fmtNum(n)}</b></a>`;
   $('#search-tabs').innerHTML = tab('all', 'Everything', total) + KINDS.map(k => tab(k.key, esc(k.searchTab || k.label), res[k.key].length)).join('') + tab('people', 'People', res.people.length);
@@ -227,37 +227,24 @@ function drawSearchResults(res, q, t, deep) {
       <div class="card">${items.slice(0, limit).map(fn).join('')}</div>
       ${t !== 'all' && items.length > limit ? `<p class="muted">Showing the first ${limit}. Add more words to narrow it down.</p>` : ''}`;
   };
-  // Each renderer reads only its hit: { item } plus what runSearch found (see search.js).
-  const conv = ({ item: c, hitIdx, hitDeep }) => {
-    const msgs = c.raw.chat_messages || [];
-    const m = hitIdx >= 0 ? msgs[hitIdx] : null;
-    const text = m ? (hitDeep ? msgDeep(m) : msgProse(m)) : (c.summary || '');
-    return `<a class="result" href="#/c/${encodeURIComponent(c.id)}${qs}${m ? '&m=' + encodeURIComponent(m.uuid) : ''}">
-      <div class="r-title"><span dir="auto">${esc(c.title || 'Untitled conversation')}</span></div>
-      <div class="r-snip" dir="auto">${snippetHtml(text, terms)}</div>
-      <div class="r-meta">${avatarHtml(c.owner, 'sm')}<span>${esc(c.owner.name)}</span><span>${esc(fmtDate(c.lastTs))}</span><span>${plural(c.msgCount, 'message')}</span>${hitDeep ? '<span class="chip">in a tool call or file</span>' : ''}</div></a>`;
-  };
-  const art = ({ item: a, text, inContent }) => `<a class="result" href="#/a/${encodeURIComponent(a.id)}"><div class="r-title"><span dir="auto">${esc(artifactTitle(a))}</span><span class="chip">${esc(a.contentType)}</span></div>
-    <div class="r-snip" dir="auto">${snippetHtml(text, terms)}</div>
-    <div class="r-meta">${avatarHtml(a.owner, 'sm')}<span>${esc(a.owner.name)}</span><span>${esc(fmtDate(a.updated))}</span>${inContent ? '<span class="chip">inside the artifact</span>' : ''}</div></a>`;
-  const proj = ({ item: x }) => {
-    const d = x.docs.find(dd => terms.every(tt => (dd.filename + dd.content).toLowerCase().includes(tt)));
-    return `<a class="result" href="#/p/${encodeURIComponent(x.id)}"><div class="r-title"><span dir="auto">${esc(x.name || 'Untitled project')}</span></div>
-      <div class="r-snip" dir="auto">${d ? '<b>' + esc(d.filename) + ':</b> ' + snippetHtml(d.content, terms) : snippetHtml(x.description || x.name, terms)}</div>
-      <div class="r-meta">${avatarHtml(x.owner, 'sm')}<span>${esc(x.owner.name)}</span></div></a>`;
-  };
-  const des = ({ item: d, text }) => `<a class="result" href="#/d/${encodeURIComponent(d.id)}${qs}"><div class="r-title"><span dir="auto">${esc(d.title)}</span><span class="chip">✎ ${esc(d.project.name || 'design project')}</span></div>
-    <div class="r-snip" dir="auto">${snippetHtml(text, terms)}</div>
-    <div class="r-meta">${avatarHtml(d.owner, 'sm')}<span>${esc(d.owner.name)}</span><span>${esc(fmtDate(d.lastTs))}</span></div></a>`;
-  const mem = ({ item: m, text }) => {
-    const f = m.files.find(ff => terms.every(tt => ff.content.toLowerCase().includes(tt)));
-    return `<a class="result" href="#/memory/${encodeURIComponent(m.id)}"><div class="r-title">${avatarHtml(m.owner, 'sm')}<span>${esc(m.owner.name)}</span>${f ? `<span class="chip mono">${esc(f.path)}</span>` : ''}</div>
-      <div class="r-snip" dir="auto">${snippetHtml(f ? f.body : text, terms)}</div></a>`;
-  };
+  // Each result reads only its hit: { item } plus what runSearch found (see search.js).
   const ppl = ({ item: p }) => `<a class="result" href="#/person/${encodeURIComponent(p.id)}"><div class="r-title">${avatarHtml(p, 'sm')}<span>${esc(p.name)}</span></div><div class="r-meta"><span>${esc(p.email || '')}</span><span>${plural(p.total(), 'item')}</span></div></a>`;
-  const resultHtml = { conversations: conv, artifacts: art, projects: proj, design: des, memory: mem };
   $('#search-results').innerHTML = (total ? '' : `<div class="card empty">Nothing found for “${esc(q)}”.${deep ? '' : ' Try ticking “Deep search”.'}</div>`) +
-    sec('people', 'People', res.people, ppl) + KINDS.map(k => sec(k.key, esc(k.label), res[k.key], resultHtml[k.key])).join('');
+    sec('people', 'People', res.people, ppl) + KINDS.map(k => sec(k.key, esc(k.label), res[k.key], hit => k.searchResult(hit, terms, qs))).join('');
+}
+
+// Search results of the kinds this file draws (see KINDS.searchResult).
+function projectResult({ item: x }, terms) {
+  const d = x.docs.find(dd => terms.every(tt => (dd.filename + dd.content).toLowerCase().includes(tt)));
+  return `<a class="result" href="#/p/${encodeURIComponent(x.id)}"><div class="r-title"><span dir="auto">${esc(x.name || 'Untitled project')}</span></div>
+    <div class="r-snip" dir="auto">${d ? '<b>' + esc(d.filename) + ':</b> ' + snippetHtml(d.content, terms) : snippetHtml(x.description || x.name, terms)}</div>
+    <div class="r-meta">${avatarHtml(x.owner, 'sm')}<span>${esc(x.owner.name)}</span></div></a>`;
+}
+
+function memoryResult({ item: m, text }, terms) {
+  const f = m.files.find(ff => terms.every(tt => ff.content.toLowerCase().includes(tt)));
+  return `<a class="result" href="#/memory/${encodeURIComponent(m.id)}"><div class="r-title">${avatarHtml(m.owner, 'sm')}<span>${esc(m.owner.name)}</span>${f ? `<span class="chip mono">${esc(f.path)}</span>` : ''}</div>
+    <div class="r-snip" dir="auto">${snippetHtml(f ? f.body : text, terms)}</div></a>`;
 }
 
 /* ======================= About ======================= */

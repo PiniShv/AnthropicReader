@@ -4,30 +4,36 @@
 const ICONS = { home: '⌂', people: '👥', search: '⌕', about: 'ⓘ' };
 
 /* The five kinds of records, in the order every list of them uses (sidebar, person tabs and
- * card, search tabs and sections). key: person tab and search type. list / item: the route
- * names of the list page and of one item. allCount / personCount: the sidebar badge without
- * and with focus; personCount is also the person page's number. The view functions live in
- * later files, so they are called through arrows. */
+ * card, search tabs and sections). key: person tab, search type and the key of its hits in
+ * runSearch()'s result. list / item: the route names of the list page and of one item.
+ * allCount / personCount: the sidebar badge without and with focus; personCount is also the
+ * person page's number. searchResult(hit, terms, qs): one search hit as a result link; qs is
+ * the "?q=…" that a page which highlights the words can take. The view functions live in later
+ * files, so they are called through arrows. Every entry needs every field. */
 const KINDS = [
   {
     key: 'conversations', list: 'conversations', item: 'c', icon: '💬', label: 'Conversations', noun: ['chat', 'chats'],
     allCount: () => withContent(DB.conversations).length, personCount: p => p.convCount(),
     listView: () => viewConversations(), itemView: b => viewConversation(b), personTab: p => convTable(p.conversations, 'pc-' + p.id, false),
+    searchResult: (hit, terms, qs) => convResult(hit, terms, qs),
   },
   {
     key: 'artifacts', list: 'artifacts', item: 'a', icon: '◧', label: 'Artifacts & pages', searchTab: 'Artifacts', noun: ['artifact', 'artifacts'],
     allCount: () => DB.artifacts.length, personCount: p => p.artifacts.length,
     listView: () => viewArtifacts(), itemView: (b, c) => viewArtifact(b, c), personTab: p => artifactTable(p.artifacts, 'pa-' + p.id, false),
+    searchResult: (hit, terms) => artifactResult(hit, terms),
   },
   {
     key: 'projects', list: 'projects', item: 'p', icon: '📁', label: 'Projects', noun: ['project', 'projects'],
     allCount: () => DB.projects.length, personCount: p => p.projects.length,
     listView: () => viewProjects(), itemView: b => viewProject(b), personTab: p => projectTable(p.projects, 'pp-' + p.id, false),
+    searchResult: (hit, terms) => projectResult(hit, terms),
   },
   {
     key: 'design', list: 'design', item: 'd', icon: '✎', label: 'Design chats', noun: ['design chat', 'design chats'],
     allCount: () => DB.designChats.length, personCount: p => p.designChats.length,
     listView: () => viewDesignChats(), itemView: b => viewDesignChat(b), personTab: p => designTable(p.designChats, 'pd-' + p.id, false),
+    searchResult: (hit, terms, qs) => designResult(hit, terms, qs),
   },
   {
     // Without focus the badge counts people with memory; with focus, that person's memory items.
@@ -35,6 +41,7 @@ const KINDS = [
     allCount: () => DB.memories.length, personCount: p => p.memoryCount(),
     listView: () => viewMemories(), itemView: b => viewMemory(b),
     personTab: p => (p.memory ? memoryBody(p.memory) : '<div class="card empty">No memory for this person in this export.</div>'),
+    searchResult: (hit, terms) => memoryResult(hit, terms),
   },
 ];
 const KIND = Object.fromEntries(KINDS.map(k => [k.key, k]));

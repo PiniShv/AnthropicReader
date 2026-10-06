@@ -29,7 +29,7 @@ For the format of the export itself, see [export-format.md](export-format.md).
 | `src/search.js` | The search engine (`runSearch()`), the searchable text of each record and the search index. No DOM. |
 | `src/export.js` | Files made for download: a conversation as Markdown (`convToMarkdown()`) and the per-person zip (`buildPersonZip()`). |
 | `src/preview.js` | Artifact previews: `buildVersionHtml()` turns a version's files into one HTML document for a sandboxed frame (multi-file HTML, `buildSlides()`, `buildDesign()`), with file inlining (`inlineRefs()`, `assetLookup()`) and a small cache of built previews (`getBuilt()`). |
-| `src/views.js` | The kind registry (`KINDS`: routes, labels, icons, counts and views of the five record kinds), router dispatch (`renderRoute`), sidebar, the shared sortable table, start page, people list and person page. |
+| `src/views.js` | The kind registry (`KINDS`: routes, labels, icons, counts, views and search results of the five record kinds), router dispatch (`renderRoute`), sidebar, the shared sortable table, start page, people list and person page. |
 | `src/views-conv.js` | Conversation list and thread: message and tool rendering, the tool cards (`TOOL_CARDS`: tools drawn as their own card, and their chips), branch arrows, the "What Claude produced here" box. |
 | `src/views-art.js` | Artifact list and page, version viewer (Preview, Source and Files tabs), Claude Docs pages, artifact comments. |
 | `src/views-design.js` | Claude Design chats: list and thread (prompts, tool calls, questions, attachments). |
@@ -52,7 +52,7 @@ A few small pieces carry most of the app. When you add something, reach for thes
 | `on(fn)`, `on.change(fn)` | `ui.js` | Bind click (or change) behaviour where the markup is made. The markup gets only a short key. |
 | `blk({ summary }, render)` | `ui.js` | A collapsible block whose body is drawn the first time it opens. `sourceBlk(text)` is the folded raw text under a preview or rendered Markdown. |
 | `tableHtml(spec)` | `views.js` | The sortable, filterable, paged table, with optional type chips (`spec.facet`). It keeps its own state per table key. |
-| `KINDS` | `views.js` | The five record kinds (conversations, artifacts, projects, design chats, memory): routes, labels, icons, counts, list and person views. |
+| `KINDS` | `views.js` | The five record kinds (conversations, artifacts, projects, design chats, memory): routes, labels, icons, counts, list and person views, and how a search hit looks (`searchResult`). `runSearch()` gives one list of hits per kind, by its key. |
 | `scopeOf(p)`, `focusScope()` | `model.js`, `ui.js` | The records in view: one person's, or everyone's. Lists, sidebar counts and search use it. |
 | `DB.generation` | `model.js` | Goes up on every `finalize()`, so caches of derived data (the search index and built previews) start again. |
 | `getBuilt()` | `preview.js` | A built artifact preview. The last 4 (per version and board) are kept, so switching tabs does not rebuild them. The cache starts again when `DB.generation` changes. |
@@ -219,7 +219,7 @@ The app uses hash routes, so it works from `file://` and a reload keeps your pla
 `runSearch()` in `src/search.js` matches every search term (words, or phrases in quotes) case-insensitively, in the records of one scope (`scopeOf()`). People are always searched in full.
 
 - The search index (`searchEntry()`) keeps the lower-cased text of each item, built the first time it is searched, so later searches are fast. Adding files to an open export can change records in place, so `finalize()` raises `DB.generation` and the index starts again.
-- Every hit is `{ item, … }` and carries the text its snippet needs, so the search page never reads the index.
+- The result has one list of hits per kind (`res[k.key]` for each entry of `KINDS`, plus `res.people`). Every hit is `{ item, … }` and carries the text its snippet needs, so the search page never reads the index. The page draws each hit with its kind's `searchResult()`.
 - Normal search covers titles, summaries, message text and file names. **Deep search** adds tool inputs and results, thinking, attachment text and artifact content (the visible text of each artifact's current version, read from the zip once and capped at 2 MB).
 - The conversation loop yields to the browser every 40 conversations and reports progress. Leaving the page aborts the view's signal, which stops the search at its next pause.
 - A result links to the matching message (switching to its branch if needed) with the words highlighted.

@@ -54,6 +54,18 @@ function viewConversations() {
   </div>`;
 }
 
+// One conversation in the search results: it opens at the matching message, with the words
+// highlighted (qs).
+function convResult({ item: c, hitIdx, hitDeep }, terms, qs) {
+  const msgs = c.raw.chat_messages || [];
+  const m = hitIdx >= 0 ? msgs[hitIdx] : null;
+  const text = m ? (hitDeep ? msgDeep(m) : msgProse(m)) : (c.summary || '');
+  return `<a class="result" href="#/c/${encodeURIComponent(c.id)}${qs}${m ? '&m=' + encodeURIComponent(m.uuid) : ''}">
+    <div class="r-title"><span dir="auto">${esc(c.title || 'Untitled conversation')}</span></div>
+    <div class="r-snip" dir="auto">${snippetHtml(text, terms)}</div>
+    <div class="r-meta">${avatarHtml(c.owner, 'sm')}<span>${esc(c.owner.name)}</span><span>${esc(fmtDate(c.lastTs))}</span><span>${plural(c.msgCount, 'message')}</span>${hitDeep ? '<span class="chip">in a tool call or file</span>' : ''}</div></a>`;
+}
+
 /* ---------- Conversation view ---------- */
 
 function viewConversation(id) {

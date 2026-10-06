@@ -224,6 +224,21 @@ test('search finds text from files added to an open export', async () => {
   assert.match(res.memory[0].text, /zebra crossing/);
 });
 
+test('every kind is a full search contract: a list of hits and a result renderer', async () => {
+  const { api } = await importFiles([looseFile('users.json', USERS)]);
+  const fields = ['key', 'list', 'item', 'icon', 'label', 'noun', 'allCount', 'personCount', 'listView', 'itemView', 'personTab', 'searchResult'];
+  for (const k of api.KINDS) for (const f of fields) assert.ok(k[f], `KINDS.${k.key} has no ${f}`);
+  // A new kind that the engine does not search yet still gets an (empty) list, so the search
+  // page can draw its tab. Both with and without hits.
+  api.KINDS.push({ key: 'notes' });
+  for (const q of ['nothing-matches-this', 'Ada']) {
+    const res = await api.runSearch(q, { scope: api.scopeOf(null), signal: new AbortController().signal });
+    for (const k of api.KINDS) assert.ok(Array.isArray(res[k.key]), `no ${k.key} list for "${q}"`);
+    assert.equal(res.notes.length, 0);
+    assert.equal(res.people.length, q === 'Ada' ? 1 : 0);
+  }
+});
+
 /* ---------- Paths, junk, shape sniffing ---------- */
 
 test('Finder-style folder names ("artifacts 2", "design_chats 2") are recognised', async () => {
