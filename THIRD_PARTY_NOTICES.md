@@ -4,15 +4,28 @@ Claude Export Reader includes two third-party libraries. They are kept as unmodi
 
 They are vendored (not loaded from a CDN) because the reader must work offline and must not load code from the network.
 
-| Library | Version | File | License |
-|---|---|---|---|
-| [marked](https://github.com/markedjs/marked) | 15.0.12 | `vendor/marked.min.js` | MIT |
-| [DOMPurify](https://github.com/cure53/DOMPurify) | 3.2.6 | `vendor/purify.min.js` | Apache-2.0 OR MPL-2.0 |
+| Library | Version | File | Official file (npm package / path) | License |
+|---|---|---|---|---|
+| [marked](https://github.com/markedjs/marked) | 15.0.12 | `vendor/marked.min.js` | `marked@15.0.12/marked.min.js` | MIT |
+| [DOMPurify](https://github.com/cure53/DOMPurify) | 3.2.6 | `vendor/purify.min.js` | `dompurify@3.2.6/dist/purify.min.js` | Apache-2.0 OR MPL-2.0 |
 
 What they do in the reader:
 
 - **marked** turns Markdown from the export (messages, project docs, memory, comments) into HTML.
 - **DOMPurify** cleans that HTML before it is shown, so content from the export cannot run scripts in the reader.
+
+## Checksums
+
+Each file in `vendor/` is byte for byte the official file from its npm package, and the package matches the `integrity` value of the npm registry. These are the SHA-256 checksums of the files:
+
+```text
+3e7e7d7feb3e5d58cb6c804f68ab5c24cc7e5eb6270fd6e5cbb9124739217d0c  vendor/marked.min.js
+89e1fa7647cb495370d3a997ace4387f5d15d9f4c5af12352c53daa400956287  vendor/purify.min.js
+```
+
+- `npm test` fails when a file in `vendor/` does not match its checksum here, or when this page names a different version than the file. So an edited or swapped file cannot slip in unnoticed.
+- `node scripts/check-vendor.mjs` downloads the packages from npm and checks everything again. It also lists known security advisories and newer releases. It needs the network, so CI does not run it.
+- To update a library, see [Updating a vendored library](CONTRIBUTING.md#updating-a-vendored-library).
 
 ---
 
