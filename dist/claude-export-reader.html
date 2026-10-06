@@ -1216,6 +1216,26 @@ function truncate(s, n) {
 }
 function oneLine(s) { return String(s || '').replace(/\s+/g, ' ').trim(); }
 
+// Text that arrives HTML-escaped (artifact titles and descriptions, "&amp;"), decoded for
+// display as text; the search decodes artifact text with it too. A Map, so "&constructor;" is
+// not looked up on Object.prototype.
+const NAMED_ENTITIES = new Map(Object.entries({
+  amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", nbsp: '\u00a0', mdash: '—', ndash: '–',
+  hellip: '…', lsquo: '‘', rsquo: '’', ldquo: '“', rdquo: '”', middot: '·', bull: '•', copy: '©', reg: '®', trade: '™',
+}));
+
+function decodeEntities(s) {
+  if (!s || s.indexOf('&') < 0) return s;
+  return s.replace(/&(#x[0-9a-f]+|#\d+|[a-z]+);/gi, (all, e) => {
+    if (e[0] === '#') {
+      const n = e[1] === 'x' || e[1] === 'X' ? parseInt(e.slice(2), 16) : parseInt(e.slice(1), 10);
+      try { return String.fromCodePoint(n); } catch (err) { return all; }
+    }
+    const v = NAMED_ENTITIES.get(e.toLowerCase());
+    return v != null ? v : all;
+  });
+}
+
 /* ---------- Markdown ---------- */
 
 if (window.marked) {
@@ -2479,25 +2499,6 @@ function artifactMeta(j) {
   return m;
 }
 
-// Descriptions arrive HTML-escaped (e.g. "&amp;"); decode for display as text (views-art.js and
-// the search use it too). A Map, so "&constructor;" is not looked up on Object.prototype.
-const NAMED_ENTITIES = new Map(Object.entries({
-  amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", nbsp: '\u00a0', mdash: '—', ndash: '–',
-  hellip: '…', lsquo: '‘', rsquo: '’', ldquo: '“', rdquo: '”', middot: '·', bull: '•', copy: '©', reg: '®', trade: '™',
-}));
-
-function decodeEntities(s) {
-  if (!s || s.indexOf('&') < 0) return s;
-  return s.replace(/&(#x[0-9a-f]+|#\d+|[a-z]+);/gi, (all, e) => {
-    if (e[0] === '#') {
-      const n = e[1] === 'x' || e[1] === 'X' ? parseInt(e.slice(2), 16) : parseInt(e.slice(1), 10);
-      try { return String.fromCodePoint(n); } catch (err) { return all; }
-    }
-    const v = NAMED_ENTITIES.get(e.toLowerCase());
-    return v != null ? v : all;
-  });
-}
-
 /* ---------- Import pipeline ---------- */
 
 async function readJson(node) {
@@ -2897,6 +2898,18 @@ function composeVariants(input) {
   return raw ? [{ body: raw }] : [];
 }
 
+/* The files of a message that no attachment stands for. An attachment holds the text of an
+ * upload, and the file entry of the same name is the same upload, so each attachment takes one
+ * file of its name. The rest are uploads whose content the export does not have. */
+function filesWithoutText(m) {
+  const left = m.files.slice();
+  for (const a of m.attachments) {
+    const i = left.findIndex(f => (f.file_name || '') === (a.file_name || ''));
+    if (i >= 0) left.splice(i, 1);
+  }
+  return left;
+}
+
 // Citation offsets count Unicode code points; JS strings index UTF-16 units.
 function cpToUnits(text, cp) {
   let units = 0, n = 0;
@@ -3235,7 +3248,7 @@ function messageToMarkdown(conv, m) {
       if (text.length > MD_ATTACH_CAP) out.push(`_Cut at ${fmtBytes(MD_ATTACH_CAP)}; the full text is in the .json file._`, '');
     }
   }
-  for (const f of m.files) if (!m.attachments.some(a => a.file_name === f.file_name)) out.push(`> 📄 ${f.file_name || 'file'} (not in export)`);
+  for (const f of filesWithoutText(m)) out.push(`> 📄 ${f.file_name || 'file'} (not in export)`);
   return out.join('\n');
 }
 
@@ -4452,23 +4465,17 @@ function humanBody(m, ctx) {
   return parts.join('');
 }
 
-// Uploads: attachments carry extracted text; files[] are references only (no bytes in export).
+// Uploads: attachments carry extracted text; the other files are names only (filesWithoutText).
 function filesHtml(m) {
-  const files = m.files;
-  const used = new Set();
-  const out = [];
-  for (const a of m.attachments) {
+  const out = m.attachments.map(a => {
     const name = a.file_name || 'Pasted text';
     const content = a.extracted_content || '';
-    out.push(blk({ cls: 'attach', summary: `<span class="lbl" dir="auto">${esc(name)}</span><span class="desc">${esc(a.file_type || '')}</span><span class="meta">${fmtBytes(a.file_size || content.length)}</span>` },
+    return blk({ cls: 'attach', summary: `<span class="lbl" dir="auto">${esc(name)}</span><span class="desc">${esc(a.file_type || '')}</span><span class="meta">${fmtBytes(a.file_size || content.length)}</span>` },
       () => /\.(md|markdown)$/i.test(a.file_name || '') || /markdown/.test(a.file_type || '')
         ? `<div class="row" style="margin-bottom:6px"><span class="muted" style="font-size:12.5px">Rendered Markdown</span></div>${mdBlock(content)}`
-        : preHtml(content, { wrap: true })));
-    // Pair with the same-named file entry so it is not listed twice.
-    const fi = files.findIndex((f, i) => !used.has(i) && (f.file_name || '') === (a.file_name || ''));
-    if (fi >= 0) used.add(fi);
-  }
-  const chips = files.filter((f, i) => !used.has(i)).map(f => {
+        : preHtml(content, { wrap: true }));
+  });
+  const chips = filesWithoutText(m).map(f => {
     const n = f.file_name || 'Unnamed file';
     const img = /\.(png|jpe?g|gif|webp|heic)$/i.test(n);
     return `<span class="file-chip" title="The file itself is not included in the export">${img ? '🖼' : '📄'} <span dir="auto">${esc(n)}</span> <span class="sz">not in export</span></span>`;

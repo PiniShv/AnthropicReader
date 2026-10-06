@@ -16,11 +16,8 @@ import { APP_SCRIPTS } from '../scripts/build.mjs';
 
 export const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 
-// The scripts in the order of the built page.
-export const BUILD_ORDER = APP_SCRIPTS;
-
 // Everything except the boot script: app.js wires up the page and is rarely needed.
-export const DEFAULT_FILES = BUILD_ORDER.filter(f => f !== 'src/app.js');
+export const DEFAULT_FILES = APP_SCRIPTS.filter(f => f !== 'src/app.js');
 
 // Compiled scripts are cached, so a fresh context per test stays cheap.
 const compiled = new Map();
@@ -110,8 +107,8 @@ function cssEscape(value) {
  */
 export function loadApp(opts = {}) {
   const wanted = new Set(opts.files || DEFAULT_FILES);
-  for (const f of wanted) if (!BUILD_ORDER.includes(f)) throw new Error('Unknown src file: ' + f);
-  const files = BUILD_ORDER.filter(f => wanted.has(f));
+  for (const f of wanted) if (!APP_SCRIPTS.includes(f)) throw new Error('Unknown src file: ' + f);
+  const files = APP_SCRIPTS.filter(f => wanted.has(f));
 
   const sandbox = {
     console,

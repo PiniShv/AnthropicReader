@@ -202,6 +202,18 @@ function composeVariants(input) {
   return raw ? [{ body: raw }] : [];
 }
 
+/* The files of a message that no attachment stands for. An attachment holds the text of an
+ * upload, and the file entry of the same name is the same upload, so each attachment takes one
+ * file of its name. The rest are uploads whose content the export does not have. */
+function filesWithoutText(m) {
+  const left = m.files.slice();
+  for (const a of m.attachments) {
+    const i = left.findIndex(f => (f.file_name || '') === (a.file_name || ''));
+    if (i >= 0) left.splice(i, 1);
+  }
+  return left;
+}
+
 // Citation offsets count Unicode code points; JS strings index UTF-16 units.
 function cpToUnits(text, cp) {
   let units = 0, n = 0;

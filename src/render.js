@@ -78,6 +78,26 @@ function truncate(s, n) {
 }
 function oneLine(s) { return String(s || '').replace(/\s+/g, ' ').trim(); }
 
+// Text that arrives HTML-escaped (artifact titles and descriptions, "&amp;"), decoded for
+// display as text; the search decodes artifact text with it too. A Map, so "&constructor;" is
+// not looked up on Object.prototype.
+const NAMED_ENTITIES = new Map(Object.entries({
+  amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", nbsp: '\u00a0', mdash: '—', ndash: '–',
+  hellip: '…', lsquo: '‘', rsquo: '’', ldquo: '“', rdquo: '”', middot: '·', bull: '•', copy: '©', reg: '®', trade: '™',
+}));
+
+function decodeEntities(s) {
+  if (!s || s.indexOf('&') < 0) return s;
+  return s.replace(/&(#x[0-9a-f]+|#\d+|[a-z]+);/gi, (all, e) => {
+    if (e[0] === '#') {
+      const n = e[1] === 'x' || e[1] === 'X' ? parseInt(e.slice(2), 16) : parseInt(e.slice(1), 10);
+      try { return String.fromCodePoint(n); } catch (err) { return all; }
+    }
+    const v = NAMED_ENTITIES.get(e.toLowerCase());
+    return v != null ? v : all;
+  });
+}
+
 /* ---------- Markdown ---------- */
 
 if (window.marked) {

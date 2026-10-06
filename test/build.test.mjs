@@ -4,8 +4,8 @@ import assert from 'node:assert/strict';
 import vm from 'node:vm';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { build } from '../scripts/build.mjs';
-import { ROOT, BUILD_ORDER } from './harness.mjs';
+import { build, APP_SCRIPTS } from '../scripts/build.mjs';
+import { ROOT } from './harness.mjs';
 
 const pkg = JSON.parse(readFileSync(join(ROOT, 'package.json'), 'utf8'));
 const html = build();
@@ -16,7 +16,7 @@ const scripts = Array.from(html.matchAll(/<script\b([^>]*)>([\s\S]*?)<\/script>/
 
 test('the page inlines every src file, in build order', () => {
   let last = -1;
-  for (const file of BUILD_ORDER) {
+  for (const file of APP_SCRIPTS) {
     const at = html.indexOf(`<script>/* ${file} */\n`);
     assert.ok(at >= 0, `${file} is missing from the build`);
     assert.ok(at > last, `${file} is out of order`);
@@ -27,7 +27,7 @@ test('the page inlines every src file, in build order', () => {
   }
   for (const vendor of ['vendor/marked.min.js', 'vendor/purify.min.js']) {
     assert.ok(html.indexOf(`<script>/* ${vendor} */`) >= 0, `${vendor} is missing`);
-    assert.ok(html.indexOf(`<script>/* ${vendor} */`) < html.indexOf(`<script>/* ${BUILD_ORDER[0]} */`), `${vendor} must load before the app`);
+    assert.ok(html.indexOf(`<script>/* ${vendor} */`) < html.indexOf(`<script>/* ${APP_SCRIPTS[0]} */`), `${vendor} must load before the app`);
   }
 });
 
@@ -45,7 +45,7 @@ test('every inlined script block parses', () => {
     const type = (/\btype\s*=\s*["']?([^"'\s>]+)/i.exec(s.attrs) || [])[1];
     return !type || /^(text\/javascript|application\/javascript)$/i.test(type);
   });
-  assert.ok(inline.length >= BUILD_ORDER.length + 2, `found only ${inline.length} script blocks`);
+  assert.ok(inline.length >= APP_SCRIPTS.length + 2, `found only ${inline.length} script blocks`);
   for (const s of inline) {
     const name = (/^\/\* (\S+) \*\//.exec(s.code) || [])[1] || s.code.slice(0, 40);
     assert.doesNotThrow(() => new vm.Script(s.code, { filename: name }), `${name} does not parse`);

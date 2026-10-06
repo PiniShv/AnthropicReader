@@ -53,7 +53,7 @@ function messageToMarkdown(conv, m) {
       if (text.length > MD_ATTACH_CAP) out.push(`_Cut at ${fmtBytes(MD_ATTACH_CAP)}; the full text is in the .json file._`, '');
     }
   }
-  for (const f of m.files) if (!m.attachments.some(a => a.file_name === f.file_name)) out.push(`> 📄 ${f.file_name || 'file'} (not in export)`);
+  for (const f of filesWithoutText(m)) out.push(`> 📄 ${f.file_name || 'file'} (not in export)`);
   return out.join('\n');
 }
 

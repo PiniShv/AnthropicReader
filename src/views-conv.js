@@ -296,23 +296,17 @@ function humanBody(m, ctx) {
   return parts.join('');
 }
 
-// Uploads: attachments carry extracted text; files[] are references only (no bytes in export).
+// Uploads: attachments carry extracted text; the other files are names only (filesWithoutText).
 function filesHtml(m) {
-  const files = m.files;
-  const used = new Set();
-  const out = [];
-  for (const a of m.attachments) {
+  const out = m.attachments.map(a => {
     const name = a.file_name || 'Pasted text';
     const content = a.extracted_content || '';
-    out.push(blk({ cls: 'attach', summary: `<span class="lbl" dir="auto">${esc(name)}</span><span class="desc">${esc(a.file_type || '')}</span><span class="meta">${fmtBytes(a.file_size || content.length)}</span>` },
+    return blk({ cls: 'attach', summary: `<span class="lbl" dir="auto">${esc(name)}</span><span class="desc">${esc(a.file_type || '')}</span><span class="meta">${fmtBytes(a.file_size || content.length)}</span>` },
       () => /\.(md|markdown)$/i.test(a.file_name || '') || /markdown/.test(a.file_type || '')
         ? `<div class="row" style="margin-bottom:6px"><span class="muted" style="font-size:12.5px">Rendered Markdown</span></div>${mdBlock(content)}`
-        : preHtml(content, { wrap: true })));
-    // Pair with the same-named file entry so it is not listed twice.
-    const fi = files.findIndex((f, i) => !used.has(i) && (f.file_name || '') === (a.file_name || ''));
-    if (fi >= 0) used.add(fi);
-  }
-  const chips = files.filter((f, i) => !used.has(i)).map(f => {
+        : preHtml(content, { wrap: true }));
+  });
+  const chips = filesWithoutText(m).map(f => {
     const n = f.file_name || 'Unnamed file';
     const img = /\.(png|jpe?g|gif|webp|heic)$/i.test(n);
     return `<span class="file-chip" title="The file itself is not included in the export">${img ? '🖼' : '📄'} <span dir="auto">${esc(n)}</span> <span class="sz">not in export</span></span>`;

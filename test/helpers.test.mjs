@@ -2,12 +2,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import vm from 'node:vm';
-import { loadApp, plain, BUILD_ORDER } from './harness.mjs';
+import { loadApp, plain } from './harness.mjs';
+import { APP_SCRIPTS } from '../scripts/build.mjs';
 
 const { api } = loadApp();
 
 test('every script loads without a DOM, with app.js, the vendored libraries and blocked storage', () => {
-  const full = loadApp({ files: BUILD_ORDER, vendor: true, blockStorage: true });
+  const full = loadApp({ files: APP_SCRIPTS, vendor: true, blockStorage: true });
   assert.equal(typeof full.api.App, 'object');
   assert.equal(typeof full.window.marked, 'object');
   assert.equal(typeof full.window.DOMPurify, 'function');
@@ -39,6 +40,14 @@ test('decodeEntities', () => {
   assert.equal(decodeEntities(null), null);
 });
 
+test('an attachment stands for one file of its name, in the thread and in the Markdown export', () => {
+  const m = { sender: 'human', text: '', content: [], attachments: [{ file_name: 'a.md', extracted_content: 'A' }, { extracted_content: 'pasted' }],
+    files: [{ file_name: 'a.md' }, { file_name: 'a.md' }, { file_name: 'b.png' }] };
+  assert.deepEqual(plain(api.filesWithoutText(m).map(f => f.file_name)), ['a.md', 'b.png']);
+  const md = api.messageToMarkdown({ owner: null }, m);
+  assert.deepEqual(md.split('\n').filter(l => l.startsWith('> 📄')), ['> 📄 a.md (not in export)', '> 📄 b.png (not in export)']);
+});
+
 test('names from the export never find something on Object.prototype', () => {
   assert.equal(decodeEntities('&constructor; &toString; &hasOwnProperty;'), '&constructor; &toString; &hasOwnProperty;');
   assert.equal(api.mimeFor('x.constructor'), 'application/octet-stream');
@@ -48,7 +57,7 @@ test('names from the export never find something on Object.prototype', () => {
   const manifest = { files: ['constructor', 'toString', 'conversations'].map(category => ({ category, filename: category + '-000.zip' })) };
   assert.deepEqual(plain(api.missingFiles(manifest).map(f => f.category)), ['constructor', 'toString', 'conversations']);
   // An in-app link from the export can put any key into the route's query.
-  const app = loadApp({ files: BUILD_ORDER });
+  const app = loadApp({ files: APP_SCRIPTS });
   app.window.location.hash = '#/search?q=a&__proto__=x&constructor=y';
   const { query } = app.api.parseHash();
   assert.deepEqual(Object.keys(query), ['q', '__proto__', 'constructor']);
