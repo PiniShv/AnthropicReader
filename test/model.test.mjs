@@ -515,7 +515,8 @@ test('artifact content type is detected from the active version', async () => {
   assert.deepEqual(Array.from(partial.versions, v => v.id), ['1767312000-bbbb', '1767225600-aaaa']);
   assert.equal(partial.activeVersion, '1767312000-bbbb');
   assert.equal(partial.versions[0].created, 1767312000 * 1000);
-  assert.equal(partial.title, 'Untitled artifact');
+  assert.equal(partial.title, '');
+  assert.equal(api.artifactTitle(partial), 'Untitled artifact');
   assert.equal(partial.owner.system, true);
   // Its dates come from its versions, so it sorts in its real place (second), not last.
   assert.equal(partial.created, 1767225600 * 1000);
@@ -620,6 +621,20 @@ test('a newer export of an artifact brings its title, versions, page and comment
     await check(api, how + ', two loads');
     await check((await importFiles([first, second])).api, how + ', one load');
   }
+});
+
+test('an untitled artifact gets the same fallback title in any load order', async () => {
+  // No artifact.json: the versions come first, and page.md arrives in a later load.
+  const versions = await zip('frames-000.zip', { [`artifacts/${art(1)}/versions/${V(1)}.html`]: '<p>Fictional</p>' });
+  const page = await zip('frames-001.zip', { [`artifacts/${art(1)}/page.md`]: '# Notes' });
+  const { api } = await importFiles([versions]);
+  const a = () => api.DB.artifactById.get(art(1));
+  assert.equal(api.artifactTitle(a()), 'Untitled artifact');
+  await api.importExport([page], { set() {} });
+  assert.equal(api.artifactTitle(a()), 'Untitled page', 'two loads');
+  assert.equal(a().title, '', 'the fallback is not stored in the imported title');
+  const both = (await importFiles([versions, page])).api;
+  assert.equal(both.artifactTitle(both.DB.artifactById.get(art(1))), 'Untitled page', 'one load');
 });
 
 /* ---------- Comments ---------- */

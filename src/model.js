@@ -725,7 +725,6 @@ function finalize() {
     a.pageNode = a.files.get('page.md') || null;
     a.contentType = a.kind === 'page' ? 'Doc' : versionInfo(a, a.activeVersion).type;
     a.owner = personFor(a.ownerId);
-    if (!a.title) a.title = a.pageNode ? 'Untitled page' : 'Untitled artifact';
     a.owner.artifacts.push(a);
     a.owner.touch(a.updated);
     // Page comments carry real author uuids.
@@ -853,4 +852,10 @@ function scopeOf(p) {
 function projectName(id) {
   const p = DB.projectById.get(id);
   return p ? (p.name || 'Untitled project') : '';
+}
+
+// An artifact's title, or a fallback by kind. Worked out when shown, not stored in a.title:
+// that field belongs to the import, and page.md can come in a later load.
+function artifactTitle(a) {
+  return a.title || (a.pageNode ? 'Untitled page' : 'Untitled artifact');
 }

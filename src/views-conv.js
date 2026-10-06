@@ -547,7 +547,7 @@ function linkifyChats(html) {
 
 function artifactLinkHtml(id, title, action) {
   const a = DB.artifactById.get(id);
-  if (a) return `<p class="row wrap"><span class="chip on">◧ ${esc(action || 'artifact')}</span> <a href="#/a/${encodeURIComponent(id)}" dir="auto">${esc(a.title || title || id)}</a> <span class="faint">open the exported artifact</span></p>`;
+  if (a) return `<p class="row wrap"><span class="chip on">◧ ${esc(action || 'artifact')}</span> <a href="#/a/${encodeURIComponent(id)}" dir="auto">${esc(artifactTitle(a))}</a> <span class="faint">open the exported artifact</span></p>`;
   return `<p class="row wrap"><span class="chip">◧ ${esc(action || 'artifact')}</span> <span dir="auto">${esc(title || id)}</span> <span class="faint">not in the loaded files (load the frames zips to see it)</span></p>`;
 }
 

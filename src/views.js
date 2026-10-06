@@ -435,7 +435,7 @@ function personOverview(p, counts) {
   // Recent activity timeline.
   const events = [];
   p.conversations.filter(c => !c.empty).forEach(c => events.push({ t: c.lastTs, ico: KIND.conversations.icon, html: `<a href="#/c/${encodeURIComponent(c.id)}" dir="auto">${esc(c.title || 'Untitled conversation')}</a> <span class="faint">· ${plural(c.msgCount, 'message')}</span>` }));
-  p.artifacts.forEach(a => events.push({ t: a.updated, ico: KIND.artifacts.icon, html: `<a href="#/a/${encodeURIComponent(a.id)}" dir="auto">${esc(a.title)}</a> <span class="faint">· ${a.kind === 'page' ? 'page' : 'artifact'}, ${plural(a.versions.length, 'version')}</span>` }));
+  p.artifacts.forEach(a => events.push({ t: a.updated, ico: KIND.artifacts.icon, html: `<a href="#/a/${encodeURIComponent(a.id)}" dir="auto">${esc(artifactTitle(a))}</a> <span class="faint">· ${a.kind === 'page' ? 'page' : 'artifact'}, ${plural(a.versions.length, 'version')}</span>` }));
   p.projects.forEach(x => events.push({ t: x.updated, ico: KIND.projects.icon, html: `<a href="#/p/${encodeURIComponent(x.id)}" dir="auto">${esc(x.name || 'Untitled project')}</a> <span class="faint">· project</span>` }));
   p.designChats.forEach(d => events.push({ t: d.lastTs, ico: KIND.design.icon, html: `<a href="#/d/${encodeURIComponent(d.id)}" dir="auto">${esc(d.title)}</a> <span class="faint">· design chat in ${esc(d.project.name || 'a design project')}</span>` }));
   events.sort((a, b) => b.t - a.t);
@@ -482,7 +482,7 @@ function personComments(p) {
     const quote = c.thread && c.thread.quoted_text;
     return `<div class="comment">
       <div class="row wrap" style="font-size:13px;color:var(--muted)">
-        <span>On <a href="#/a/${encodeURIComponent(c.artifact.id)}" dir="auto">${esc(c.artifact.title)}</a></span>
+        <span>On <a href="#/a/${encodeURIComponent(c.artifact.id)}" dir="auto">${esc(artifactTitle(c.artifact))}</a></span>
         ${c.thread && c.thread.tab ? `<span class="chip">tab: ${esc(c.thread.tab)}</span>` : ''}
         ${c.byAgent ? '<span class="chip" title="Claude posted this comment for the person">posted by Claude for them</span>' : ''}
         ${c.thread && c.thread.resolved ? '<span class="chip ok">resolved</span>' : ''}

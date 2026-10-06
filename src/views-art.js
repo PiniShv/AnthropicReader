@@ -15,8 +15,8 @@ function visChip(a) {
 function artifactTable(list, key, showOwner, facet) {
   const columns = [
     {
-      id: 'title', label: 'Title', cls: 'title', link: true, asc: true, sortVal: a => a.title.toLowerCase(),
-      html: a => `<div dir="auto">${esc(a.title)}</div>${a.description && !TYPE_BLURB.test(a.description) && a.description !== a.title ? `<div class="snip" dir="auto">${esc(truncate(a.description, 200))}</div>` : ''}
+      id: 'title', label: 'Title', cls: 'title', link: true, asc: true, sortVal: a => artifactTitle(a).toLowerCase(),
+      html: a => `<div dir="auto">${esc(artifactTitle(a))}</div>${a.description && !TYPE_BLURB.test(a.description) && a.description !== artifactTitle(a) ? `<div class="snip" dir="auto">${esc(truncate(a.description, 200))}</div>` : ''}
         <div class="row wrap" style="margin-top:5px;gap:4px"><span class="chip">${esc(a.contentType)}</span>${visChip(a)}${a.commentCount ? `<span class="chip">🗨 ${a.commentCount}</span>` : ''}${a.mentionedIn && a.mentionedIn.length ? `<span class="chip" title="Linked from conversations">💬 ${a.mentionedIn.length}</span>` : ''}</div>`,
     },
   ];
@@ -26,7 +26,7 @@ function artifactTable(list, key, showOwner, facet) {
   return tableHtml({
     key, rows: list, columns, sort: 'updated', dir: -1, noun: 'artifact', facet,
     href: a => '#/a/' + encodeURIComponent(a.id),
-    text: a => [a.title, a.description, a.contentType, a.kind, a.visibility, VIS_LABEL[a.visibility], a.owner && a.owner.name, a.owner && a.owner.email, a.id, ...a.versions.map(v => v.title)].join(' '),
+    text: a => [artifactTitle(a), a.description, a.contentType, a.kind, a.visibility, VIS_LABEL[a.visibility], a.owner && a.owner.name, a.owner && a.owner.email, a.id, ...a.versions.map(v => v.title)].join(' '),
     placeholder: 'Filter: title, type (slides, doc, html), visibility, person…',
     empty: 'No artifacts.',
   });
@@ -76,10 +76,10 @@ function viewArtifact(id, vid) {
   }).join('');
 
   return `<div class="page">
-    <div class="crumbs"><a href="#/artifacts">Artifacts</a><span>›</span>${p && !p.system ? `${personLink(p)}<span>›</span>` : ''}<span class="ellipsis" style="max-width:420px" dir="auto">${esc(a.title)}</span></div>
+    <div class="crumbs"><a href="#/artifacts">Artifacts</a><span>›</span>${p && !p.system ? `${personLink(p)}<span>›</span>` : ''}<span class="ellipsis" style="max-width:420px" dir="auto">${esc(artifactTitle(a))}</span></div>
     <div class="page-head">
       <div class="grow">
-        <h1 dir="auto">${esc(a.title)}</h1>
+        <h1 dir="auto">${esc(artifactTitle(a))}</h1>
         <div class="sub">
           ${p && !p.system ? `<span class="row" style="gap:6px">${avatarHtml(p, 'sm')}${personLink(p)} ${unknownBadge(p)}</span>` : (a.createdByAgent ? '<span class="chip">Made by an agent (no owner)</span>' : '')}
           <span class="chip">${esc(a.contentType)}</span>${visChip(a)}
@@ -139,7 +139,7 @@ async function drawVersion(a, vid, view, pickBoard) {
       return;
     }
     const picker = built.boards ? `<select class="input" style="padding:3px 8px;font-size:13px" ${on.change(el => pickBoard(el.value))} aria-label="Board">${built.boards.list.map(b => `<option value="${esc(b.file)}"${b.file === built.boards.current ? ' selected' : ''}>${esc(b.title)}</option>`).join('')}</select>` : '';
-    box.innerHTML = `<div class="frame-box" id="art-frame-box">${bar(picker)}${notes}<iframe class="preview" id="art-frame" sandbox="allow-scripts allow-popups allow-forms allow-modals allow-downloads" referrerpolicy="no-referrer" title="${esc(a.title)}"></iframe></div>`;
+    box.innerHTML = `<div class="frame-box" id="art-frame-box">${bar(picker)}${notes}<iframe class="preview" id="art-frame" sandbox="allow-scripts allow-popups allow-forms allow-modals allow-downloads" referrerpolicy="no-referrer" title="${esc(artifactTitle(a))}"></iframe></div>`;
     box.querySelector('iframe').srcdoc = built.html;
   } catch (err) {
     console.error(err);
@@ -215,7 +215,7 @@ async function drawPage(a) {
     ${tabs.length > 1 ? `<div class="tabs" style="margin:0;padding:0 12px">${tabs.map((t, i) => `<button class="tab${i === idx ? ' active' : ''}" type="button" ${on(() => navigate('#/a/' + encodeURIComponent(a.id) + '?tab=' + encodeURIComponent(t.title), true))} dir="auto">${esc(t.title || 'Untitled')}</button>`).join('')}</div>` : ''}
     <div class="card-pad" id="page-body">${mdBlock(body)}</div>
     <div class="frame-bar" style="border-top:1px solid var(--border);border-bottom:0">
-      <button class="btn small" type="button" ${on(() => a.pageNode.blob('text/markdown').then(b => downloadBlob(b, safeFilename(a.title, 'page') + '.md')))}>Download page.md</button>
+      <button class="btn small" type="button" ${on(() => a.pageNode.blob('text/markdown').then(b => downloadBlob(b, safeFilename(artifactTitle(a), 'page') + '.md')))}>Download page.md</button>
       <button class="btn small" type="button" ${on(() => a.pageNode.text().then(copyText))}>Copy Markdown</button>
     </div>
   </div>
@@ -268,7 +268,7 @@ async function openPreviewTab(a, vid) {
   const w = window.open('', '_blank');
   if (!w) { toast('Pop-up blocked. Allow pop-ups for this page, or use Download.'); return; }
   w.document.open();
-  w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>${esc(a.title || 'Artifact')}</title><style>html,body,iframe{margin:0;border:0;width:100%;height:100%;display:block;font-family:system-ui,sans-serif}</style></head><body><p style="padding:20px">Opening ${esc(a.title || 'artifact')}…</p></body></html>`);
+  w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>${esc(artifactTitle(a))}</title><style>html,body,iframe{margin:0;border:0;width:100%;height:100%;display:block;font-family:system-ui,sans-serif}</style></head><body><p style="padding:20px">Opening ${esc(artifactTitle(a))}…</p></body></html>`);
   w.document.close();
   try {
     const built = await getBuilt(a, vid, versionInfo(a, vid), App.route.query.board || '');
@@ -284,9 +284,9 @@ async function downloadVersion(a, vid) {
   const info = versionInfo(a, vid);
   const s = info.slot;
   if (!s) return;
-  if (s.single) { downloadBlob(await s.single.blob('text/html'), safeFilename(a.title, 'artifact') + '.html'); return; }
+  if (s.single) { downloadBlob(await s.single.blob('text/html'), safeFilename(artifactTitle(a), 'artifact') + '.html'); return; }
   const zip = new ZipWriter();
   for (const [p, node] of s.folder) zip.add(p, await node.bytes());
   if (s.manifest) zip.add('files.json', await s.manifest.bytes());
-  downloadBlob(zip.blob(), safeFilename(a.title, 'artifact') + ' (' + vid + ').zip');
+  downloadBlob(zip.blob(), safeFilename(artifactTitle(a), 'artifact') + ' (' + vid + ').zip');
 }

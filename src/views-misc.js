@@ -237,7 +237,7 @@ function drawSearchResults(res, q, t, deep) {
       <div class="r-snip" dir="auto">${snippetHtml(text, terms)}</div>
       <div class="r-meta">${avatarHtml(c.owner, 'sm')}<span>${esc(c.owner.name)}</span><span>${esc(fmtDate(c.lastTs))}</span><span>${plural(c.msgCount, 'message')}</span>${hitDeep ? '<span class="chip">in a tool call or file</span>' : ''}</div></a>`;
   };
-  const art = ({ item: a, text, inContent }) => `<a class="result" href="#/a/${encodeURIComponent(a.id)}"><div class="r-title"><span dir="auto">${esc(a.title)}</span><span class="chip">${esc(a.contentType)}</span></div>
+  const art = ({ item: a, text, inContent }) => `<a class="result" href="#/a/${encodeURIComponent(a.id)}"><div class="r-title"><span dir="auto">${esc(artifactTitle(a))}</span><span class="chip">${esc(a.contentType)}</span></div>
     <div class="r-snip" dir="auto">${snippetHtml(text, terms)}</div>
     <div class="r-meta">${avatarHtml(a.owner, 'sm')}<span>${esc(a.owner.name)}</span><span>${esc(fmtDate(a.updated))}</span>${inContent ? '<span class="chip">inside the artifact</span>' : ''}</div></a>`;
   const proj = ({ item: x }) => {

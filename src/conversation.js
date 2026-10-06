@@ -158,7 +158,7 @@ function collectOutputs(conv) {
   }
   for (const id of conv.artRefs || []) {
     const a = DB.artifactById.get(id);
-    out.push({ art: id, ico: '◧', label: a ? a.title : 'Published artifact ' + id.slice(0, 8), kind: 'published' });
+    out.push({ art: id, ico: '◧', label: a ? artifactTitle(a) : 'Published artifact ' + id.slice(0, 8), kind: 'published' });
   }
   return out;
 }

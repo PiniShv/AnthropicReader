@@ -128,12 +128,12 @@ async function buildPersonZip(p, opts, progress, isCancelled) {
     for (const f of m.files) z.add('memory/files/' + cleanPath(f.path), f.content);
   }
   if (p.comments.length) {
-    z.add('comments.json', JSON.stringify(p.comments.map(c => ({ artifactId: c.artifact.id, artifactTitle: c.artifact.title, tab: c.thread && c.thread.tab, quoted: c.thread && c.thread.quoted_text, postedByClaude: c.byAgent, comment: c.comment })), null, 2));
+    z.add('comments.json', JSON.stringify(p.comments.map(c => ({ artifactId: c.artifact.id, artifactTitle: artifactTitle(c.artifact), tab: c.thread && c.thread.tab, quoted: c.thread && c.thread.quoted_text, postedByClaude: c.byAgent, comment: c.comment })), null, 2));
   }
   i = 0;
   for (const a of p.artifacts) {
     if (isCancelled()) return null;
-    const base = 'artifacts/' + nameOf(0, a.title, a.id) + '/';
+    const base = 'artifacts/' + nameOf(0, artifactTitle(a), a.id) + '/';
     for (const [rel, node] of a.files) {
       const v = parseVersionRel(rel);
       if (v && v.part === 'folder' && isPlumbing(v.sub)) continue;   // the app's runtime, like the Files tab

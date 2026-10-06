@@ -160,11 +160,11 @@ async function runSearch(q, { deep, scope, signal, onProgress }) {
   for (const a of arts) {
     const e = searchEntry(a);
     if (!e.lc) {
-      e.lc = [a.title, a.description, a.contentType, ...a.versions.map(v => v.title + ' ' + v.description), e.pageText || '',
+      e.lc = [artifactTitle(a), a.description, a.contentType, ...a.versions.map(v => v.title + ' ' + v.description), e.pageText || '',
         ...(a.comments || []).flatMap(t => [t.quoted_text, ...(t.comments || []).map(c => c.body)]),
         ...(a.threads || []).flatMap(t => (t.comments || []).map(c => c.text))].join('\n').toLowerCase();
     }
-    if (terms.every(t => e.lc.includes(t))) res.artifacts.push({ item: a, text: [a.title, a.description, e.pageText].join(' — ') });
+    if (terms.every(t => e.lc.includes(t))) res.artifacts.push({ item: a, text: [artifactTitle(a), a.description, e.pageText].join(' — ') });
     else if (deep && e.contentLc && terms.every(t => e.lc.includes(t) || e.contentLc.includes(t))) res.artifacts.push({ item: a, text: e.contentText, inContent: true });
   }
   return res;

@@ -2282,7 +2282,6 @@ function finalize() {
     a.pageNode = a.files.get('page.md') || null;
     a.contentType = a.kind === 'page' ? 'Doc' : versionInfo(a, a.activeVersion).type;
     a.owner = personFor(a.ownerId);
-    if (!a.title) a.title = a.pageNode ? 'Untitled page' : 'Untitled artifact';
     a.owner.artifacts.push(a);
     a.owner.touch(a.updated);
     // Page comments carry real author uuids.
@@ -2410,6 +2409,12 @@ function scopeOf(p) {
 function projectName(id) {
   const p = DB.projectById.get(id);
   return p ? (p.name || 'Untitled project') : '';
+}
+
+// An artifact's title, or a fallback by kind. Worked out when shown, not stored in a.title:
+// that field belongs to the import, and page.md can come in a later load.
+function artifactTitle(a) {
+  return a.title || (a.pageNode ? 'Untitled page' : 'Untitled artifact');
 }
 
 </script>
@@ -2574,7 +2579,7 @@ function collectOutputs(conv) {
   }
   for (const id of conv.artRefs || []) {
     const a = DB.artifactById.get(id);
-    out.push({ art: id, ico: '◧', label: a ? a.title : 'Published artifact ' + id.slice(0, 8), kind: 'published' });
+    out.push({ art: id, ico: '◧', label: a ? artifactTitle(a) : 'Published artifact ' + id.slice(0, 8), kind: 'published' });
   }
   return out;
 }
@@ -2743,11 +2748,11 @@ async function runSearch(q, { deep, scope, signal, onProgress }) {
   for (const a of arts) {
     const e = searchEntry(a);
     if (!e.lc) {
-      e.lc = [a.title, a.description, a.contentType, ...a.versions.map(v => v.title + ' ' + v.description), e.pageText || '',
+      e.lc = [artifactTitle(a), a.description, a.contentType, ...a.versions.map(v => v.title + ' ' + v.description), e.pageText || '',
         ...(a.comments || []).flatMap(t => [t.quoted_text, ...(t.comments || []).map(c => c.body)]),
         ...(a.threads || []).flatMap(t => (t.comments || []).map(c => c.text))].join('\n').toLowerCase();
     }
-    if (terms.every(t => e.lc.includes(t))) res.artifacts.push({ item: a, text: [a.title, a.description, e.pageText].join(' — ') });
+    if (terms.every(t => e.lc.includes(t))) res.artifacts.push({ item: a, text: [artifactTitle(a), a.description, e.pageText].join(' — ') });
     else if (deep && e.contentLc && terms.every(t => e.lc.includes(t) || e.contentLc.includes(t))) res.artifacts.push({ item: a, text: e.contentText, inContent: true });
   }
   return res;
@@ -2914,12 +2919,12 @@ async function buildPersonZip(p, opts, progress, isCancelled) {
     for (const f of m.files) z.add('memory/files/' + cleanPath(f.path), f.content);
   }
   if (p.comments.length) {
-    z.add('comments.json', JSON.stringify(p.comments.map(c => ({ artifactId: c.artifact.id, artifactTitle: c.artifact.title, tab: c.thread && c.thread.tab, quoted: c.thread && c.thread.quoted_text, postedByClaude: c.byAgent, comment: c.comment })), null, 2));
+    z.add('comments.json', JSON.stringify(p.comments.map(c => ({ artifactId: c.artifact.id, artifactTitle: artifactTitle(c.artifact), tab: c.thread && c.thread.tab, quoted: c.thread && c.thread.quoted_text, postedByClaude: c.byAgent, comment: c.comment })), null, 2));
   }
   i = 0;
   for (const a of p.artifacts) {
     if (isCancelled()) return null;
-    const base = 'artifacts/' + nameOf(0, a.title, a.id) + '/';
+    const base = 'artifacts/' + nameOf(0, artifactTitle(a), a.id) + '/';
     for (const [rel, node] of a.files) {
       const v = parseVersionRel(rel);
       if (v && v.part === 'folder' && isPlumbing(v.sub)) continue;   // the app's runtime, like the Files tab
@@ -3655,7 +3660,7 @@ function personOverview(p, counts) {
   // Recent activity timeline.
   const events = [];
   p.conversations.filter(c => !c.empty).forEach(c => events.push({ t: c.lastTs, ico: KIND.conversations.icon, html: `<a href="#/c/${encodeURIComponent(c.id)}" dir="auto">${esc(c.title || 'Untitled conversation')}</a> <span class="faint">· ${plural(c.msgCount, 'message')}</span>` }));
-  p.artifacts.forEach(a => events.push({ t: a.updated, ico: KIND.artifacts.icon, html: `<a href="#/a/${encodeURIComponent(a.id)}" dir="auto">${esc(a.title)}</a> <span class="faint">· ${a.kind === 'page' ? 'page' : 'artifact'}, ${plural(a.versions.length, 'version')}</span>` }));
+  p.artifacts.forEach(a => events.push({ t: a.updated, ico: KIND.artifacts.icon, html: `<a href="#/a/${encodeURIComponent(a.id)}" dir="auto">${esc(artifactTitle(a))}</a> <span class="faint">· ${a.kind === 'page' ? 'page' : 'artifact'}, ${plural(a.versions.length, 'version')}</span>` }));
   p.projects.forEach(x => events.push({ t: x.updated, ico: KIND.projects.icon, html: `<a href="#/p/${encodeURIComponent(x.id)}" dir="auto">${esc(x.name || 'Untitled project')}</a> <span class="faint">· project</span>` }));
   p.designChats.forEach(d => events.push({ t: d.lastTs, ico: KIND.design.icon, html: `<a href="#/d/${encodeURIComponent(d.id)}" dir="auto">${esc(d.title)}</a> <span class="faint">· design chat in ${esc(d.project.name || 'a design project')}</span>` }));
   events.sort((a, b) => b.t - a.t);
@@ -3702,7 +3707,7 @@ function personComments(p) {
     const quote = c.thread && c.thread.quoted_text;
     return `<div class="comment">
       <div class="row wrap" style="font-size:13px;color:var(--muted)">
-        <span>On <a href="#/a/${encodeURIComponent(c.artifact.id)}" dir="auto">${esc(c.artifact.title)}</a></span>
+        <span>On <a href="#/a/${encodeURIComponent(c.artifact.id)}" dir="auto">${esc(artifactTitle(c.artifact))}</a></span>
         ${c.thread && c.thread.tab ? `<span class="chip">tab: ${esc(c.thread.tab)}</span>` : ''}
         ${c.byAgent ? '<span class="chip" title="Claude posted this comment for the person">posted by Claude for them</span>' : ''}
         ${c.thread && c.thread.resolved ? '<span class="chip ok">resolved</span>' : ''}
@@ -4265,7 +4270,7 @@ function linkifyChats(html) {
 
 function artifactLinkHtml(id, title, action) {
   const a = DB.artifactById.get(id);
-  if (a) return `<p class="row wrap"><span class="chip on">◧ ${esc(action || 'artifact')}</span> <a href="#/a/${encodeURIComponent(id)}" dir="auto">${esc(a.title || title || id)}</a> <span class="faint">open the exported artifact</span></p>`;
+  if (a) return `<p class="row wrap"><span class="chip on">◧ ${esc(action || 'artifact')}</span> <a href="#/a/${encodeURIComponent(id)}" dir="auto">${esc(artifactTitle(a))}</a> <span class="faint">open the exported artifact</span></p>`;
   return `<p class="row wrap"><span class="chip">◧ ${esc(action || 'artifact')}</span> <span dir="auto">${esc(title || id)}</span> <span class="faint">not in the loaded files (load the frames zips to see it)</span></p>`;
 }
 
@@ -4417,8 +4422,8 @@ function visChip(a) {
 function artifactTable(list, key, showOwner, facet) {
   const columns = [
     {
-      id: 'title', label: 'Title', cls: 'title', link: true, asc: true, sortVal: a => a.title.toLowerCase(),
-      html: a => `<div dir="auto">${esc(a.title)}</div>${a.description && !TYPE_BLURB.test(a.description) && a.description !== a.title ? `<div class="snip" dir="auto">${esc(truncate(a.description, 200))}</div>` : ''}
+      id: 'title', label: 'Title', cls: 'title', link: true, asc: true, sortVal: a => artifactTitle(a).toLowerCase(),
+      html: a => `<div dir="auto">${esc(artifactTitle(a))}</div>${a.description && !TYPE_BLURB.test(a.description) && a.description !== artifactTitle(a) ? `<div class="snip" dir="auto">${esc(truncate(a.description, 200))}</div>` : ''}
         <div class="row wrap" style="margin-top:5px;gap:4px"><span class="chip">${esc(a.contentType)}</span>${visChip(a)}${a.commentCount ? `<span class="chip">🗨 ${a.commentCount}</span>` : ''}${a.mentionedIn && a.mentionedIn.length ? `<span class="chip" title="Linked from conversations">💬 ${a.mentionedIn.length}</span>` : ''}</div>`,
     },
   ];
@@ -4428,7 +4433,7 @@ function artifactTable(list, key, showOwner, facet) {
   return tableHtml({
     key, rows: list, columns, sort: 'updated', dir: -1, noun: 'artifact', facet,
     href: a => '#/a/' + encodeURIComponent(a.id),
-    text: a => [a.title, a.description, a.contentType, a.kind, a.visibility, VIS_LABEL[a.visibility], a.owner && a.owner.name, a.owner && a.owner.email, a.id, ...a.versions.map(v => v.title)].join(' '),
+    text: a => [artifactTitle(a), a.description, a.contentType, a.kind, a.visibility, VIS_LABEL[a.visibility], a.owner && a.owner.name, a.owner && a.owner.email, a.id, ...a.versions.map(v => v.title)].join(' '),
     placeholder: 'Filter: title, type (slides, doc, html), visibility, person…',
     empty: 'No artifacts.',
   });
@@ -4478,10 +4483,10 @@ function viewArtifact(id, vid) {
   }).join('');
 
   return `<div class="page">
-    <div class="crumbs"><a href="#/artifacts">Artifacts</a><span>›</span>${p && !p.system ? `${personLink(p)}<span>›</span>` : ''}<span class="ellipsis" style="max-width:420px" dir="auto">${esc(a.title)}</span></div>
+    <div class="crumbs"><a href="#/artifacts">Artifacts</a><span>›</span>${p && !p.system ? `${personLink(p)}<span>›</span>` : ''}<span class="ellipsis" style="max-width:420px" dir="auto">${esc(artifactTitle(a))}</span></div>
     <div class="page-head">
       <div class="grow">
-        <h1 dir="auto">${esc(a.title)}</h1>
+        <h1 dir="auto">${esc(artifactTitle(a))}</h1>
         <div class="sub">
           ${p && !p.system ? `<span class="row" style="gap:6px">${avatarHtml(p, 'sm')}${personLink(p)} ${unknownBadge(p)}</span>` : (a.createdByAgent ? '<span class="chip">Made by an agent (no owner)</span>' : '')}
           <span class="chip">${esc(a.contentType)}</span>${visChip(a)}
@@ -4541,7 +4546,7 @@ async function drawVersion(a, vid, view, pickBoard) {
       return;
     }
     const picker = built.boards ? `<select class="input" style="padding:3px 8px;font-size:13px" ${on.change(el => pickBoard(el.value))} aria-label="Board">${built.boards.list.map(b => `<option value="${esc(b.file)}"${b.file === built.boards.current ? ' selected' : ''}>${esc(b.title)}</option>`).join('')}</select>` : '';
-    box.innerHTML = `<div class="frame-box" id="art-frame-box">${bar(picker)}${notes}<iframe class="preview" id="art-frame" sandbox="allow-scripts allow-popups allow-forms allow-modals allow-downloads" referrerpolicy="no-referrer" title="${esc(a.title)}"></iframe></div>`;
+    box.innerHTML = `<div class="frame-box" id="art-frame-box">${bar(picker)}${notes}<iframe class="preview" id="art-frame" sandbox="allow-scripts allow-popups allow-forms allow-modals allow-downloads" referrerpolicy="no-referrer" title="${esc(artifactTitle(a))}"></iframe></div>`;
     box.querySelector('iframe').srcdoc = built.html;
   } catch (err) {
     console.error(err);
@@ -4617,7 +4622,7 @@ async function drawPage(a) {
     ${tabs.length > 1 ? `<div class="tabs" style="margin:0;padding:0 12px">${tabs.map((t, i) => `<button class="tab${i === idx ? ' active' : ''}" type="button" ${on(() => navigate('#/a/' + encodeURIComponent(a.id) + '?tab=' + encodeURIComponent(t.title), true))} dir="auto">${esc(t.title || 'Untitled')}</button>`).join('')}</div>` : ''}
     <div class="card-pad" id="page-body">${mdBlock(body)}</div>
     <div class="frame-bar" style="border-top:1px solid var(--border);border-bottom:0">
-      <button class="btn small" type="button" ${on(() => a.pageNode.blob('text/markdown').then(b => downloadBlob(b, safeFilename(a.title, 'page') + '.md')))}>Download page.md</button>
+      <button class="btn small" type="button" ${on(() => a.pageNode.blob('text/markdown').then(b => downloadBlob(b, safeFilename(artifactTitle(a), 'page') + '.md')))}>Download page.md</button>
       <button class="btn small" type="button" ${on(() => a.pageNode.text().then(copyText))}>Copy Markdown</button>
     </div>
   </div>
@@ -4670,7 +4675,7 @@ async function openPreviewTab(a, vid) {
   const w = window.open('', '_blank');
   if (!w) { toast('Pop-up blocked. Allow pop-ups for this page, or use Download.'); return; }
   w.document.open();
-  w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>${esc(a.title || 'Artifact')}</title><style>html,body,iframe{margin:0;border:0;width:100%;height:100%;display:block;font-family:system-ui,sans-serif}</style></head><body><p style="padding:20px">Opening ${esc(a.title || 'artifact')}…</p></body></html>`);
+  w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>${esc(artifactTitle(a))}</title><style>html,body,iframe{margin:0;border:0;width:100%;height:100%;display:block;font-family:system-ui,sans-serif}</style></head><body><p style="padding:20px">Opening ${esc(artifactTitle(a))}…</p></body></html>`);
   w.document.close();
   try {
     const built = await getBuilt(a, vid, versionInfo(a, vid), App.route.query.board || '');
@@ -4686,11 +4691,11 @@ async function downloadVersion(a, vid) {
   const info = versionInfo(a, vid);
   const s = info.slot;
   if (!s) return;
-  if (s.single) { downloadBlob(await s.single.blob('text/html'), safeFilename(a.title, 'artifact') + '.html'); return; }
+  if (s.single) { downloadBlob(await s.single.blob('text/html'), safeFilename(artifactTitle(a), 'artifact') + '.html'); return; }
   const zip = new ZipWriter();
   for (const [p, node] of s.folder) zip.add(p, await node.bytes());
   if (s.manifest) zip.add('files.json', await s.manifest.bytes());
-  downloadBlob(zip.blob(), safeFilename(a.title, 'artifact') + ' (' + vid + ').zip');
+  downloadBlob(zip.blob(), safeFilename(artifactTitle(a), 'artifact') + ' (' + vid + ').zip');
 }
 
 </script>
@@ -5132,7 +5137,7 @@ function drawSearchResults(res, q, t, deep) {
       <div class="r-snip" dir="auto">${snippetHtml(text, terms)}</div>
       <div class="r-meta">${avatarHtml(c.owner, 'sm')}<span>${esc(c.owner.name)}</span><span>${esc(fmtDate(c.lastTs))}</span><span>${plural(c.msgCount, 'message')}</span>${hitDeep ? '<span class="chip">in a tool call or file</span>' : ''}</div></a>`;
   };
-  const art = ({ item: a, text, inContent }) => `<a class="result" href="#/a/${encodeURIComponent(a.id)}"><div class="r-title"><span dir="auto">${esc(a.title)}</span><span class="chip">${esc(a.contentType)}</span></div>
+  const art = ({ item: a, text, inContent }) => `<a class="result" href="#/a/${encodeURIComponent(a.id)}"><div class="r-title"><span dir="auto">${esc(artifactTitle(a))}</span><span class="chip">${esc(a.contentType)}</span></div>
     <div class="r-snip" dir="auto">${snippetHtml(text, terms)}</div>
     <div class="r-meta">${avatarHtml(a.owner, 'sm')}<span>${esc(a.owner.name)}</span><span>${esc(fmtDate(a.updated))}</span>${inContent ? '<span class="chip">inside the artifact</span>' : ''}</div></a>`;
   const proj = ({ item: x }) => {
