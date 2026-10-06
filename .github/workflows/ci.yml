@@ -1,7 +1,10 @@
 name: CI
 
+# Once per change: on each pull request, and on each push to main. Pushes to other
+# branches are left out, because their pull request already runs CI on the same commits.
 on:
   push:
+    branches: [main]
   pull_request:
 
 # Read-only token: CI only checks out the code and runs local commands.

@@ -124,7 +124,7 @@ These are limits of the export itself, not of the reader:
 
 Recent versions of **Chrome, Edge, Firefox and Safari** on desktop and mobile.
 
-- **Zip files** are unpacked with the browser's built-in `DecompressionStream('deflate-raw')`. That needs Chrome or Edge 103, Firefox 113 or Safari 16.4 (macOS, iOS and iPadOS), or newer. An older browser says so when you pick a zip. Then unzip the files first and choose the folder, or use a newer browser. Unzipped folders and the sample data should also work in somewhat older browsers (about Chrome 92, Firefox 90 and Safari 15.4), but those are not tested.
+- **Zip files** are unpacked with the browser's built-in `DecompressionStream('deflate-raw')`. That needs Chrome or Edge 103, Firefox 113 or Safari 16.4 (macOS, iOS and iPadOS), or newer. An older browser says so when you pick a zip. Then unzip the files first and choose the folder, or use a newer browser. Unzipped folders and the sample data should also work in slightly older browsers, from Chrome and Edge 102, Firefox 112 and Safari 15.5, but those are not tested. These are the first versions with `inert`, which keeps the keyboard focus inside the download dialog and full-screen previews.
 - **Phones and tablets:** choose the `.zip` files. Picking a folder works only on desktop, and drag and drop may not be available.
 - **Reopen last export** and the faster file pickers need the File System Access API, which only desktop Chrome and Edge have (Brave turns it off by default). Other browsers use the normal file picker.
 
