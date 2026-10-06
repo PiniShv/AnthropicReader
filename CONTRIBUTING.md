@@ -40,6 +40,7 @@ cd AnthropicReader
 | `npm run demo` | Writes the made-up sample export (six zip parts and a manifest) to `demo/`, for trying the reader on real files. `npm run demo -- <folder>` writes them somewhere else. |
 | `npm run a11y` | Checks accessibility (WCAG 2.2 AA) with axe-core and a few keyboard checks, on the sample data in headless Chrome. Needs the network the first time. CI runs it. See [Checking accessibility](#checking-accessibility). |
 | `npm run security` | Feeds hostile, made-up export text to every renderer and every kind of page of the built reader in headless Chrome, with the network cut off. Fails on any script that runs, any network request, any tag or attribute outside the allow-list, any iframe without its sandbox, anything in browser storage beyond the reader's two settings, and any record of the wrong shape that hides a message. CI runs it. See [Checking security](#checking-security). |
+| `npm run robustness` | Gives every field the views read from tool calls and design-chat rows each wrong type in turn (null, a number, a string, true, `[]`, `[null]`, `{}`) and opens every page in headless Chrome, plus the Markdown export, the per-person zip and a deep search. Fails on a broken page, a missing message, a logged error, a throwing export, or a message that falls back to "could not be shown". CI runs it. See [Checking wrong types](#checking-wrong-types). |
 | `npm run snapshot -- --out <folder>` | Saves the HTML of every page of the sample data, with every block opened, using headless Chrome (set `CHROME=<path>` if Chrome is not found). Run it before a refactor. After it, `npm run snapshot -- --compare <folder>` fails if any page changed. |
 
 To try your change, run `npm run build` and open `dist/claude-export-reader.html` in a browser. Load the sample data, and test with your own export if you have one (keep it on your computer).
@@ -107,6 +108,18 @@ npm run build && npm run security
 - **Storage.** It reloads the page and fails if the browser holds anything but the two settings (`cer-theme`, `cer-conv-opts`), or if the database of older builds (`claude-export-reader`) is still there.
 
 It exits with code 1 on any problem and takes about 15 seconds. When you add a new way to draw export text, add it to the check. When you learn a new trick, add it to `CORPUS`.
+
+## Checking wrong types
+
+Exports are written by models and by several product versions, so any field can arrive with the wrong type: a list that is a string, a name that is a number, `null` inside a list. The reader must still draw every message with real content.
+
+```bash
+npm run build && npm run robustness
+```
+
+`scripts/robustness.mjs` starts from well-formed, made-up tool calls (every tool the reader draws as its own card, plus search, fetch, files, shell and generic results), message parts (citations, thinking, uploads, system notes) and design-chat rows. For every field it can reach, it makes one conversation or design chat with one message per wrong value, so a problem names the exact field and value. It opens each page with every block open, then runs the Markdown export of every chat, the per-person zip and a deep search. It fails on a page that breaks, a message that is missing, an error in the console, an export that throws, or a message drawn with the **could not be shown** notice. That notice is the safety net for shapes nobody has seen; for these known fields every wrong type must draw as real content. While you work on a field, `--only <field>` narrows the run and `--allow-fallback` only counts fallbacks. A clean run takes about 70 seconds.
+
+When the reader learns to draw a new tool or field, add a well-formed example to the templates at the top of the script.
 
 ## Adding support for a new export field
 

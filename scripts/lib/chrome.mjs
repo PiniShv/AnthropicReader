@@ -1,5 +1,5 @@
 // A small headless Chrome driver over the DevTools protocol (CDP), shared by the dev scripts
-// (screenshots, snapshot, a11y, security). No dependencies: Node 22+ has a global WebSocket.
+// (screenshots, snapshot, a11y, security, robustness). No dependencies: Node 22+ has a global WebSocket.
 
 import { spawn } from 'node:child_process';
 import { mkdtempSync, rmSync } from 'node:fs';

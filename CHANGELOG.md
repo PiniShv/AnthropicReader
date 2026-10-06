@@ -7,6 +7,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 ## [Unreleased]
 
 ### Added
+- `npm run robustness`, a check that gives every field the views read from tool calls and design-chat rows each wrong type, and fails if any message breaks, goes missing or falls back to a notice. CI runs it.
 
 - Each GitHub release has the reader (`claude-export-reader.html`) and a `.sha256` file to check the download. A release workflow publishes them when a version tag is pushed, but only after the tests and the build check pass, the tag matches `package.json` and the tagged commit is on `main`. These checks run with a read-only token, and the job that has the rights to publish runs no code from the repository. The workflow also signs a build provenance attestation for the reader, so `gh attestation verify` can show which workflow run and commit made the file (see README).
 - CodeQL code scanning of the JavaScript (not the vendored libraries or `dist/`), on every push to `main`, on every pull request and once a week.

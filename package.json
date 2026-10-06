@@ -34,6 +34,7 @@
     "screenshots": "node scripts/screenshots.mjs",
     "snapshot": "node scripts/snapshot.mjs",
     "a11y": "node scripts/a11y.mjs",
-    "security": "node scripts/security.mjs"
+    "security": "node scripts/security.mjs",
+    "robustness": "node scripts/robustness.mjs"
   }
 }

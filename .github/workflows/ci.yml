@@ -44,7 +44,7 @@ jobs:
   # export text must not run scripts or reach the network (npm run security), and the pages
   # must pass axe-core and the keyboard checks (npm run a11y). Each exits 1 on any finding.
   browser-checks:
-    name: Security and accessibility checks (headless Chrome)
+    name: Security, robustness and accessibility checks (headless Chrome)
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -67,7 +67,11 @@ jobs:
       - name: Security check
         run: npm run security
 
-      # Runs even when the security check failed, so one run shows every finding.
+      # These run even when an earlier check failed, so one run shows every finding.
+      - name: Wrong-type robustness check
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        run: npm run robustness
+
       - name: Accessibility check
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
         run: npm run a11y
