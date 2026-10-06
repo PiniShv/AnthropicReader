@@ -89,7 +89,7 @@ async function buildPersonZip(p, opts, progress, isCancelled) {
   ].join('\n'));
   z.add('person.json', JSON.stringify({
     id: p.id, name: p.name, email: p.email, phone: p.phone || null, inUsersJson: p.known,
-    counts: { conversations: p.conversations.length, messages: p.messageCount, artifacts: p.artifacts.length, projects: p.projects.length, designChats: p.designChats.length, memoryFiles: p.memory ? p.memory.files.length : 0, comments: p.comments.length },
+    counts: { conversations: p.convCount, conversationsWithoutContent: p.emptyConvCount, messages: p.messageCount, artifacts: p.artifacts.length, projects: p.projects.length, designChats: p.designChats.length, memoryFiles: p.memory ? p.memory.files.length : 0, comments: p.comments.length },
     firstActivity: p.first ? new Date(p.first).toISOString() : null, lastActivity: p.last ? new Date(p.last).toISOString() : null,
   }, null, 2));
 

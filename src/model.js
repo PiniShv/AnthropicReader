@@ -15,6 +15,8 @@ const hasText = v => typeof v === 'string' && v.trim() !== '';
 // The chats that have content. Chats the export left empty are listed, but never counted as
 // conversations: every count, badge and timeline goes through this one rule.
 const withContent = convs => convs.filter(c => !c.empty);
+// The messages of those chats, so a message count always goes with the chat count next to it.
+const countMessages = convs => withContent(convs).reduce((n, c) => n + c.msgCount, 0);
 
 class Person {
   constructor(id) {
@@ -36,12 +38,12 @@ class Person {
     this.artifacts = [];
     this.memory = null;
     this.comments = [];          // {artifact, thread, comment, byAgent, source}
-    this.messageCount = 0;
     this.first = 0;
     this.last = 0;
     // One definition of each count, used by every card, tile, tab and sidebar badge. finalize()
     // works them out.
     this.convCount = 0;          // chats with content
+    this.messageCount = 0;       // messages in those chats
     this.emptyConvCount = 0;     // chats the export left empty
     this.memoryCount = 0;        // memory files, the chat summary and project memories
     this.total = 0;              // every item: chats, projects, design chats, artifacts, memory, own comments
@@ -209,7 +211,6 @@ function finalize() {
     const p = personFor(c.ownerId);
     c.owner = p;
     p.conversations.push(c);
-    p.messageCount += c.msgCount;
     p.touch(c.created); p.touch(c.lastTs);
   }
   for (const pr of DB.projects) {
@@ -284,6 +285,7 @@ function finalize() {
   for (const p of DB.people.values()) {
     const m = p.memory;
     p.convCount = withContent(p.conversations).length;
+    p.messageCount = countMessages(p.conversations);
     p.emptyConvCount = p.conversations.length - p.convCount;
     p.memoryCount = m ? m.files.length + (m.conversationsMemory ? 1 : 0) + m.projectMemories.length : 0;
     p.total = p.convCount + p.projects.length + p.designChats.length + p.artifacts.length + (m ? 1 : 0) +

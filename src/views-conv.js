@@ -49,7 +49,7 @@ function viewConversations() {
   return `<div class="page">
     <div class="page-head"><div class="grow"><h1>Conversations</h1>
       <div class="sub">${s.person ? `<span>Only ${personLink(s.person)}’s</span>` : `<span>All people</span>`}<span>${plural(shown, 'conversation')}${empties ? ` <span class="faint">+ ${fmtNum(empties)} without content</span>` : ''}</span>
-      <span>${fmtNum(list.reduce((a, c) => a + c.msgCount, 0))} messages</span></div></div></div>
+      <span>${fmtNum(countMessages(list))} messages</span></div></div></div>
     ${convTable(list, 'conv-' + s.key, !s.person)}
   </div>`;
 }

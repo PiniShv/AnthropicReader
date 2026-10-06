@@ -267,7 +267,7 @@ function viewAbout() {
     <h2 class="section-title">Counts</h2>
     <div class="card card-pad"><dl class="kv">
       <dt>People</dt><dd>${fmtNum(people.length)} (${fmtNum(people.filter(p => p.known).length)} in users.json, ${fmtNum(people.filter(p => !p.known).length)} only seen in data)</dd>
-      <dt>Conversations</dt><dd>${fmtNum(DB.conversations.length)} · ${fmtNum(DB.conversations.reduce((a, c) => a + c.msgCount, 0))} messages · ${fmtNum(DB.conversations.length - withContent(DB.conversations).length)} without content</dd>
+      <dt>Conversations</dt><dd>${fmtNum(KIND.conversations.allCount())} · ${fmtNum(countMessages(DB.conversations))} messages · ${fmtNum(DB.conversations.length - KIND.conversations.allCount())} more without content</dd>
       <dt>Artifacts</dt><dd>${fmtNum(DB.artifacts.length)} · ${fmtNum(DB.artifacts.reduce((a, x) => a + x.versions.length, 0))} versions</dd>
       <dt>Projects</dt><dd>${fmtNum(DB.projects.length)}</dd>
       <dt>Design chats</dt><dd>${fmtNum(DB.designChats.length)}</dd>
@@ -324,7 +324,7 @@ async function exportPerson(p) {
     <h2 id="exp-title">Download ${esc(p.name)}’s data</h2>
     <p class="muted" style="margin:0 0 10px;font-size:14px">One .zip with everything linked to this person: conversations as readable Markdown plus the original JSON, and the original files for everything else.</p>
     <ul style="margin:0 0 10px;padding-left:20px;font-size:14px">
-      <li>${plural(p.conversations.length, 'conversation')}</li><li>${plural(p.artifacts.length, 'artifact')}</li>
+      <li>${plural(p.convCount, 'conversation')}${p.emptyConvCount ? `, and ${fmtNum(p.emptyConvCount)} more without content` : ''}</li><li>${plural(p.artifacts.length, 'artifact')}</li>
       <li>${plural(p.projects.length, 'project')}</li><li>${plural(p.designChats.length, 'design chat')}</li>
       <li>${p.memory ? 'Memory (' + plural(p.memory.files.length, 'file') + ')' : 'No memory'}</li><li>${plural(p.comments.length, 'comment')}</li>
     </ul>

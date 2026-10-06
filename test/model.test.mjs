@@ -54,7 +54,7 @@ test('links conversations to people from users.json', async () => {
     'conversations.json': [
       chat(conv(1), ADA, 'Launch checklist', 2),
       chat(conv(2), GONE, 'Old vendor notes', 4),
-      conversation(conv(3), ADA, '', []),
+      conversation(conv(3), ADA, '', [message('m3a', 'human', '')]),
       conversation(conv(4), BRAM, '', [message('m4a', 'human', longPrompt), message('m4b', 'assistant', 'Sure.')]),
       conversation(conv(5), BRAM, '', [message('m5a', 'human', '', { files: [{ file_name: 'floorplan.png' }] })]),
       conversation(conv(6), BRAM, '  ', [message('m6a', 'human', ''), message('m6b', 'assistant', 'Here is a short summary of the plan.')]),
@@ -74,7 +74,7 @@ test('links conversations to people from users.json', async () => {
   assert.equal(ada.conversations.length, 2);
   assert.equal(ada.convCount, 1, 'the empty chat is not counted');
   assert.equal(ada.emptyConvCount, 1);
-  assert.equal(ada.messageCount, 2);
+  assert.equal(ada.messageCount, 2, 'the message of the empty chat is not counted');
 
   // An account that is not in users.json still gets a person, marked unknown.
   const gone = person(api, GONE);
@@ -100,6 +100,12 @@ test('links conversations to people from users.json', async () => {
   assert.equal(byId(conv(5)).empty, false, 'an upload counts as content');
   assert.equal(title(conv(6)), 'Here is a short summary of the plan.');
   assert.equal(title(conv(3)), 'Untitled conversation');
+
+  // The person download counts chats and messages the same way as the person page.
+  const blob = await api.buildPersonZip(ada, { allVersions: false }, () => {}, () => false);
+  const zipped = await api.ZipArchive.open(new File([blob], 'ada.zip'));
+  const { counts } = JSON.parse(await zipped.entries.find(e => e.name === 'person.json').text());
+  assert.deepEqual([counts.conversations, counts.conversationsWithoutContent, counts.messages], [1, 1, 2]);
 
   // Newest first.
   const times = Array.from(DB.conversations, c => c.lastTs);

@@ -277,7 +277,7 @@ function viewHome() {
   if (fp) return viewPerson(fp.id, 'overview');
   const people = peopleSorted();
   const active = people.filter(p => p.total > 0);
-  const totalMsgs = DB.conversations.reduce((a, c) => a + c.msgCount, 0);
+  const totalMsgs = countMessages(DB.conversations);
   const convs = KIND.conversations.allCount(), emptyConvs = DB.conversations.length - convs;
   const manifest = latestManifest();
   const missing = manifest ? missingFiles(manifest) : [];
