@@ -5484,9 +5484,9 @@ function memoryText(text, mem) {
 
 /* ======================= Search page ======================= */
 
-// Every search URL is made here, with its parameters in this order. t is not encoded: the app
-// writes only type names, and a t typed into the URL is passed on as it is.
-const searchHref = ({ q, deep, t }) => '#/search?q=' + encodeURIComponent(q) + (deep ? '&deep=1' : '') + (t ? '&t=' + t : '');
+// Every search URL is made here, with its parameters in this order. t is encoded too: a t typed
+// into the URL comes back here, and could otherwise add parameters or break out of markup.
+const searchHref = ({ q, deep, t }) => '#/search?q=' + encodeURIComponent(q) + (deep ? '&deep=1' : '') + (t ? '&t=' + encodeURIComponent(t) : '');
 
 function viewSearch(q, t) {
   const deep = App.route.query.deep === '1';

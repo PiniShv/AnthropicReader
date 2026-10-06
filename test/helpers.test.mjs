@@ -136,6 +136,13 @@ test('safeFilename makes names that work on every system', () => {
   assert.equal(safeFilename('...', 'file'), 'file');
 });
 
+test('searchHref encodes every value it puts in the URL', () => {
+  const { searchHref } = api;
+  assert.equal(searchHref({ q: 'week 4', t: 'conversations' }), '#/search?q=week%204&t=conversations');
+  assert.equal(searchHref({ q: '"a&b"', deep: true, t: 'x&deep=0"><b>' }), '#/search?q=%22a%26b%22&deep=1&t=x%26deep%3D0%22%3E%3Cb%3E');
+  assert.equal(searchHref({ q: '' }), '#/search?q=');
+});
+
 test('safeUrl allows only web and mail links', () => {
   assert.equal(safeUrl('https://example.com/a?b=1'), 'https://example.com/a?b=1');
   assert.equal(safeUrl('  http://example.com  '), 'http://example.com');
