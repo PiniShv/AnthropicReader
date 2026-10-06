@@ -7,7 +7,7 @@ They are vendored (not loaded from a CDN) because the reader must work offline a
 | Library | Version | File | Official file (npm package / path) | License |
 |---|---|---|---|---|
 | [marked](https://github.com/markedjs/marked) | 15.0.12 | `vendor/marked.min.js` | `marked@15.0.12/marked.min.js` | MIT |
-| [DOMPurify](https://github.com/cure53/DOMPurify) | 3.2.6 | `vendor/purify.min.js` | `dompurify@3.2.6/dist/purify.min.js` | Apache-2.0 OR MPL-2.0 |
+| [DOMPurify](https://github.com/cure53/DOMPurify) | 3.4.16 | `vendor/purify.min.js` | `dompurify@3.4.16/dist/purify.min.js` | Apache-2.0 OR MPL-2.0 |
 
 What they do in the reader:
 
@@ -20,7 +20,7 @@ Each file in `vendor/` is byte for byte the official file from its npm package, 
 
 ```text
 3e7e7d7feb3e5d58cb6c804f68ab5c24cc7e5eb6270fd6e5cbb9124739217d0c  vendor/marked.min.js
-89e1fa7647cb495370d3a997ace4387f5d15d9f4c5af12352c53daa400956287  vendor/purify.min.js
+2c90a9b46d6463f26038a29b686e82bc91de01fdac9d5229e7cfe3b360134ea2  vendor/purify.min.js
 ```
 
 - `npm test` fails when a file in `vendor/` does not match its checksum here, or when this page names a different version than the file. So an edited or swapped file cannot slip in unnoticed.
@@ -90,16 +90,16 @@ any theory of liability, whether in contract, strict liability, or tort
 software, even if advised of the possibility of such damage.
 ```
 
-## DOMPurify 3.2.6
+## DOMPurify 3.4.16
 
 Copyright (c) Cure53 and other contributors (Dr.-Ing. Mario Heiderich, Cure53).
-Source: <https://github.com/cure53/DOMPurify/tree/3.2.6>
+Source: <https://github.com/cure53/DOMPurify/tree/3.4.16>
 
 DOMPurify is free software. You may redistribute and/or modify it under the terms of **either**:
 
 - a) the Apache License, Version 2.0: <https://www.apache.org/licenses/LICENSE-2.0>, or
 - b) the Mozilla Public License, Version 2.0: <https://www.mozilla.org/MPL/2.0/>
 
-The full text of both licenses, as shipped with this version, is in DOMPurify's [`LICENSE`](https://github.com/cure53/DOMPurify/blob/3.2.6/LICENSE) file.
+The full text of both licenses, as shipped with this version, is in DOMPurify's [`LICENSE`](https://github.com/cure53/DOMPurify/blob/3.4.16/LICENSE) (Apache-2.0) and [`LICENSE-MPL`](https://github.com/cure53/DOMPurify/blob/3.4.16/LICENSE-MPL) (MPL-2.0) files.
 
-This project redistributes the official minified build (`dist/purify.min.js` from the `dompurify@3.2.6` npm package) without changes. Its source code is available at the link above.
+This project redistributes the official minified build (`dist/purify.min.js` from the `dompurify@3.4.16` npm package) without changes. Its source code is available at the link above.
