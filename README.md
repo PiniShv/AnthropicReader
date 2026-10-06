@@ -92,7 +92,6 @@ You can load any subset. Missing parts show up as empty sections. Keep the tab o
 - **Older export formats** work too (`projects.json`, `memories.json`, chats without branches). You can **load several exports together**: when the same item is in two exports, the newer copy wins.
 - **Dark mode** (follows your system; ◐ switches it), **right-to-left** text such as Hebrew and Arabic, and a layout that works on **phones and tablets**.
 - **Keyboard and screen readers.** Everything works with the keyboard alone. A skip link leads to the content, the focus moves to the heading of each new page, and the page follows the system setting for less motion. The aim is WCAG 2.2 level AA: the sample data passes the automated axe-core and keyboard checks (`npm run a11y`) in light and dark mode.
-- **Reopen last export** in desktop Chrome and Edge: the page remembers which files you picked (not their content) and can open them again after a reload.
 
 ## Privacy and security
 
@@ -103,7 +102,7 @@ The export holds personal data: names, emails, phone numbers and everything peop
 - **Untrusted content is isolated.** Text from the export (Markdown in messages, docs, memory and comments) is cleaned with [DOMPurify](https://github.com/cure53/DOMPurify) before it is shown. HTML artifacts, widgets and HTML project files run in sandboxed iframes **without** `allow-same-origin`, so they cannot read the reader, your files or other artifacts. Inside their sandbox they may still load their own fonts, images or scripts from the internet, exactly as they did on claude.ai.
 - **Remote images are not loaded.** Images in Markdown text (`![…](…)` and `<img>` tags) become plain links that you can open yourself.
 - **Manifest links stay in memory.** The single-use download links from the manifest are kept only in memory. They are never saved, logged or fetched by the page. They are shown only as **Download** buttons that you click.
-- **What the browser stores.** Only small settings: the theme, conversation view options, the person you focused on (for this tab only), and, in Chrome and Edge, file handles for **Reopen last export**. Export content is never stored.
+- **What the browser stores.** Only two small settings: the theme and the conversation view options. Nothing about the export is stored: no content, no file names, no links to your files. In Chrome and Edge every page you open from disk shares the same storage, so other local HTML files could read it.
 
 See [SECURITY.md](SECURITY.md) for the full privacy model and how to report a vulnerability.
 
@@ -126,7 +125,6 @@ Recent versions of **Chrome, Edge, Firefox and Safari** on desktop and mobile.
 
 - **Zip files** are unpacked with the browser's built-in `DecompressionStream('deflate-raw')`. That needs Chrome or Edge 103, Firefox 113 or Safari 16.4 (macOS, iOS and iPadOS), or newer. An older browser says so when you pick a zip. Then unzip the files first and choose the folder, or use a newer browser. Unzipped folders and the sample data should also work in slightly older browsers, from Chrome and Edge 102, Firefox 112 and Safari 15.5, but those are not tested. These are the first versions with `inert`, which keeps the keyboard focus inside the download dialog and full-screen previews.
 - **Phones and tablets:** choose the `.zip` files. Picking a folder works only on desktop, and drag and drop may not be available.
-- **Reopen last export** and the faster file pickers need the File System Access API, which only desktop Chrome and Edge have (Brave turns it off by default). Other browsers use the normal file picker.
 
 ## Development
 

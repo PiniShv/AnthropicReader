@@ -6,7 +6,6 @@ const App = {
   focus: null,          // Person id that scopes every list, or null
   route: { path: [], query: {} },
   lastHash: '',
-  canReopen: false,     // a load in this tab saved file handles for "Reopen last export"
   loading: false,       // an import is running (startLoad): there is only one at a time
 };
 

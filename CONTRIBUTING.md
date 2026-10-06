@@ -39,7 +39,7 @@ cd AnthropicReader
 | `node scripts/check-vendor.mjs` | Checks that the files in `vendor/` are the official npm builds named in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md), and lists known security advisories and newer releases. Needs the network. A weekly workflow (`.github/workflows/vendor-check.yml`) runs it too, so a new advisory shows up as a failed run. |
 | `npm run demo` | Writes the made-up sample export (six zip parts and a manifest) to `demo/`, for trying the reader on real files. `npm run demo -- <folder>` writes them somewhere else. |
 | `npm run a11y` | Checks accessibility (WCAG 2.2 AA) with axe-core and a few keyboard checks, on the sample data in headless Chrome. Needs the network the first time. CI runs it. See [Checking accessibility](#checking-accessibility). |
-| `npm run security` | Feeds hostile, made-up export text to every renderer and every kind of page of the built reader in headless Chrome, with the network cut off. Fails on any script that runs, any network request, any tag or attribute outside the allow-list, and any iframe without its sandbox. CI runs it. See [Checking security](#checking-security). |
+| `npm run security` | Feeds hostile, made-up export text to every renderer and every kind of page of the built reader in headless Chrome, with the network cut off. Fails on any script that runs, any network request, any tag or attribute outside the allow-list, any iframe without its sandbox, and anything in browser storage beyond the reader's two settings. CI runs it. See [Checking security](#checking-security). |
 | `npm run snapshot -- --out <folder>` | Saves the HTML of every page of the sample data, with every block opened, using headless Chrome (set `CHROME=<path>` if Chrome is not found). Run it before a refactor. After it, `npm run snapshot -- --compare <folder>` fails if any page changed. |
 
 To try your change, run `npm run build` and open `dist/claude-export-reader.html` in a browser. Load the sample data, and test with your own export if you have one (keep it on your computer).
@@ -102,6 +102,7 @@ npm run build && npm run security
 - **Pages.** It loads a hostile export with the same text in every field (messages, thinking, tool calls, attachments, projects, memory, design chats, Docs pages and comments), opens every kind of page with every block open, and looks for event handlers, unsafe links, attributes that load files, and forged ids.
 - **Frames.** Every iframe, in `src/` and in the pages (also **Open in new tab**), must have a sandbox with only the allowed tokens, never `allow-same-origin`. A probe inside each frame tries to reach the reader.
 - **Scripts and network.** Every payload calls a trap function that only the reader's page has, and every request from the page or any frame in it is recorded. Either one fails the run.
+- **Storage.** It reloads the page and fails if the browser holds anything but the two settings (`cer-theme`, `cer-conv-opts`), or if the database of older builds (`claude-export-reader`) is still there.
 
 It exits with code 1 on any problem and takes about 15 seconds. When you add a new way to draw export text, add it to the check. When you learn a new trick, add it to `CORPUS`.
 

@@ -11,7 +11,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Each GitHub release has the reader (`claude-export-reader.html`) and a `.sha256` file to check the download. A release workflow publishes them when a version tag is pushed, but only after the tests and the build check pass, the tag matches `package.json` and the tagged commit is on `main`. The workflow also signs a build provenance attestation for the reader, so `gh attestation verify` can show which workflow run and commit made the file (see README).
 - CodeQL code scanning of the JavaScript (not the vendored libraries or `dist/`), on every push to `main`, on every pull request and once a week.
 - A weekly workflow runs `node scripts/check-vendor.mjs`, so a new security advisory for marked or DOMPurify shows up as a failed run.
-- `npm run security` (`scripts/security.mjs`): a security check for maintainers. It feeds hostile, made-up export text through every renderer and every kind of page in headless Chrome, with the network cut off. It fails on any script that runs in the reader, any network request, any tag or attribute outside the allow-list and any iframe without its sandbox.
+- `npm run security` (`scripts/security.mjs`): a security check for maintainers. It feeds hostile, made-up export text through every renderer and every kind of page in headless Chrome, with the network cut off. It fails on any script that runs in the reader, any network request, any tag or attribute outside the allow-list, any iframe without its sandbox and anything in browser storage beyond the reader's two settings.
 - `npm run a11y` (`scripts/a11y.mjs`): an accessibility check for maintainers. It runs axe-core (downloaded at run time, checked by SHA-256, not a dependency) and keyboard checks on the sample data in headless Chrome, in light and dark mode, at desktop and phone width.
 - CI runs `npm run security` and `npm run a11y` in headless Chrome on every pull request and every push to `main`, and fails on any finding.
 
@@ -27,7 +27,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Building and testing need Node.js 22 or newer, because Node 20 reached its end of life in April 2026. CI tests on Node 22 and 24, with the current major versions of `actions/checkout` and `actions/setup-node` (they run on Node 24, not the deprecated Node 20 runtime).
 - Deep search keeps about a third less in memory on a large export, and a new search no longer copies the text of every chat first. The search index holds one lower-case text per item; snippets are cut from the item itself when they are shown. Sorting tables and the people list is faster too.
 - An item without a title shows the same fallback everywhere, in plain text, such as "Untitled conversation" or "Untitled project". The breadcrumb and the download names of such a chat use it too.
-- In Chrome and Edge, **Choose a folder…** and **Reopen last export** open the files of a big folder 16 at a time instead of one by one, so loading starts sooner. The files are still read in the same order, so the result does not change.
+- After a reload, focus mode starts with everyone again. The person you focused on is kept in memory only, not in the browser's storage.
+
+### Removed
+
+- **Reopen last export** in Chrome and Edge, and with it the File System Access pickers: **Choose files…** and **Choose a folder…** now use the browser's normal file picker in every browser. See **Security**.
 
 ### Fixed
 
@@ -44,12 +48,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - The users, projects, memories and design chat files are read one record at a time, like `conversations.json`, so a very large old-format `projects.json` or `memories.json` also loads in Chrome and Edge.
 - "Copied" is shown only when the copy worked, and **Copy Markdown** on a Docs page also works in Safari.
 - On phones, the end of the page no longer sits under the browser's toolbar.
-- "About this export" mentions **Reopen last export** only when this tab saved the files for it.
 - Images and videos in an artifact's Files tab open from an object URL instead of a large `data:` URL.
 - In Safari, a quick click on a sortable column header no longer selects its text.
 
 ### Security
 
+- In Chrome and Edge, any HTML file you opened from disk, such as a downloaded artifact, could open your export files without asking. Chromium gives every page opened from disk one shared storage, and **Reopen last export** kept handles to your files there, with read permission. The feature is removed, and the reader deletes the handles that older versions saved when it starts. It now stores only the theme and the conversation view options.
 - **Open in new tab** names the new tab "Artifact preview" instead of the artifact's title, so the title does not end up in the browser history.
 - Markdown from the export could make the reader load files from the internet, which would tell a server when the export was opened. SVG attributes such as `mask`, `fill`, `filter`, `clip-path` and `marker-end` with a `url(…)` got through the sanitizer. It now keeps only an allow-list of HTML tags and attributes: SVG and MathML in Markdown show as their plain text, and `id`, `name` and `background` attributes are removed.
 - In a browser where the sanitizer cannot run, Markdown from the export is now shown as plain text. Before, it was shown as HTML without cleaning.

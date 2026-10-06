@@ -21,7 +21,7 @@ For the format of the export itself, see [export-format.md](export-format.md).
 | `vendor/marked.min.js` | Markdown to HTML. |
 | `vendor/purify.min.js` | DOMPurify: HTML sanitizer. |
 | `src/zip.js` | `ZipArchive` / `ZipEntry`: random-access zip reader. `ZipWriter`: small zip writer for downloads. |
-| `src/load.js` | `FileNode`: a loose file with the same interface as a `ZipEntry` (`path`, `size`, `container`, `stream()`, `bytes()`, `text()`, `blob()`). File and folder picking, drag and drop, remembered file handles (`HandleStore`), `parseJsonArrayStream()`, and `mapLimit()` (async work a few at a time, used by the import and search too). |
+| `src/load.js` | `FileNode`: a loose file with the same interface as a `ZipEntry` (`path`, `size`, `container`, `stream()`, `bytes()`, `text()`, `blob()`). File and folder picking, drag and drop, `parseJsonArrayStream()`, and `mapLimit()` (async work a few at a time, used by the import and search too). |
 | `src/render.js` | Escaping (`esc`), reading and formatting of dates (`parseTime`; 0 means unknown and shows as nothing), numbers and sizes, Markdown (`mdToHtml`, `mdBlock`), sanitizing, search highlighting, sandboxed frames (`FRAME_SANDBOX`, `sandboxFrame()`, `withFrameShim()`), small helpers (toast, `announce()` for screen readers, copy, download, MIME types). Pure formatting and sanitizing: it binds no handlers and keeps no page state. A code block's Copy button carries no key; one click listener in `app.js` handles every `.copy-code` button. |
 | `src/ui.js` | `App` (route and focus), `focusPerson()` / `focusScope()`, the `$` / `$$` shortcuts, and the lifetime of one drawn page: `VIEW`, `after()`, `viewKey()`, `on()` for click behaviour, `blk()` for collapsible blocks, and `preHtml()` for long text with a **Show all** button. Focus helpers: `refocus()` and `isolate()` (see [Accessibility](#accessibility)). |
 | `src/model.js` | The in-memory model: `Person`, the `DB` object, `finalize()` (links and derived data), `saveDB()` / `restoreDB()` (the undo for a failed import), `parseVersionRel()` (which version an artifact file belongs to), `versionInfo()` (what an artifact version holds), `genCache()` (a cache that starts again on every `finalize()`), the title of each kind (`convTitle()`, `artifactTitle()`, `projectTitle()`, `designTitle()`) and small queries (`scopeOf()`, `realPeople()`, `peopleMatching()`, `latestManifest()`, `missingFiles()`, `hasRecords()`). |
@@ -39,7 +39,7 @@ For the format of the export itself, see [export-format.md](export-format.md).
 | `src/demo-chats.js` | Sample conversations, and the builders that turn short specs into `conversations.json` records. |
 | `src/demo-records.js` | Sample projects, memory and Claude Design chats. |
 | `src/demo-artifacts.js` | Sample artifacts: versions, files and comments. |
-| `src/app.js` | Start-up: theme, loading screen, file pickers, hash routing, focus mode, global events. |
+| `src/app.js` | Start-up: theme, browser storage, loading screen, file pickers, hash routing, focus mode, global events. |
 
 `src/template.html` holds the landing screen and the empty app shell (top bar, sidebar, main area). `src/styles.css` holds all styles, with light and dark themes as CSS custom properties.
 
@@ -87,9 +87,9 @@ A few small pieces carry most of the app. When you add something, reach for thes
 
 ### Gathering input
 
-- **Drag and drop** walks dropped folders with `webkitGetAsEntry`. Files are read in parallel but kept in folder order, so the same drop always gives the same result. In Chrome and Edge it also asks for persistent file handles (`getAsFileSystemHandle`).
-- **Choose files / Choose a folder** use the File System Access API when it exists (`showOpenFilePicker`, `showDirectoryPicker`) and fall back to `<input type="file">`.
-- File handles are stored in IndexedDB (`HandleStore`), so **Reopen last export** can open the same files after a reload. Only handles are stored, never content. The saved folders are listed one level at a time and their files opened, 16 at a time (`filesFromHandles()`), and the files keep folder order, as with a drop.
+- **Drag and drop** walks dropped folders with `webkitGetAsEntry`. Files are read in parallel but kept in folder order, so the same drop always gives the same result.
+- **Choose files / Choose a folder** use `<input type="file">` (with `webkitdirectory` for a folder).
+- Nothing about the files is kept: no file handles, no names. Chromium gives every `file://` page one storage origin, so another local HTML file could read anything the reader stored. The only stored values are the theme and the conversation view options, and `app.js` deletes the IndexedDB database in which older builds kept file handles (see [SECURITY.md](../SECURITY.md)).
 - Dropping files on an open export asks first, then adds them to the same model. That is how several exports are merged.
 - Only one import runs at a time (`App.loading`). Files dropped or picked while one runs are refused with a message, because two imports would write into the same model at once.
 
@@ -218,7 +218,7 @@ The app uses hash routes, so it works from `file://` and a reload keeps your pla
 
 `navigate()` uses `history.pushState` / `replaceState` and draws the page. `onRoute()` ends the old view, draws the new one, moves the focus (see [Accessibility](#accessibility)), runs its `after()` hooks and redraws the sidebar, which also sets the tab's title to the active section. Because a link click fires both `popstate` and `hashchange`, the app draws only when the hash really changed.
 
-**Focus mode** keeps the focused person's id in `App.focus` (and in `sessionStorage` for this tab). Only `writeFocus()` changes it, and it keeps both copies the same: `setFocus()` uses it when you pick a person, and `showApp()` after each load (which keeps the focus if that person is still loaded, or, after a reload, takes the one saved for this tab). Lists, sidebar counts and search read `focusScope()`: the focused person's records, which `finalize()` linked to them, or everyone's (`scopeOf()`).
+**Focus mode** keeps the focused person's id in `App.focus`, in memory only. Only `writeFocus()` changes it: `setFocus()` uses it when you pick a person, and `showApp()` after each load (which keeps the focus if that person is still loaded). Lists, sidebar counts and search read `focusScope()`: the focused person's records, which `finalize()` linked to them, or everyone's (`scopeOf()`).
 
 ## Accessibility
 
@@ -260,6 +260,6 @@ The aim is WCAG 2.2 level AA. The rules the code follows:
 
 ## Testing hook
 
-`app.js` exposes `window.ExportReader = { load(files), DB() }` for scripted use. `files` are `File` objects, or `{ file, path }` pairs when the path inside a folder matters (that is what drag and drop and saved folders give; the reader never adds fields to a `File`). The tests in `test/` do not use a browser: `test/harness.mjs` runs the same scripts in a Node `vm` context with small stubs, and tests the zip reader, the parser and the import pipeline directly.
+`app.js` exposes `window.ExportReader = { load(files), DB() }` for scripted use. `files` are `File` objects, or `{ file, path }` pairs when the path inside a folder matters (that is what drag and drop gives; the reader never adds fields to a `File`). The tests in `test/` do not use a browser: `test/harness.mjs` runs the same scripts in a Node `vm` context with small stubs, and tests the zip reader, the parser and the import pipeline directly.
 
-The tests cannot check the HTML the views draw. For that, `scripts/snapshot.mjs` opens the built page with the sample data in headless Chrome. It visits every page (also with focus on one person), opens every collapsed block, and saves the HTML of the main area and the sidebar, and the `srcdoc` of every preview frame. Attributes that only carry click data (`data-on` and lazy keys, other `data-*` values) are left out, so a refactor that keeps the pages the same gives the same files. `scripts/security.mjs` does the same with hostile, made-up export text and the network cut off: it checks what the renderers return against an allow-list, visits every kind of page of a hostile export, and fails on any script that runs, any network request and any frame without its sandbox. `scripts/lib/chrome.mjs` is the small DevTools-protocol driver these scripts share with `scripts/screenshots.mjs` and `scripts/a11y.mjs`.
+The tests cannot check the HTML the views draw. For that, `scripts/snapshot.mjs` opens the built page with the sample data in headless Chrome. It visits every page (also with focus on one person), opens every collapsed block, and saves the HTML of the main area and the sidebar, and the `srcdoc` of every preview frame. Attributes that only carry click data (`data-on` and lazy keys, other `data-*` values) are left out, so a refactor that keeps the pages the same gives the same files. `scripts/security.mjs` does the same with hostile, made-up export text and the network cut off: it checks what the renderers return against an allow-list, visits every kind of page of a hostile export, and fails on any script that runs, any network request, any frame without its sandbox and anything in browser storage beyond the two settings. `scripts/lib/chrome.mjs` is the small DevTools-protocol driver these scripts share with `scripts/screenshots.mjs` and `scripts/a11y.mjs`.

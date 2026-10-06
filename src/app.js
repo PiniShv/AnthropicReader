@@ -16,6 +16,14 @@ function currentTheme() {
 function syncThemeButton() { $('#theme-btn').setAttribute('aria-pressed', String(currentTheme() === 'dark')); }
 try { applyTheme(localStorage.getItem('cer-theme')); } catch (e) { /* storage blocked */ }
 
+/* ---------- Browser storage ---------- */
+
+/* Chromium gives every page opened from disk (file://) one storage origin, so any other local
+ * HTML file can read what this page stores. Older builds kept handles to the export's files in
+ * IndexedDB ("Reopen last export"); delete them. The reader now stores only the theme and the
+ * conversation view options. */
+try { indexedDB.deleteDatabase('claude-export-reader'); } catch (e) { /* storage blocked */ }
+
 /* ---------- Loading ---------- */
 
 const Loader = {
@@ -62,7 +70,7 @@ function loadBusy() {
   return App.loading;
 }
 
-async function startLoad(files, handles) {
+async function startLoad(files) {
   if (!files || !files.length || loadBusy()) return;
   $('#landing').hidden = false;
   $('#shell').hidden = true;
@@ -73,7 +81,6 @@ async function startLoad(files, handles) {
   try {
     const before = DB.warnings.length;
     await importExport(files, Loader);
-    if (handles && handles.length) HandleStore.save(handles).then(ok => { if (ok) App.canReopen = true; });
     const problems = DB.warnings.slice(before);
     if (problems.length) {
       // Do not hide failures behind the app: say what is missing and let the person decide.
@@ -114,49 +121,19 @@ function showManifestOnly() {
 function showApp() {
   $('#landing').hidden = true;
   $('#shell').hidden = false;
-  // Keep the focus if that person is still loaded. After a reload the tab starts with none,
-  // so take the one saved for this tab.
-  writeFocus(App.focus || savedFocus());
+  // Keep the focus if that person is still loaded.
+  writeFocus(App.focus);
   updateFocusButton();
   renderSidebar();
   if (!location.hash || location.hash === '#' || location.hash === '#/') navigate('#/', true);
   else onRoute();
 }
 
-async function pickFiles() {
-  if (window.showOpenFilePicker) {
-    try {
-      const handles = await window.showOpenFilePicker({ multiple: true });
-      const files = await filesFromHandles(handles);
-      return startLoad(files, handles);
-    } catch (e) {
-      if (e && e.name === 'AbortError') return;
-      // Fall back to the classic input if the picker is blocked (e.g. some file:// setups).
-    }
-  }
-  $('#file-input').click();
-}
-
-async function pickFolder() {
-  if (window.showDirectoryPicker) {
-    try {
-      const dir = await window.showDirectoryPicker();
-      Loader.reset();
-      Loader.set('scan', 'Listing files in ' + dir.name + '…', 0.05, '');
-      const files = await filesFromHandles([dir]);
-      return startLoad(files, [dir]);
-    } catch (e) {
-      if (e && e.name === 'AbortError') return;
-    }
-  }
-  $('#folder-input').click();
-}
-
-async function setupLanding() {
+function setupLanding() {
   const dz = $('#dropzone');
-  $('#pick-files').addEventListener('click', pickFiles);
+  $('#pick-files').addEventListener('click', () => $('#file-input').click());
   $('#try-demo').addEventListener('click', async () => startLoad(await demoExportFiles()));
-  $('#pick-folder').addEventListener('click', pickFolder);
+  $('#pick-folder').addEventListener('click', () => $('#folder-input').click());
   $('#file-input').addEventListener('change', e => { const f = Array.from(e.target.files); e.target.value = ''; startLoad(f); });
   $('#folder-input').addEventListener('change', e => { const f = Array.from(e.target.files); e.target.value = ''; startLoad(f); });
 
@@ -172,45 +149,8 @@ async function setupLanding() {
     const dt = e.dataTransfer;
     if (!dt || !dt.files || (!dt.files.length && !(dt.items && dt.items.length)) || loadBusy()) return;
     if (!$('#shell').hidden && !confirm('Add the dropped files to the export that is open now?')) return;
-    // Grab persistent handles synchronously (Chrome) so "Reopen last export" works later.
-    let handlePromises = [];
-    try {
-      handlePromises = Array.from(dt.items || [])
-        .filter(i => i.kind === 'file' && i.getAsFileSystemHandle)
-        .map(i => i.getAsFileSystemHandle());
-    } catch (err) { handlePromises = []; }
-    const files = await filesFromDataTransfer(dt);
-    let handles = [];
-    try { handles = (await Promise.all(handlePromises)).filter(Boolean); } catch (err) { handles = []; }
-    startLoad(files, handles);
+    startLoad(await filesFromDataTransfer(dt));
   });
-
-  const last = await HandleStore.load();
-  if (last && last.handles && last.handles.length && last.handles[0].queryPermission) {
-    const btn = $('#reopen');
-    const names = last.handles.map(h => h.name);
-    btn.hidden = false;
-    btn.textContent = `Reopen last export (${plural(names.length, 'item')})`;
-    btn.title = names.join('\n');
-    btn.addEventListener('click', async () => {
-      try {
-        for (const h of last.handles) {
-          let p = await h.queryPermission({ mode: 'read' });
-          if (p !== 'granted') p = await h.requestPermission({ mode: 'read' });
-          if (p !== 'granted') throw new Error('Permission denied for ' + h.name);
-        }
-        const files = await filesFromHandles(last.handles);
-        startLoad(files, last.handles);
-      } catch (err) {
-        Loader.reset();
-        const msg = 'Could not reopen: ' + (err.message || err) + '. The files may have moved; choose them again.';
-        Loader.set('reopen', msg, 1, '', 'error');
-        announce(msg);
-        HandleStore.clear();
-        btn.hidden = true;
-      }
-    });
-  }
 }
 
 /* ---------- Routing ---------- */
@@ -276,15 +216,10 @@ window.addEventListener('hashchange', onNav);
 
 /* ---------- Focus (person scope) ---------- */
 
-// The one writer of App.focus: a person of the loaded export, or null. The copy saved for this
-// tab (sessionStorage) always matches it.
+// The one writer of App.focus: a person of the loaded export, or null. It is kept in memory
+// only, like the export (see the storage note at the top of this file).
 function writeFocus(id) {
   App.focus = id && DB.people.has(id) ? id : null;
-  try { sessionStorage.setItem('cer-focus', App.focus || ''); } catch (e) { /* ignore */ }
-}
-
-function savedFocus() {
-  try { return sessionStorage.getItem('cer-focus') || null; } catch (e) { return null; }
 }
 
 // Changes the focus, then opens `go`, or draws the current page again.

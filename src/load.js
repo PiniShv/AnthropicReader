@@ -1,5 +1,5 @@
-/* Input gathering (files, folders, zips, drag-and-drop, remembered handles)
- * and streaming JSON parsing for very large top-level arrays. */
+/* Input gathering (files, folders, zips, drag-and-drop) and streaming JSON parsing for very
+ * large top-level arrays. */
 'use strict';
 
 // Calls fn(item, index) for every item, at most `limit` at a time. Each call gets its own
@@ -31,7 +31,7 @@ class FileNode {
 
 /* Turns what was picked into nodes. An item is a File (its path is webkitRelativePath, from a
  * folder picker, or its name), or { file, path } when the path is known another way (drag and
- * drop, saved handles). Zips become one node per entry. */
+ * drop). Zips become one node per entry. */
 async function nodesFromFiles(items, onStatus) {
   const nodes = [];
   const sources = [];
@@ -84,70 +84,6 @@ async function filesFromDataTransfer(dt) {
   if (entries.length) return (await Promise.all(entries.map(readDropEntry))).flat();
   return Array.from(dt.files || []);
 }
-
-// How many folders are listed, or files opened, at the same time from saved handles.
-const HANDLE_READS = 16;
-
-/* File System Access API handles (Chrome/Edge): lets us offer "Reopen last export". Folders
- * are listed one level at a time, and then the files are opened, both HANDLE_READS at a time.
- * The files come back in folder order (depth first), whatever read finishes first, so the
- * same folder always gives the same result (the import keeps the first copy of a file). */
-async function filesFromHandles(handles) {
-  const roots = handles.map(h => ({ h, prefix: '' }));
-  let level = roots;
-  while (level.length) {
-    const dirs = level.filter(n => n.h.kind !== 'file');
-    await mapLimit(dirs, HANDLE_READS, async n => {
-      n.kids = [];
-      for await (const child of n.h.values()) n.kids.push({ h: child, prefix: n.prefix + n.h.name + '/' });
-    });
-    level = dirs.flatMap(n => n.kids);
-  }
-  const files = [];
-  const visit = n => (n.h.kind === 'file' ? files.push(n) : n.kids.forEach(visit));
-  roots.forEach(visit);
-  await mapLimit(files, HANDLE_READS, async n => { n.file = await n.h.getFile(); });
-  return files.map(n => ({ file: n.file, path: n.prefix + n.file.name }));
-}
-
-const HandleStore = {
-  _db() {
-    return new Promise((resolve, reject) => {
-      const req = indexedDB.open('claude-export-reader', 1);
-      req.onupgradeneeded = () => req.result.createObjectStore('kv');
-      req.onsuccess = () => resolve(req.result);
-      req.onerror = () => reject(req.error);
-    });
-  },
-  // Resolves to true when the handles were saved.
-  async save(handles) {
-    try {
-      const db = await this._db();
-      await new Promise((res, rej) => {
-        const tx = db.transaction('kv', 'readwrite');
-        tx.objectStore('kv').put({ handles, savedAt: new Date().toISOString() }, 'last');
-        tx.oncomplete = res; tx.onerror = () => rej(tx.error);
-      });
-      return true;
-    } catch (e) { return false; /* storage unavailable: nothing to remember */ }
-  },
-  async load() {
-    try {
-      const db = await this._db();
-      return await new Promise((res) => {
-        const req = db.transaction('kv').objectStore('kv').get('last');
-        req.onsuccess = () => res(req.result || null);
-        req.onerror = () => res(null);
-      });
-    } catch (e) { return null; }
-  },
-  async clear() {
-    try {
-      const db = await this._db();
-      db.transaction('kv', 'readwrite').objectStore('kv').delete('last');
-    } catch (e) { /* ignore */ }
-  },
-};
 
 /* ---------- Streaming parse of a huge top-level JSON array ---------- */
 

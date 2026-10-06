@@ -7,6 +7,7 @@
 //   - any dangerous element or attribute left in a drawn page
 //   - any iframe without a sandbox, or with a token that is not on the list (never
 //     allow-same-origin)
+//   - anything in browser storage beyond the reader's two settings
 // Part 1 calls the renderers directly (mdToHtml, mdBlock, plainTextHtml, snippetHtml,
 // memoryText). Part 2 loads a hostile export built here and visits every kind of page with
 // every block opened. Exit code 1 on any problem. Node 22+ and Chrome; no dependencies.
@@ -478,6 +479,21 @@ try {
   const hits = await tab.evaluate('window.__xssHits.slice()');
   report('no script ran in the reader', [...hits.map(h => 'script ran: ' + h), ...dialogs.map(d => 'dialog: ' + d)]);
   report('no network request', [...new Set(requests)].map(u => 'request: ' + u));
+
+  // Browser storage, last, because the reload starts the page again. Chromium gives every
+  // file:// page one storage origin, so any local HTML file can read what the reader stores:
+  // only its two settings. The database an older build kept file handles in is deleted at start.
+  await tab.evaluate(`new Promise(done => { const r = indexedDB.open('claude-export-reader', 1);
+    r.onupgradeneeded = () => r.result.createObjectStore('kv'); r.onsuccess = () => { r.result.close(); done(); }; r.onerror = () => done(); })`);
+  await tab.send('Page.reload');
+  await tab.waitFor('!!window.ExportReader');
+  await tab.waitFor('indexedDB.databases().then(l => !l.length)', 5000).catch(() => {});
+  const stored = await tab.evaluate(`indexedDB.databases().then(l => ({ idb: l.map(d => d.name), local: Object.keys(localStorage), session: Object.keys(sessionStorage) }))`);
+  report('browser storage holds only the theme and view options, and an old database is deleted', [
+    ...stored.idb.map(n => 'IndexedDB database: ' + n),
+    ...stored.local.filter(k => k !== 'cer-theme' && k !== 'cer-conv-opts').map(k => 'localStorage: ' + k),
+    ...stored.session.map(k => 'sessionStorage: ' + k),
+  ]);
 } finally {
   await chrome.close();
 }
