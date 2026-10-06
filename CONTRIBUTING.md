@@ -200,7 +200,7 @@ git tag -a vx.y.z -m vx.y.z
 git push origin vx.y.z
 ```
 
-The [release workflow](.github/workflows/release.yml) then checks that the tag is on `main` and matches the version in `package.json`, runs `npm test` and `npm run build:check`, signs a build provenance attestation for the page, and creates the GitHub release. The release has `claude-export-reader.html`, a `claude-export-reader.html.sha256` checksum file, and the CHANGELOG section as its notes. If a check fails, nothing is published: fix the problem, delete the tag (`git push origin :vx.y.z` and `git tag -d vx.y.z`) and tag again. A version with a hyphen, such as `1.1.0-rc.1`, becomes a pre-release, so it never replaces the latest release.
+The [release workflow](.github/workflows/release.yml) then runs two jobs. The first one has a read-only token. It checks that the tag is on `main` and matches the version in `package.json`, runs `npm test` and `npm run build:check`, and takes the release notes from CHANGELOG.md. When all of that passes, the second job publishes. It has the rights to publish, but it runs no code from the repository: it takes the page that the first job checked, writes the checksum file, signs a build provenance attestation for the page, and creates the GitHub release. The release has `claude-export-reader.html`, a `claude-export-reader.html.sha256` checksum file, and the CHANGELOG section as its notes. If a check fails, nothing is published: fix the problem, delete the tag (`git push origin :vx.y.z` and `git tag -d vx.y.z`) and tag again. A version with a hyphen, such as `1.1.0-rc.1`, becomes a pre-release, so it never replaces the latest release.
 
 ## Reporting bugs and asking for features
 
