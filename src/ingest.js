@@ -55,21 +55,6 @@ function addUser(u) {
   if (u.verified_phone_number) p.phone = String(u.verified_phone_number);
 }
 
-/* Tools whose output the person saw (files, artifacts, widgets, drafts): name -> whether one
- * call's input made an output. The list badge counts these calls, and the "What Claude produced
- * here" box (collectOutputs) lists them, so the two always agree. Each one also needs a chip in
- * TOOL_CARDS (views-conv.js). */
-const OUTPUTS = new Map([
-  ['create_file', i => !!i.path],
-  ['artifacts', () => true],
-  ['visualize:show_widget', () => true],
-  ['message_compose_v1', () => true],
-]);
-function isOutput(b) {
-  const made = OUTPUTS.get(b.name);
-  return !!made && made(b.input || {});
-}
-
 // Artifact ids referenced from chat JSON: published links and tool result ids.
 const RE_ART_REF = new RegExp('(?:/artifact/|artifact_id\\\\?"\\s*:\\s*\\\\?")(' + UUID_PAT + ')', 'g');
 
@@ -106,6 +91,7 @@ function addConversation(c, source, rawText) {
     if (blocks.length || hasText(m.text) || mfiles.length || objects(m.attachments).length) contentful++;
     if (m.sender === 'human') files += mfiles.length;   // assistant files are tool screenshots
     for (const b of blocks) {
+      // isOutput (TOOLS in conversation.js) is the rule the outputs box uses too.
       if (b.type === 'tool_use') { tools++; if (isOutput(b)) outputs++; }
       else if (!firstHuman && m.sender === 'human' && b.type === 'text' && hasText(b.text)) firstHuman = b.text;
       else if (!firstReply && m.sender === 'assistant' && b.type === 'text' && hasText(b.text)) firstReply = b.text;

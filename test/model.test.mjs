@@ -904,12 +904,34 @@ test('the branch and output badges count what the thread and the outputs box sho
   assert.equal(got.outputCount, 1);
 });
 
-test('every tool the model counts as an output has a card and a chip in TOOL_CARDS', () => {
-  const { api } = loadApp();
-  for (const name of api.OUTPUTS.keys()) {
-    const t = api.TOOL_CARDS.get(name);
-    assert.ok(t && typeof t.chip === 'function', `${name}: no chip, so the outputs box would fail`);
-    const c = t.chip({ path: '/tmp/out/plan.md' });
-    assert.ok(c.ico && c.label && c.kind, `${name}: the chip needs an icon, a label and a kind`);
-  }
+test('each output tool counts in the badge, shows in the outputs box and is written to Markdown', async () => {
+  const c = conversation(conv(8), ADA, 'Outputs', [
+    message('u1', 'human', 'Make the launch kit'),
+    message('u2', 'assistant', '', {
+      content: [
+        { type: 'tool_use', id: 't1', name: 'create_file', input: { path: '/tmp/out/plan.md', file_text: '# Plan\n```js\nx\n```' } },
+        { type: 'tool_use', id: 't2', name: 'artifacts', input: { title: 'Board', content: 'Board text', type: 'text/markdown' } },
+        { type: 'tool_use', id: 't3', name: 'visualize:show_widget', input: { title: 'Sales chart', widget_code: '<svg></svg>' } },
+        { type: 'tool_use', id: 't4', name: 'message_compose_v1', input: { summary_title: 'Reply to Bram', variants: [{ label: 'Warm', subject: 'Hello', body: 'Thanks, Bram.' }] } },
+        { type: 'tool_use', id: 't5', name: 'present_files', input: { filepaths: ['/tmp/out/plan.md'] } },
+        { type: 'tool_use', id: 't6', name: 'web_search', input: { query: 'fictional query' } },
+      ],
+    }),
+  ]);
+  const { api } = await importFiles([looseFile('users.json', USERS), looseFile('conversations.json', [c])]);
+  const got = api.DB.convById.get(conv(8));
+  assert.equal(got.outputCount, 4, 'the file, the artifact, the widget and the draft');
+  assert.deepEqual(plain(api.collectOutputs(got).map(o => api.TOOLS.get(o.use.name).chip(o.use.input))), [
+    { ico: '📄', label: 'plan.md', kind: 'file' },
+    { ico: '◧', label: 'Board', kind: 'artifact' },
+    { ico: '▦', label: 'Sales chart', kind: 'widget' },
+    { ico: '✉', label: 'Reply to Bram', kind: 'draft' },
+  ]);
+  const md = api.convToMarkdown(got, api.currentPath(got));
+  assert.ok(md.includes('> ⚙ present_files: plan.md\n'), 'present_files names its files');
+  assert.ok(md.includes('````md\n# Plan\n```js\nx\n```\n````'), 'the file, in a fence longer than any inside it');
+  assert.ok(md.includes('**Artifact: Board**\n\nBoard text'));
+  assert.ok(md.includes('_Interactive widget: Sales chart_'));
+  assert.ok(md.includes('**Draft — Warm: Reply to Bram**\n\nSubject: Hello\n\nThanks, Bram.'));
+  assert.ok(md.includes('> ⚙ web_search: fictional query\n'));
 });

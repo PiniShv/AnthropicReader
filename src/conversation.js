@@ -1,5 +1,5 @@
-/* Conversations as data: the message tree and its branches, tool names and inputs, and the
- * outputs Claude produced. No DOM. */
+/* Conversations as data: the message tree and its branches, what the reader knows about each
+ * tool (TOOLS), and the outputs Claude produced. No DOM. */
 'use strict';
 
 // The parent of a chat's first message.
@@ -112,17 +112,78 @@ function siblingsOf(conv, m) {
 
 /* ---------- Tools ---------- */
 
+/* What the reader knows about each tool, by name. The data facts are here (no DOM):
+ *   shown: the person saw the call in the chat (a card, a file list), so a reply keeps it at
+ *     the top level, even with tool calls hidden, instead of folding it into "N tool calls".
+ *   output(input): the call made something the person got (a file, artifact, widget, draft).
+ *     The list badge counts these calls and the "What Claude produced here" box lists them.
+ *   chip(input): { ico, label, kind }, the call in that box. Every tool with output has one.
+ *   summary(input): the short text after the tool's name, when the general rule does not fit.
+ *   markdown(input): the lines the Markdown export writes after the call's "⚙" line.
+ * views-conv.js adds how a call is drawn to the same entries (card, input, resultText). */
+const TOOLS = new Map([
+  ['artifacts', {
+    shown: true, output: () => true,
+    chip: i => ({ ico: '◧', label: i.title || i.id || 'Artifact', kind: 'artifact' }),
+    markdown: i => (i.content ? [`**Artifact: ${i.title || ''}**`, '', i.content, ''] : []),
+  }],
+  ['create_file', {
+    shown: true, output: i => !!i.path,
+    chip: i => ({ ico: '📄', label: String(i.path).split('/').pop(), kind: 'file' }),
+    markdown: i => (i.file_text != null ? [fence(i.file_text, fileExt(i.path)), ''] : []),
+  }],
+  ['visualize:show_widget', {
+    shown: true, output: () => true,
+    chip: i => ({ ico: '▦', label: i.title || 'Widget', kind: 'widget' }),
+    markdown: i => (i.title ? [`_Interactive widget: ${i.title}_`, ''] : []),
+  }],
+  ['message_compose_v1', {
+    shown: true, output: () => true,
+    chip: i => ({ ico: '✉', label: i.summary_title || 'Draft', kind: 'draft' }),
+    markdown: i => composeVariants(i).flatMap(v => [
+      `**Draft${v.label ? ' — ' + v.label : ''}${i.summary_title ? ': ' + i.summary_title : ''}**`, '',
+      ...(v.subject ? ['Subject: ' + v.subject, ''] : []),
+      String(v.body || ''), '',
+    ]),
+  }],
+  ['ask_user_input_v0', {
+    shown: true,
+    markdown: i => (!Array.isArray(i.questions) ? [] : [
+      ...i.questions.map(q => `- **${q.question || ''}** ${(Array.isArray(q.options) ? q.options : []).map(o => '`' + (typeof o === 'string' ? o : JSON.stringify(o)) + '`').join(' · ')}`), '',
+    ]),
+  }],
+  ['chart_display_v0', { shown: true }],
+  ['places_map_display_v0', { shown: true }],
+  ['Artifact', { shown: true }],
+  ['present_files', {
+    shown: true,
+    summary: i => (Array.isArray(i.filepaths) ? i.filepaths.map(p => String(p).split('/').pop()).join(', ') : ''),
+  }],
+  ['bash_tool', {}],
+  ['str_replace', {}],
+  ['str_replace_edit', {}],
+]);
+
+// Did this tool call make an output (TOOLS: output)?
+function isOutput(b) {
+  const t = TOOLS.get(b.name);
+  return !!(t && t.output) && t.output(b.input || {});
+}
+
 function toolLabel(name) {
   const s = String(name || 'tool');
   const i = s.indexOf(':');
   return i > 0 ? s.slice(i + 1) : s;
 }
 
+// The short text after a tool's name: its own summary (TOOLS), else the first common input field.
 function toolInputSummary(name, i) {
   if (!i || typeof i !== 'object') return '';
+  const t = TOOLS.get(name);
+  const own = t && t.summary ? t.summary(i) : '';
+  if (own) return own;
   const v = i.query || i.q || i.command || i.url || i.path || i.file_path || i.jql || i.title || i.summary_title || i.issueIdOrKey || i.summary || i.action || i.searchString || i.description || i.keywords || '';
   if (Array.isArray(v)) return v.join(', ');
-  if (Array.isArray(i.filepaths)) return i.filepaths.map(p => String(p).split('/').pop()).join(', ');
   return typeof v === 'string' ? v : JSON.stringify(v);
 }
 

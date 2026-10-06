@@ -360,8 +360,8 @@ function assistantBody(m, ctx) {
     if (b.type === 'tool_use') {
       const res = results.get(b.id);
       if (res) usedResults.add(res);
-      const special = TOOL_CARDS.has(b.name);
-      group.push({ use: b, special, error: res && res.is_error, html: toolCallHtml(b, res, ctx) });
+      const t = TOOLS.get(b.name);
+      group.push({ use: b, special: !!(t && t.shown), error: res && res.is_error, html: toolCallHtml(b, res, ctx) });
       continue;
     }
     if (b.type === 'tool_result') {
@@ -448,9 +448,9 @@ function toolCallHtml(use, res, ctx) {
   const dur = t0 && t1 && t1 > t0 ? fmtDuration(t1 - t0) : '';
   const errType = res && res.meta && res.meta.error_type;
 
-  // Outputs the person actually saw: open, prominent cards (TOOL_CARDS).
-  const t = TOOL_CARDS.get(name);
-  const card = t ? t.card(input, res, 't-' + (use.id || '')) : '';
+  // Outputs the person actually saw: open, prominent cards (TOOLS: card).
+  const t = TOOLS.get(name);
+  const card = t && t.card ? t.card(input, res, 't-' + (use.id || '')) : '';
   if (card) return card;
 
   const desc = toolInputSummary(name, input) || use.message || '';
@@ -473,11 +473,9 @@ function toolBodyHtml(use, res, ctx) {
 }
 
 function toolInputHtml(name, input, dc) {
-  if (name === 'bash_tool' && input.command) return preHtml(input.command);
-  if (name === 'create_file' && input.file_text != null) return `<p class="mono faint" style="margin:0 0 6px">${esc(input.path || '')}</p>` + preHtml(input.file_text);
-  if ((name === 'str_replace' || name === 'str_replace_edit') && (input.old_str != null || input.old_string != null)) {
-    return `<p class="mono faint" style="margin:0 0 6px">${esc(input.path || '')}</p>` + diffHtml(input.old_str != null ? input.old_str : input.old_string, input.new_str != null ? input.new_str : input.new_string);
-  }
+  const t = TOOLS.get(name);
+  const own = t && t.input ? t.input(input) : '';
+  if (own) return own;
   if (dc && typeof dc === 'object') {
     if (dc.type === 'code_block' && dc.code != null) return preHtml(dc.code);
     if (dc.type === 'table' && Array.isArray(dc.table)) return `<dl class="kvs">${dc.table.map(r => `<dt>${esc(r && r[0])}</dt><dd dir="auto">${esc(r && r[1])}</dd>`).join('')}</dl>`;
@@ -509,22 +507,15 @@ function diffHtml(a, b) {
 function toolResultHtml(res, ctx) {
   const items = Array.isArray(res.content) ? res.content : [];
   const dc = res.display_content;
+  const tool = TOOLS.get(res.name);
   const out = [];
   const stub = items.length === 1 && items[0].type === 'text' && /^Tool result too large for context/.test(items[0].text || '');
   for (const it of items) {
     if (!it) continue;
     if (it.type === 'text') {
       const t = it.text || '';
-      if (res.name === 'bash_tool' && /^\s*\{"returncode"/.test(t)) {
-        try {
-          const r = JSON.parse(t);
-          out.push(`<p class="muted" style="margin:0 0 4px">Exit code ${esc(r.returncode)}</p>` +
-            (r.stdout ? `<div class="blk-sub">stdout</div>${preHtml(r.stdout)}` : '') +
-            (r.stderr ? `<div class="blk-sub" style="color:var(--err)">stderr</div>${preHtml(r.stderr)}` : ''));
-          continue;
-        } catch (e) { /* not JSON after all */ }
-      }
-      out.push(linkifyChats(preHtml(prettyMaybeJson(t), { wrap: true })));
+      const own = tool && tool.resultText ? tool.resultText(t) : '';
+      out.push(own || linkifyChats(preHtml(prettyMaybeJson(t), { wrap: true })));
     } else if (it.type === 'knowledge') {
       // The page text Claude read is in the export: show it on demand.
       out.push(blk({
@@ -588,18 +579,19 @@ function artifactLinkHtml(id, title, action) {
   return `<p class="row wrap"><span class="chip">◧ ${esc(action || 'artifact')}</span> <span dir="auto">${esc(title || id)}</span> <span class="faint">not in the loaded files (load the frames zips to see it)</span></p>`;
 }
 
-/* ---------- Tool cards: files, artifacts, widgets, drafts, questions ---------- */
+/* ---------- How each tool is drawn: cards, inputs, results ---------- */
 
-/* Tools whose calls stay at the top level of a reply, even with tool calls hidden, instead of
- * folding into "N tool calls". name -> { card, chip }:
+// An edit of a file: its path, then what was removed and added.
+const strReplaceInput = i => (i.old_str == null && i.old_string == null ? ''
+  : `<p class="mono faint" style="margin:0 0 6px">${esc(i.path || '')}</p>` + diffHtml(i.old_str != null ? i.old_str : i.old_string, i.new_str != null ? i.new_str : i.new_string));
+
+/* The view's part of each TOOLS entry (conversation.js), added to the same entry:
  *   card(input, res, tid): the call as an open, prominent card with id tid (the outputs box and
  *     "show content" scroll to it), or '' to draw it as a normal tool block.
- *   chip(input): its chip in the "What Claude produced here" box, for the tools that OUTPUTS
- *     (ingest.js) counts as outputs.
- * A new tool with its own look is added here, and only here in the view. */
-const TOOL_CARDS = new Map([
-  ['artifacts', {
-    chip: i => ({ ico: '◧', label: i.title || i.id || 'Artifact', kind: 'artifact' }),
+ *   input(input): its input, or '' for the general key and value view.
+ *   resultText(text): one text item of its result, or '' for the general view. */
+for (const [name, view] of Object.entries({
+  artifacts: {
     card: (input, res, tid) => {
       if (!input.content && !input.command) return '';
       const type = input.type || '';
@@ -611,9 +603,8 @@ const TOOL_CARDS = new Map([
         return `<p class="muted" style="margin:0 0 6px">${esc(type)} source (React components cannot run offline)</p>${preHtml(content)}`;
       });
     },
-  }],
-  ['create_file', {
-    chip: i => ({ ico: '📄', label: String(i.path).split('/').pop(), kind: 'file' }),
+  },
+  create_file: {
     card: (input, res, tid) => {
       if (input.file_text == null) return '';
       const path = input.path || '';
@@ -625,26 +616,24 @@ const TOOL_CARDS = new Map([
         return dl + preHtml(input.file_text);
       });
     },
-  }],
-  ['visualize:show_widget', {
-    chip: i => ({ ico: '▦', label: i.title || 'Widget', kind: 'widget' }),
+  },
+  'visualize:show_widget': {
     card: (input, res, tid) => (!input.widget_code ? '' : blk({ cls: 'artifact', id: tid, summary: `<span class="lbl">▦ Widget</span><span class="desc" dir="auto">${esc(input.title || 'Interactive widget')}</span><span class="meta">open to render</span>` },
       () => sandboxFrame(`<!doctype html><html><head><meta charset="utf-8"><style>${WIDGET_CSS}</style></head><body>${input.widget_code}</body></html>`, 460) + sourceBlk(input.widget_code))),
-  }],
-  ['message_compose_v1', {
-    chip: i => ({ ico: '✉', label: i.summary_title || 'Draft', kind: 'draft' }),
+  },
+  message_compose_v1: {
     card: (input, res, tid) => `<div class="card card-pad" id="${esc(tid)}"><div class="row wrap" style="margin-bottom:6px"><span class="chip on">✉ Draft ${esc(input.kind || '')}</span><b dir="auto">${esc(input.summary_title || '')}</b></div>
       ${composeVariants(input).map(v => `<div style="margin-top:8px">${v.label ? `<div class="blk-sub">${esc(v.label)}</div>` : ''}${v.subject ? `<div><b>Subject:</b> <span dir="auto">${esc(v.subject)}</span></div>` : ''}<div class="md" dir="auto">${mdToHtml(v.body || '', { breaks: true })}</div></div>`).join('') || '<p class="faint">(no text)</p>'}</div>`,
-  }],
-  ['ask_user_input_v0', {
+  },
+  ask_user_input_v0: {
     card: (input, res, tid) => (!Array.isArray(input.questions) ? '' : `<div class="card card-pad" id="${esc(tid)}"><div class="row" style="margin-bottom:6px"><span class="chip on">? Questions for the person</span></div>
       ${input.questions.map(q => `<div style="margin-top:6px"><div dir="auto"><b>${esc(q.question || '')}</b> ${q.type ? `<span class="faint">${esc(q.type)}</span>` : ''}</div><div class="files-row" style="margin-top:4px">${(Array.isArray(q.options) ? q.options : []).map(o => `<span class="chip" dir="auto">${esc(typeof o === 'string' ? o : JSON.stringify(o))}</span>`).join('')}</div></div>`).join('')}
       <p class="faint" style="font-size:13px;margin:8px 0 0">The answer is in the next message.</p></div>`),
-  }],
-  ['chart_display_v0', {
+  },
+  chart_display_v0: {
     card: (input, res, tid) => (!Array.isArray(input.series) ? '' : `<div class="card card-pad" id="${esc(tid)}"><div class="row" style="margin-bottom:6px"><span class="chip on">📊 Chart</span><b dir="auto">${esc(input.title || '')}</b></div>${simpleBarTable(input)}</div>`),
-  }],
-  ['places_map_display_v0', {
+  },
+  places_map_display_v0: {
     card: (input, res, tid) => {
       if (!Array.isArray(input.days) && !Array.isArray(input.locations)) return '';
       // Most calls put `locations` at the top level instead of inside `days`.
@@ -653,18 +642,31 @@ const TOOL_CARDS = new Map([
       ${input.narrative ? `<p dir="auto">${esc(input.narrative)}</p>` : ''}
       ${days.map(d => `${d.day_number || d.title ? `<div class="blk-sub">Day ${esc(d.day_number || '')} · ${esc(d.title || '')}</div>` : ''}<ul>${(Array.isArray(d.locations) ? d.locations : []).map(l => `<li dir="auto"><b>${esc((l && l.name) || '')}</b>${l && l.arrival_time ? ' · ' + esc(l.arrival_time) : ''}${l && l.notes ? ' — ' + esc(l.notes) : ''}</li>`).join('')}</ul>`).join('')}</div>`;
     },
-  }],
-  ['Artifact', {
+  },
+  Artifact: {
     card: (input, res, tid) => {
       const dc = res && res.display_content;
       const sc = res && res.structured_content;
       const artId = (dc && dc.published_artifact_id) || (sc && sc.artifact_id) || ((new RegExp('/artifact/(' + UUID_PAT + ')').exec(input.url || '') || [])[1]);
       return artId ? `<div id="${esc(tid)}">${artifactLinkHtml(artId, (dc && dc.title) || input.title, input.action || (dc && dc.published_action))}</div>` : '';
     },
-  }],
-  // The files Claude showed the person: a normal tool block, but never folded away.
-  ['present_files', { card: () => '' }],
-]);
+  },
+  bash_tool: {
+    input: i => (i.command ? preHtml(i.command) : ''),
+    // The sandbox's JSON answer: exit code, stdout and stderr.
+    resultText: t => {
+      if (!/^\s*\{"returncode"/.test(t)) return '';
+      try {
+        const r = JSON.parse(t);
+        return `<p class="muted" style="margin:0 0 4px">Exit code ${esc(r.returncode)}</p>` +
+          (r.stdout ? `<div class="blk-sub">stdout</div>${preHtml(r.stdout)}` : '') +
+          (r.stderr ? `<div class="blk-sub" style="color:var(--err)">stderr</div>${preHtml(r.stderr)}` : '');
+      } catch (e) { return ''; }   // not JSON after all
+    },
+  },
+  str_replace: { input: strReplaceInput },
+  str_replace_edit: { input: strReplaceInput },
+})) Object.assign(TOOLS.get(name), view);
 
 /* Stand-ins for the stylesheet claude.ai gives inline widgets. Most widget SVGs only use
  * these class names and color variables; without them every shape renders solid black. */
@@ -702,15 +704,15 @@ function simpleBarTable(input) {
   return `<div class="md"><table><thead><tr><th></th>${series.map(s => `<th>${esc(s.name || '')}</th>`).join('')}</tr></thead><tbody>${xs.map((x, i) => `<tr><td>${esc(x)}</td>${series.map(s => `<td>${esc((s.values || [])[i])}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`;
 }
 
-// outputs: collectOutputs(). A tool call's chip comes from TOOL_CARDS; a published artifact
-// links to its page. draw: draws the thread again (see viewConversation).
+// outputs: collectOutputs(). A tool call's chip comes from TOOLS; a published artifact links to
+// its page. draw: draws the thread again (see viewConversation).
 function outputsBox(conv, outputs, draw) {
   const chip = o => {
     if (o.art) {
       const a = DB.artifactById.get(o.art);
       return `<a class="file-chip" href="#/a/${encodeURIComponent(o.art)}">◧ <span dir="auto">${esc(truncate(a ? artifactTitle(a) : 'Published artifact ' + o.art.slice(0, 8), 60))}</span> <span class="sz">published</span></a>`;
     }
-    const c = TOOL_CARDS.get(o.use.name).chip(o.use.input || {});
+    const c = TOOLS.get(o.use.name).chip(o.use.input || {});
     return `<button class="file-chip" type="button" ${on(() => gotoBlock(conv, draw, o.msg, 't-' + (o.use.id || '')))} style="cursor:pointer">${c.ico} <span dir="auto">${esc(truncate(c.label, 60))}</span> <span class="sz">${esc(c.kind)}</span></button>`;
   };
   return `<details class="card summary-box"${outputs.length <= 6 ? ' open' : ''}><summary>What Claude produced here <span class="badge">${outputs.length}</span></summary>

@@ -43,20 +43,8 @@ function messageToMarkdown(conv, m) {
       const i = b.input || {};
       const s = toolInputSummary(b.name, i);
       out.push(`> ⚙ ${b.name}${s ? ': ' + oneLine(s).slice(0, 200) : ''}`, '');
-      if (b.name === 'create_file' && i.file_text != null) out.push(fence(i.file_text, fileExt(i.path)), '');
-      if (b.name === 'artifacts' && i.content) out.push(`**Artifact: ${i.title || ''}**`, '', i.content, '');
-      if (b.name === 'message_compose_v1') {
-        for (const v of composeVariants(i)) {
-          out.push(`**Draft${v.label ? ' — ' + v.label : ''}${i.summary_title ? ': ' + i.summary_title : ''}**`, '');
-          if (v.subject) out.push('Subject: ' + v.subject, '');
-          out.push(String(v.body || ''), '');
-        }
-      }
-      if (b.name === 'ask_user_input_v0' && Array.isArray(i.questions)) {
-        for (const q of i.questions) out.push(`- **${q.question || ''}** ${(Array.isArray(q.options) ? q.options : []).map(o => '`' + (typeof o === 'string' ? o : JSON.stringify(o)) + '`').join(' · ')}`);
-        out.push('');
-      }
-      if (b.name === 'visualize:show_widget' && i.title) out.push(`_Interactive widget: ${i.title}_`, '');
+      const t = TOOLS.get(b.name);
+      if (t && t.markdown) out.push(...t.markdown(i));
     }
   }
   for (const a of (m.attachments || [])) {
