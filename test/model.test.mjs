@@ -84,19 +84,22 @@ test('links conversations to people from users.json', async () => {
   assert.equal(gone.conversations[0].owner, gone);
 
   const byId = id => DB.convById.get(id);
-  assert.equal(byId(conv(1)).title, 'Launch checklist');
-  assert.equal(byId(conv(1)).titleIsDerived, false);
+  const title = id => api.convTitle(byId(id));
+  assert.equal(byId(conv(1)).name, 'Launch checklist');
+  assert.equal(title(conv(1)), 'Launch checklist');
   assert.equal(byId(conv(3)).empty, true);
   assert.equal(byId(conv(1)).empty, false);
 
   // No name: the first prompt (cut to 70 characters), then Claude's first reply, then uploads.
+  // The record keeps the raw name; the title is worked out when shown.
   const c4 = byId(conv(4));
-  assert.equal(c4.titleIsDerived, true);
-  assert.ok(c4.title.length <= 70 && c4.title.endsWith('…'), c4.title);
-  assert.ok(longPrompt.startsWith(c4.title.slice(0, -1)));
-  assert.equal(byId(conv(5)).title, '1 uploaded file (not in export)');
+  assert.equal(c4.name, '');
+  assert.ok(title(conv(4)).length <= 70 && title(conv(4)).endsWith('…'), title(conv(4)));
+  assert.ok(longPrompt.startsWith(title(conv(4)).slice(0, -1)));
+  assert.equal(title(conv(5)), '1 uploaded file (not in export)');
   assert.equal(byId(conv(5)).empty, false, 'an upload counts as content');
-  assert.equal(byId(conv(6)).title, 'Here is a short summary of the plan.');
+  assert.equal(title(conv(6)), 'Here is a short summary of the plan.');
+  assert.equal(title(conv(3)), 'Untitled conversation');
 
   // Newest first.
   const times = Array.from(DB.conversations, c => c.lastTs);
@@ -111,7 +114,7 @@ test('the same conversation in two exports: the newer copy wins', async () => {
     const { DB } = api;
     assert.equal(DB.conversations.length, 1);
     const c = DB.conversations[0];
-    assert.equal(c.title, 'Final plan');
+    assert.equal(c.name, 'Final plan');
     assert.equal(c.msgCount, 4);
     assert.equal(c.source, 'export-february.zip');
     assert.equal(person(api, ADA).conversations.length, 1);
@@ -125,7 +128,7 @@ test('same update time: the copy with more messages wins', async () => {
   for (const order of [[a, b], [b, a]]) {
     const { api } = await importFiles(order);
     assert.equal(api.DB.conversations.length, 1);
-    assert.equal(api.DB.conversations[0].title, 'Long copy');
+    assert.equal(api.DB.conversations[0].name, 'Long copy');
   }
 });
 
@@ -196,7 +199,7 @@ test('old formats: projects.json, memories.json and messages without parents', a
   // Messages without parent_message_uuid are one straight line, in array order.
   const c = DB.convById.get(conv(1));
   assert.equal(c.forks, 0);
-  assert.equal(c.title, 'Linear chat');
+  assert.equal(c.name, 'Linear chat');
   assert.equal(api.buildTree(c).linear, true);
   assert.deepEqual(Array.from(api.currentPath(c), m => m.uuid), ['old-1', 'old-2', 'old-3']);
 });
@@ -408,20 +411,21 @@ test('design chats: duplicate rows are merged and the owner typed the most', asy
   assert.deepEqual(Array.from(merged.attachments, a => a.id), ['att-1']);
   assert.equal(c1.owner, bram, 'Bram typed two messages, Ada one (the pill does not count)');
   assert.deepEqual(Array.from(c1.authors, p => p.id), [BRAM, ADA]);
-  assert.equal(c1.title, 'Make a hero section for the spring sale', '"Chat" is replaced by the first typed prompt');
+  assert.equal(c1.name, 'Chat', 'the record keeps the raw name');
+  assert.equal(api.designTitle(c1), 'Make a hero section for the spring sale', '"Chat" is replaced by the first typed prompt');
   assert.equal(c1.project.name, 'Spring landing page');
   assert.ok(ada.designChats.includes(c1) && bram.designChats.includes(c1));
 
   // A tie goes to whoever wrote first.
   const c2 = DB.designById.get(design(2));
   assert.equal(c2.owner, ada);
-  assert.equal(c2.title, 'Footer ideas');
+  assert.equal(api.designTitle(c2), 'Footer ideas');
 
   // No authors at all: owned by the "No owner" placeholder, titled after the project.
   const c3 = DB.designById.get(design(3));
   assert.equal(c3.owner.system, true);
   assert.equal(c3.owner.name, 'No owner');
-  assert.equal(c3.title, 'Empty board');
+  assert.equal(api.designTitle(c3), 'Empty board');
 });
 
 /* ---------- Memory files ---------- */
@@ -806,7 +810,7 @@ test('files that start with a UTF-8 byte order mark load', async () => {
   const { api } = await importFiles([file]);
   assert.deepEqual(plain(api.DB.warnings), []);
   assert.equal(person(api, ADA).name, 'Ada Fernsby');
-  assert.equal(api.DB.conversations[0].title, 'With BOM');
+  assert.equal(api.DB.conversations[0].name, 'With BOM');
   assert.equal(api.DB.projects[0].name, 'BOM project');
 });
 

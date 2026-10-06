@@ -22,8 +22,8 @@ function convTable(list, key, showOwner) {
   const rows = CONV_OPTS.hideEmpty ? shown : list;
   const columns = [
     {
-      id: 'title', label: 'Conversation', cls: 'title', link: true, asc: true, sortVal: c => (c.title || '').toLowerCase(),
-      html: c => `<div dir="auto">${c.title ? esc(c.title) : '<span class="faint">Untitled conversation</span>'}${c.titleIsDerived && c.title ? ' <span class="faint" title="No title in export; first message shown">·</span>' : ''}</div>
+      id: 'title', label: 'Conversation', cls: 'title', link: true, asc: true, sortVal: c => convTitle(c).toLowerCase(),
+      html: c => `<div dir="auto">${esc(convTitle(c))}${!c.name && c.firstText ? ' <span class="faint" title="No title in export; first message shown">·</span>' : ''}</div>
         ${c.summary ? `<div class="snip" dir="auto">${esc(truncate(oneLine(stripMd(c.summary.replace(/^\*\*Conversation Overview\*\*\s*/i, ''))), 240))}</div>` : ''}
         ${convBadges(c) ? `<div class="row wrap" style="margin-top:5px;gap:4px">${convBadges(c)}</div>` : ''}`,
     },
@@ -35,7 +35,7 @@ function convTable(list, key, showOwner) {
   return tableHtml({
     key, rows, columns, sort: 'last', dir: -1, noun: 'conversation',
     href: c => '#/c/' + encodeURIComponent(c.id),
-    text: c => [c.title, c.summary, c.owner && c.owner.name, c.owner && c.owner.email, c.id].join(' '),
+    text: c => [convTitle(c), c.summary, c.owner && c.owner.name, c.owner && c.owner.email, c.id].join(' '),
     placeholder: 'Filter by title, summary or person…',
     empty: 'No conversations.',
     extraToolbar: empties ? `<label class="row muted" style="font-size:14px"><input type="checkbox" id="conv-hide-empty" ${on(el => { CONV_OPTS.hideEmpty = el.checked; saveConvOpts(); onRoute(true); })}${CONV_OPTS.hideEmpty ? ' checked' : ''}> Hide ${empties} without content</label>` : '',
@@ -61,7 +61,7 @@ function convResult({ item: c, hitIdx, hitDeep }, terms, qs) {
   const m = hitIdx >= 0 ? msgs[hitIdx] : null;
   const text = m ? (hitDeep ? msgDeep(m) : msgProse(m)) : (c.summary || '');
   return `<a class="result" href="#/c/${encodeURIComponent(c.id)}${qs}${m ? '&m=' + encodeURIComponent(m.uuid) : ''}">
-    <div class="r-title"><span dir="auto">${esc(c.title || 'Untitled conversation')}</span></div>
+    <div class="r-title"><span dir="auto">${esc(convTitle(c))}</span></div>
     <div class="r-snip" dir="auto">${snippetHtml(text, terms)}</div>
     <div class="r-meta">${avatarHtml(c.owner, 'sm')}<span>${esc(c.owner.name)}</span><span>${esc(fmtDate(c.lastTs))}</span><span>${plural(c.msgCount, 'message')}</span>${hitDeep ? '<span class="chip">in a tool call or file</span>' : ''}</div></a>`;
 }
@@ -95,10 +95,10 @@ function viewConversation(id) {
   });
 
   return `<div class="page narrow">
-    <div class="crumbs"><a href="#/conversations">Conversations</a><span>›</span>${p && !p.system ? `${personLink(p)}<span>›</span>` : ''}<span class="ellipsis" style="max-width:420px" dir="auto">${esc(conv.title || 'Untitled')}</span></div>
+    <div class="crumbs"><a href="#/conversations">Conversations</a><span>›</span>${p && !p.system ? `${personLink(p)}<span>›</span>` : ''}<span class="ellipsis" style="max-width:420px" dir="auto">${esc(convTitle(conv))}</span></div>
     <div class="page-head">
       <div class="grow">
-        <h1 dir="auto">${conv.title ? esc(conv.title) : '<span class="faint">Untitled conversation</span>'}</h1>
+        <h1 dir="auto">${esc(convTitle(conv))}</h1>
         <div class="sub">
           ${p ? `<span class="row" style="gap:6px">${avatarHtml(p, 'sm')}${personLink(p)} ${unknownBadge(p)}</span>` : ''}
           <span title="${esc(fmtDateTime(conv.created))}">Started ${esc(fmtDateTime(conv.created))}</span>
@@ -109,8 +109,8 @@ function viewConversation(id) {
       </div>
       <div class="row wrap">
         <button class="btn small" type="button" ${on(() => copyText(convToMarkdown(conv, currentPath(conv))))}>Copy as Markdown</button>
-        <button class="btn small" type="button" ${on(() => downloadText(safeFilename(conv.title, 'conversation') + '.md', convToMarkdown(conv, currentPath(conv))))}>Download .md</button>
-        <button class="btn small" type="button" ${on(() => downloadText(safeFilename(conv.title, 'conversation') + '.json', jsonPretty(conv.raw)))}>.json</button>
+        <button class="btn small" type="button" ${on(() => downloadText(safeFilename(convTitle(conv), 'conversation') + '.md', convToMarkdown(conv, currentPath(conv))))}>Download .md</button>
+        <button class="btn small" type="button" ${on(() => downloadText(safeFilename(convTitle(conv), 'conversation') + '.json', jsonPretty(conv.raw)))}>.json</button>
         <button class="btn small ghost" type="button" ${on(() => window.print())} title="Print or save as PDF" aria-label="Print or save as PDF">⎙</button>
       </div>
     </div>

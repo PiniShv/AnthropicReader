@@ -2097,13 +2097,31 @@ function scopeOf(p) {
 
 function projectName(id) {
   const p = DB.projectById.get(id);
-  return p ? (p.name || 'Untitled project') : '';
+  return p ? projectTitle(p) : '';
 }
 
-// An artifact's title, or a fallback by kind. Worked out when shown, not stored in a.title:
-// that field belongs to the import, and page.md can come in a later load.
+/* ---------- Titles ---------- */
+
+/* The title a page shows for an item: one function per kind, the `title` of its KINDS entry.
+ * Records keep what the export says (a chat's and a design chat's name, an artifact's title, a
+ * project's name) and text worked out from their content (a chat's first message). The
+ * fallback is worked out here, when shown: the file that decides it can come in a later load
+ * (page.md makes an artifact a page). */
+function convTitle(c) {
+  return c.name || c.firstText || (c.fileCount ? plural(c.fileCount, 'uploaded file') + ' (not in export)' : 'Untitled conversation');
+}
+
 function artifactTitle(a) {
   return a.title || (a.pageNode ? 'Untitled page' : 'Untitled artifact');
+}
+
+function projectTitle(x) {
+  return x.name || 'Untitled project';
+}
+
+// "Chat" is the name every new design chat gets, so it says nothing.
+function designTitle(d) {
+  return (d.name !== 'Chat' && d.name) || (d.firstPrompt && truncate(oneLine(d.firstPrompt), 80)) || d.project.name || 'Empty design chat';
 }
 
 </script>
@@ -2222,9 +2240,9 @@ function addConversation(c, source, rawText) {
   const conv = {
     type: 'conversation',
     id: c.uuid,
-    // No name: first prompt, else Claude's first reply, else what was uploaded.
-    title: name || truncate(oneLine(firstHuman || firstReply), 70) || (files ? plural(files, 'uploaded file') + ' (not in export)' : ''),
-    titleIsDerived: !name,
+    name,
+    // A chat without a name gets its title from the first prompt, else Claude's first reply.
+    firstText: name ? '' : truncate(oneLine(firstHuman || firstReply), 70),
     summary: String(c.summary || ''),
     created: parseTime(c.created_at),
     updated,
@@ -2403,11 +2421,10 @@ function addDesignChat(d, source) {
   let ownerId = null, best = -1;
   for (const id of authorOrder) { const n = realCounts.get(id) || 0; if (n > best) { best = n; ownerId = id; } }
   const projectName = d.project && d.project.name ? String(d.project.name) : '';
-  const rawTitle = String(d.title || '').trim();
   const chat = {
     type: 'design',
     id: d.uuid,
-    title: rawTitle && rawTitle !== 'Chat' ? rawTitle : (firstPrompt ? truncate(oneLine(firstPrompt), 80) : (projectName || 'Empty design chat')),
+    name: String(d.title || '').trim(),
     firstPrompt,
     project: d.project && typeof d.project === 'object' ? { id: d.project.uuid || '', name: projectName } : { id: '', name: '' },
     created: parseTime(d.created_at),
@@ -2957,7 +2974,7 @@ function countHits(hay, terms) {
 // Text of a design chat: prompts, replies and comments on the design.
 function designSearchText(d) {
   const commentText = atts => (Array.isArray(atts) ? atts : []).filter(a => a && a.type === 'comment').map(a => String(a.content || '')).join('\n');
-  return [d.title, d.project.name, ...d.messages.map(m => {
+  return [designTitle(d), d.project.name, ...d.messages.map(m => {
     const c = m.content || {};
     const parts = [typeof c.content === 'string' ? c.content : '', commentText(c.attachments)];
     for (const b of (Array.isArray(c.contentBlocks) ? c.contentBlocks : [])) {
@@ -3020,7 +3037,7 @@ async function runSearch(q, { deep, scope, signal, onProgress }) {
     const e = searchEntry(c);
     if (!e.lcMsgs) e.lcMsgs = (c.raw.chat_messages || []).map(m => msgProse(m).toLowerCase());
     if (deep && !e.lcDeep) e.lcDeep = (c.raw.chat_messages || []).map(m => msgDeep(m).toLowerCase());
-    const head = (c.title + '\n' + c.summary).toLowerCase();
+    const head = (convTitle(c) + '\n' + c.summary).toLowerCase();
     const msgs = e.lcMsgs;
     const joined = head + '\n' + msgs.join('\n') + (deep ? '\n' + e.lcDeep.join('\n') : '');
     const score = countHits(joined, terms);
@@ -3112,7 +3129,7 @@ async function artifactPlainText(a) {
 function convToMarkdown(conv, path) {
   const p = conv.owner;
   const lines = [];
-  lines.push('# ' + (conv.title || 'Untitled conversation'));
+  lines.push('# ' + convTitle(conv));
   lines.push('');
   lines.push(`- Person: ${p ? p.name : 'unknown'}${p && p.email ? ' <' + p.email + '>' : ''}`);
   lines.push(`- Started: ${fmtDateTime(conv.created)} · Last message: ${fmtDateTime(conv.lastTs)}`);
@@ -3201,19 +3218,19 @@ async function buildPersonZip(p, opts, progress, isCancelled) {
   let i = 0;
   for (const c of p.conversations) {
     if (isCancelled()) return null;
-    const base = 'conversations/' + nameOf(c.created, c.title, c.id);
+    const base = 'conversations/' + nameOf(c.created, convTitle(c), c.id);
     // The newest branch, whatever branches were opened in this tab.
     z.add(base + '.md', convToMarkdown(c, branchPath(c)));
     z.add(base + '.json', JSON.stringify(c.raw, null, 2));
     if (++i % 20 === 0) { progress(`Conversations ${i} / ${p.conversations.length}`); await new Promise(r => setTimeout(r, 0)); }
   }
   for (const x of p.projects) {
-    const base = 'projects/' + nameOf(0, x.name, x.id) + '/';
+    const base = 'projects/' + nameOf(0, projectTitle(x), x.id) + '/';
     z.add(base + 'project.json', JSON.stringify(x.raw, null, 2));
     for (const d of x.docs) z.add(base + 'docs/' + cleanPath(d.filename), d.content);
   }
   for (const d of p.designChats) {
-    z.add('design_chats/' + nameOf(d.created, (d.project.name ? d.project.name + ' - ' : '') + d.title, d.id) + '.json', JSON.stringify(d.raw, null, 2));
+    z.add('design_chats/' + nameOf(d.created, (d.project.name ? d.project.name + ' - ' : '') + designTitle(d), d.id) + '.json', JSON.stringify(d.raw, null, 2));
   }
   if (p.memory) {
     const m = p.memory;
@@ -3540,30 +3557,31 @@ const ICONS = { home: '⌂', people: '👥', search: '⌕', about: 'ⓘ' };
  * card, search tabs and sections). key: person tab, search type and the key of its hits in
  * runSearch()'s result. list / item: the route names of the list page and of one item.
  * allCount / personCount: the sidebar badge without and with focus; personCount is also the
- * person page's number. searchResult(hit, terms, qs): one search hit as a result link; qs is
- * the "?q=…" that a page which highlights the words can take. The view functions live in later
+ * person page's number. title(item): the title a page shows for one item (the rule per kind
+ * is in model.js). searchResult(hit, terms, qs): one search hit as a result link; qs is the
+ * "?q=…" that a page which highlights the words can take. The view functions live in later
  * files, so they are called through arrows. Every entry needs every field. */
 const KINDS = [
   {
-    key: 'conversations', list: 'conversations', item: 'c', icon: '💬', label: 'Conversations', noun: ['chat', 'chats'],
+    key: 'conversations', list: 'conversations', item: 'c', icon: '💬', label: 'Conversations', noun: ['chat', 'chats'], title: convTitle,
     allCount: () => withContent(DB.conversations).length, personCount: p => p.convCount(),
     listView: () => viewConversations(), itemView: b => viewConversation(b), personTab: p => convTable(p.conversations, 'pc-' + p.id, false),
     searchResult: (hit, terms, qs) => convResult(hit, terms, qs),
   },
   {
     key: 'artifacts', list: 'artifacts', item: 'a', icon: '◧', label: 'Artifacts & pages', searchTab: 'Artifacts', noun: ['artifact', 'artifacts'],
-    allCount: () => DB.artifacts.length, personCount: p => p.artifacts.length,
+    title: artifactTitle, allCount: () => DB.artifacts.length, personCount: p => p.artifacts.length,
     listView: () => viewArtifacts(), itemView: (b, c) => viewArtifact(b, c), personTab: p => artifactTable(p.artifacts, 'pa-' + p.id, false),
     searchResult: (hit, terms) => artifactResult(hit, terms),
   },
   {
-    key: 'projects', list: 'projects', item: 'p', icon: '📁', label: 'Projects', noun: ['project', 'projects'],
+    key: 'projects', list: 'projects', item: 'p', icon: '📁', label: 'Projects', noun: ['project', 'projects'], title: projectTitle,
     allCount: () => DB.projects.length, personCount: p => p.projects.length,
     listView: () => viewProjects(), itemView: b => viewProject(b), personTab: p => projectTable(p.projects, 'pp-' + p.id, false),
     searchResult: (hit, terms) => projectResult(hit, terms),
   },
   {
-    key: 'design', list: 'design', item: 'd', icon: '✎', label: 'Design chats', noun: ['design chat', 'design chats'],
+    key: 'design', list: 'design', item: 'd', icon: '✎', label: 'Design chats', noun: ['design chat', 'design chats'], title: designTitle,
     allCount: () => DB.designChats.length, personCount: p => p.designChats.length,
     listView: () => viewDesignChats(), itemView: b => viewDesignChat(b), personTab: p => designTable(p.designChats, 'pd-' + p.id, false),
     searchResult: (hit, terms, qs) => designResult(hit, terms, qs),
@@ -3571,7 +3589,7 @@ const KINDS = [
   {
     // Without focus the badge counts people with memory; with focus, that person's memory items.
     key: 'memory', list: 'memories', item: 'memory', icon: '🧠', label: 'Memory', noun: ['memory item', 'memory items'],
-    allCount: () => DB.memories.length, personCount: p => p.memoryCount(),
+    title: m => m.owner.name, allCount: () => DB.memories.length, personCount: p => p.memoryCount(),
     listView: () => viewMemories(), itemView: b => viewMemory(b),
     personTab: p => (p.memory ? memoryBody(p.memory) : '<div class="card empty">No memory for this person in this export.</div>'),
     searchResult: (hit, terms) => memoryResult(hit, terms),
@@ -3866,7 +3884,7 @@ function miniConvList(list) {
   if (!list.length) return '<div class="card empty">No conversations.</div>';
   return `<div class="table-wrap"><table class="list"><tbody>${list.map(c => `
     <tr data-href="#/c/${encodeURIComponent(c.id)}">
-      <td class="title"><a class="cell-link" href="#/c/${encodeURIComponent(c.id)}"><div dir="auto">${esc(c.title || 'Untitled conversation')}</div>${c.summary ? `<div class="snip" dir="auto">${esc(truncate(oneLine(stripMd(c.summary)), 220))}</div>` : ''}</a></td>
+      <td class="title"><a class="cell-link" href="#/c/${encodeURIComponent(c.id)}"><div dir="auto">${esc(convTitle(c))}</div>${c.summary ? `<div class="snip" dir="auto">${esc(truncate(oneLine(stripMd(c.summary)), 220))}</div>` : ''}</a></td>
       <td class="hide-sm">${whoCell(c.owner)}</td>
       <td class="num">${fmtNum(c.msgCount)} msgs</td>
       <td class="date">${esc(fmtDate(c.lastTs))}</td>
@@ -4005,12 +4023,13 @@ function personOverview(p, counts) {
   p.designChats.forEach(d => stamps.push(d.created));
   const chart = activityChart(stamps.filter(Boolean));
 
-  // Recent activity timeline.
+  // Recent activity timeline: each item links to its page, under its kind's title.
   const events = [];
-  withContent(p.conversations).forEach(c => events.push({ t: c.lastTs, kind: KIND.conversations, html: `<a href="#/c/${encodeURIComponent(c.id)}" dir="auto">${esc(c.title || 'Untitled conversation')}</a> <span class="faint">· ${plural(c.msgCount, 'message')}</span>` }));
-  p.artifacts.forEach(a => events.push({ t: a.updated, kind: KIND.artifacts, html: `<a href="#/a/${encodeURIComponent(a.id)}" dir="auto">${esc(artifactTitle(a))}</a> <span class="faint">· ${a.kind === 'page' ? 'page' : 'artifact'}, ${plural(a.versions.length, 'version')}</span>` }));
-  p.projects.forEach(x => events.push({ t: x.updated, kind: KIND.projects, html: `<a href="#/p/${encodeURIComponent(x.id)}" dir="auto">${esc(x.name || 'Untitled project')}</a> <span class="faint">· project</span>` }));
-  p.designChats.forEach(d => events.push({ t: d.lastTs, kind: KIND.design, html: `<a href="#/d/${encodeURIComponent(d.id)}" dir="auto">${esc(d.title)}</a> <span class="faint">· design chat in ${esc(d.project.name || 'a design project')}</span>` }));
+  const add = (kind, item, t, meta) => events.push({ kind, item, t, meta });
+  withContent(p.conversations).forEach(c => add(KIND.conversations, c, c.lastTs, plural(c.msgCount, 'message')));
+  p.artifacts.forEach(a => add(KIND.artifacts, a, a.updated, `${a.kind === 'page' ? 'page' : 'artifact'}, ${plural(a.versions.length, 'version')}`));
+  p.projects.forEach(x => add(KIND.projects, x, x.updated, 'project'));
+  p.designChats.forEach(d => add(KIND.design, d, d.lastTs, 'design chat in ' + (d.project.name || 'a design project')));
   events.sort((a, b) => b.t - a.t);
 
   const profile = p.memory && p.memory.files.find(f => /^\/profile\.md$/i.test(f.path));
@@ -4021,7 +4040,7 @@ function personOverview(p, counts) {
     ${profile || cm ? `<h2 class="section-title">What Claude remembers <a class="chip" href="${base}/memory">open memory</a></h2>
       <div class="card card-pad">${profile ? memoryText(profile.body, p.memory) : mdBlock(truncate(cm, 1800))}</div>` : ''}
     <h2 class="section-title">Recent activity</h2>
-    ${events.length ? `<div class="card card-pad"><ul class="timeline">${events.slice(0, 40).map(e => `<li><span class="when" title="${esc(fmtDateTime(e.t))}">${esc(fmtDate(e.t))}</span><span class="kind" role="img" aria-label="${esc(e.kind.noun[0])}">${e.kind.icon}</span><span>${e.html}</span></li>`).join('')}</ul>
+    ${events.length ? `<div class="card card-pad"><ul class="timeline">${events.slice(0, 40).map(e => `<li><span class="when" title="${esc(fmtDateTime(e.t))}">${esc(fmtDate(e.t))}</span><span class="kind" role="img" aria-label="${esc(e.kind.noun[0])}">${e.kind.icon}</span><span><a href="#/${e.kind.item}/${encodeURIComponent(e.item.id)}" dir="auto">${esc(e.kind.title(e.item))}</a> <span class="faint">· ${esc(e.meta)}</span></span></li>`).join('')}</ul>
       ${events.length > 40 ? `<p class="muted" style="font-size:13px;margin:10px 0 0">Showing the latest 40 of ${fmtNum(events.length)}. Use the tabs above for everything.</p>` : ''}</div>`
       : '<div class="card empty">No activity in this export.</div>'}`;
 }
@@ -4095,8 +4114,8 @@ function convTable(list, key, showOwner) {
   const rows = CONV_OPTS.hideEmpty ? shown : list;
   const columns = [
     {
-      id: 'title', label: 'Conversation', cls: 'title', link: true, asc: true, sortVal: c => (c.title || '').toLowerCase(),
-      html: c => `<div dir="auto">${c.title ? esc(c.title) : '<span class="faint">Untitled conversation</span>'}${c.titleIsDerived && c.title ? ' <span class="faint" title="No title in export; first message shown">·</span>' : ''}</div>
+      id: 'title', label: 'Conversation', cls: 'title', link: true, asc: true, sortVal: c => convTitle(c).toLowerCase(),
+      html: c => `<div dir="auto">${esc(convTitle(c))}${!c.name && c.firstText ? ' <span class="faint" title="No title in export; first message shown">·</span>' : ''}</div>
         ${c.summary ? `<div class="snip" dir="auto">${esc(truncate(oneLine(stripMd(c.summary.replace(/^\*\*Conversation Overview\*\*\s*/i, ''))), 240))}</div>` : ''}
         ${convBadges(c) ? `<div class="row wrap" style="margin-top:5px;gap:4px">${convBadges(c)}</div>` : ''}`,
     },
@@ -4108,7 +4127,7 @@ function convTable(list, key, showOwner) {
   return tableHtml({
     key, rows, columns, sort: 'last', dir: -1, noun: 'conversation',
     href: c => '#/c/' + encodeURIComponent(c.id),
-    text: c => [c.title, c.summary, c.owner && c.owner.name, c.owner && c.owner.email, c.id].join(' '),
+    text: c => [convTitle(c), c.summary, c.owner && c.owner.name, c.owner && c.owner.email, c.id].join(' '),
     placeholder: 'Filter by title, summary or person…',
     empty: 'No conversations.',
     extraToolbar: empties ? `<label class="row muted" style="font-size:14px"><input type="checkbox" id="conv-hide-empty" ${on(el => { CONV_OPTS.hideEmpty = el.checked; saveConvOpts(); onRoute(true); })}${CONV_OPTS.hideEmpty ? ' checked' : ''}> Hide ${empties} without content</label>` : '',
@@ -4134,7 +4153,7 @@ function convResult({ item: c, hitIdx, hitDeep }, terms, qs) {
   const m = hitIdx >= 0 ? msgs[hitIdx] : null;
   const text = m ? (hitDeep ? msgDeep(m) : msgProse(m)) : (c.summary || '');
   return `<a class="result" href="#/c/${encodeURIComponent(c.id)}${qs}${m ? '&m=' + encodeURIComponent(m.uuid) : ''}">
-    <div class="r-title"><span dir="auto">${esc(c.title || 'Untitled conversation')}</span></div>
+    <div class="r-title"><span dir="auto">${esc(convTitle(c))}</span></div>
     <div class="r-snip" dir="auto">${snippetHtml(text, terms)}</div>
     <div class="r-meta">${avatarHtml(c.owner, 'sm')}<span>${esc(c.owner.name)}</span><span>${esc(fmtDate(c.lastTs))}</span><span>${plural(c.msgCount, 'message')}</span>${hitDeep ? '<span class="chip">in a tool call or file</span>' : ''}</div></a>`;
 }
@@ -4168,10 +4187,10 @@ function viewConversation(id) {
   });
 
   return `<div class="page narrow">
-    <div class="crumbs"><a href="#/conversations">Conversations</a><span>›</span>${p && !p.system ? `${personLink(p)}<span>›</span>` : ''}<span class="ellipsis" style="max-width:420px" dir="auto">${esc(conv.title || 'Untitled')}</span></div>
+    <div class="crumbs"><a href="#/conversations">Conversations</a><span>›</span>${p && !p.system ? `${personLink(p)}<span>›</span>` : ''}<span class="ellipsis" style="max-width:420px" dir="auto">${esc(convTitle(conv))}</span></div>
     <div class="page-head">
       <div class="grow">
-        <h1 dir="auto">${conv.title ? esc(conv.title) : '<span class="faint">Untitled conversation</span>'}</h1>
+        <h1 dir="auto">${esc(convTitle(conv))}</h1>
         <div class="sub">
           ${p ? `<span class="row" style="gap:6px">${avatarHtml(p, 'sm')}${personLink(p)} ${unknownBadge(p)}</span>` : ''}
           <span title="${esc(fmtDateTime(conv.created))}">Started ${esc(fmtDateTime(conv.created))}</span>
@@ -4182,8 +4201,8 @@ function viewConversation(id) {
       </div>
       <div class="row wrap">
         <button class="btn small" type="button" ${on(() => copyText(convToMarkdown(conv, currentPath(conv))))}>Copy as Markdown</button>
-        <button class="btn small" type="button" ${on(() => downloadText(safeFilename(conv.title, 'conversation') + '.md', convToMarkdown(conv, currentPath(conv))))}>Download .md</button>
-        <button class="btn small" type="button" ${on(() => downloadText(safeFilename(conv.title, 'conversation') + '.json', jsonPretty(conv.raw)))}>.json</button>
+        <button class="btn small" type="button" ${on(() => downloadText(safeFilename(convTitle(conv), 'conversation') + '.md', convToMarkdown(conv, currentPath(conv))))}>Download .md</button>
+        <button class="btn small" type="button" ${on(() => downloadText(safeFilename(convTitle(conv), 'conversation') + '.json', jsonPretty(conv.raw)))}>.json</button>
         <button class="btn small ghost" type="button" ${on(() => window.print())} title="Print or save as PDF" aria-label="Print or save as PDF">⎙</button>
       </div>
     </div>
@@ -4927,7 +4946,7 @@ function viewArtifact(id, vid) {
       <div id="art-main">${isPage ? '' : `<div class="frame-box"><div class="frame-bar"><span class="muted">Loading…</span></div></div>`}</div>
       <aside>
         ${versions.length ? `<div class="card card-pad side-card"><h2 style="margin-bottom:8px">Versions</h2><ul class="version-list">${versionList}</ul>${isPage ? '<p class="faint" style="font-size:12.5px;margin:8px 0 0">Docs keep only the current text in the export; older versions are listed for reference.</p>' : ''}</div>` : ''}
-        ${a.mentionedIn.length ? `<div class="card card-pad side-card"><h2 style="margin-bottom:8px">Mentioned in</h2>${a.mentionedIn.map(c => `<div style="padding:4px 0"><a href="#/c/${encodeURIComponent(c.id)}" dir="auto">${esc(c.title || 'Untitled conversation')}</a> <span class="faint" style="font-size:12.5px">${esc(fmtDate(c.lastTs))}</span></div>`).join('')}</div>` : ''}
+        ${a.mentionedIn.length ? `<div class="card card-pad side-card"><h2 style="margin-bottom:8px">Mentioned in</h2>${a.mentionedIn.map(c => `<div style="padding:4px 0"><a href="#/c/${encodeURIComponent(c.id)}" dir="auto">${esc(convTitle(c))}</a> <span class="faint" style="font-size:12.5px">${esc(fmtDate(c.lastTs))}</span></div>`).join('')}</div>` : ''}
         ${!isPage && a.threads && a.threads.length ? `<div class="card card-pad side-card"><h2 style="margin-bottom:8px">Comments <span class="badge">${a.commentCount}</span></h2>${threadCommentsHtml(a)}</div>` : ''}
         <div class="card card-pad side-card"><dl class="kv" style="font-size:13px"><dt>Id</dt><dd class="mono">${esc(a.id)}</dd><dt>Kind</dt><dd>${esc(a.kind)}</dd><dt>Files</dt><dd>${fmtNum(a.files.size)}</dd></dl></div>
       </aside>
@@ -5165,8 +5184,8 @@ async function downloadVersion(a, vid) {
 
 function designTable(list, key, showOwner) {
   const columns = [{
-    id: 'title', label: 'Design chat', cls: 'title', link: true, asc: true, sortVal: d => d.title.toLowerCase(),
-    html: d => `<div dir="auto">${esc(d.title)}</div><div class="row wrap" style="margin-top:5px;gap:4px"><span class="chip" dir="auto">✎ ${esc(d.project.name || 'design project')}</span>${d.msgCount ? '' : '<span class="chip warn">empty</span>'}${d.authors.length > 1 ? `<span class="chip">${d.authors.length} people</span>` : ''}</div>`,
+    id: 'title', label: 'Design chat', cls: 'title', link: true, asc: true, sortVal: d => designTitle(d).toLowerCase(),
+    html: d => `<div dir="auto">${esc(designTitle(d))}</div><div class="row wrap" style="margin-top:5px;gap:4px"><span class="chip" dir="auto">✎ ${esc(d.project.name || 'design project')}</span>${d.msgCount ? '' : '<span class="chip warn">empty</span>'}${d.authors.length > 1 ? `<span class="chip">${d.authors.length} people</span>` : ''}</div>`,
   }];
   if (showOwner) columns.push(COL.owner);
   columns.push(COL.num('msgs', 'Messages', d => d.msgCount));
@@ -5174,7 +5193,7 @@ function designTable(list, key, showOwner) {
   return tableHtml({
     key, rows: list, columns, sort: 'last', dir: -1, noun: 'design chat',
     href: d => '#/d/' + encodeURIComponent(d.id),
-    text: d => [d.title, d.project.name, d.firstPrompt, ...d.authors.map(p => p.name + ' ' + p.email)].join(' '),
+    text: d => [designTitle(d), d.project.name, d.firstPrompt, ...d.authors.map(p => p.name + ' ' + p.email)].join(' '),
     placeholder: 'Filter by prompt, design project or person…', empty: 'No design chats.',
   });
 }
@@ -5189,7 +5208,7 @@ function viewDesignChats() {
 
 // One design chat in the search results; it opens with the words highlighted (qs).
 function designResult({ item: d, text }, terms, qs) {
-  return `<a class="result" href="#/d/${encodeURIComponent(d.id)}${qs}"><div class="r-title"><span dir="auto">${esc(d.title)}</span><span class="chip">✎ ${esc(d.project.name || 'design project')}</span></div>
+  return `<a class="result" href="#/d/${encodeURIComponent(d.id)}${qs}"><div class="r-title"><span dir="auto">${esc(designTitle(d))}</span><span class="chip">✎ ${esc(d.project.name || 'design project')}</span></div>
     <div class="r-snip" dir="auto">${snippetHtml(text, terms)}</div>
     <div class="r-meta">${avatarHtml(d.owner, 'sm')}<span>${esc(d.owner.name)}</span><span>${esc(fmtDate(d.lastTs))}</span></div></a>`;
 }
@@ -5209,7 +5228,7 @@ function viewDesignChat(id) {
   return `<div class="page narrow">
     <div class="crumbs"><a href="#/design">Design chats</a><span>›</span>${d.owner && !d.owner.system ? `${personLink(d.owner)}<span>›</span>` : ''}<span dir="auto">${esc(d.project.name)}</span></div>
     <div class="page-head"><div class="grow">
-      <h1 dir="auto">${esc(d.title)}</h1>
+      <h1 dir="auto">${esc(designTitle(d))}</h1>
       <div class="sub"><span class="chip on" dir="auto">✎ ${esc(d.project.name || 'design project')}</span>
         ${d.authors.map(p => `<span class="row" style="gap:6px">${avatarHtml(p, 'sm')}${personLink(p)}</span>`).join('') || '<span class="faint">No author (empty chat)</span>'}
         <span>Started ${esc(fmtDateTime(d.created))}</span><span>Last ${esc(fmtDateTime(d.lastTs))}</span><span>${plural(d.msgCount, 'message')}</span>
@@ -5371,8 +5390,8 @@ function designToolHtml(t) {
 
 function projectTable(list, key, showOwner) {
   const columns = [{
-    id: 'name', label: 'Project', cls: 'title', link: true, asc: true, sortVal: x => (x.name || '').toLowerCase(),
-    html: x => `<div dir="auto">${x.name ? esc(x.name) : '<i class="faint">Untitled project</i>'}</div>
+    id: 'name', label: 'Project', cls: 'title', link: true, asc: true, sortVal: x => projectTitle(x).toLowerCase(),
+    html: x => `<div dir="auto">${esc(projectTitle(x))}</div>
       ${x.description ? `<div class="snip" dir="auto">${esc(truncate(x.description, 200))}</div>` : ''}
       <div class="row wrap" style="margin-top:5px;gap:4px">${x.isStarter ? '<span class="chip">Starter</span>' : ''}${!x.isPrivate ? '<span class="chip on">Shared</span>' : ''}${x.memoryRefs.length ? '<span class="chip">🧠 memory</span>' : ''}</div>`,
   }];
@@ -5383,7 +5402,7 @@ function projectTable(list, key, showOwner) {
   return tableHtml({
     key, rows: list, columns, sort: 'updated', dir: -1, noun: 'project',
     href: x => '#/p/' + encodeURIComponent(x.id),
-    text: x => [x.name, x.description, x.owner && x.owner.name, x.owner && x.owner.email, ...x.docs.map(d => d.filename)].join(' '),
+    text: x => [projectTitle(x), x.description, x.owner && x.owner.name, x.owner && x.owner.email, ...x.docs.map(d => d.filename)].join(' '),
     placeholder: 'Filter by name, doc name or person…', empty: 'No projects.',
   });
 }
@@ -5403,9 +5422,9 @@ function viewProject(id) {
   const p = x.owner;
   const pm = x.memoryRefs;
   return `<div class="page narrow">
-    <div class="crumbs"><a href="#/projects">Projects</a><span>›</span>${p && !p.system ? `${personLink(p)}<span>›</span>` : ''}<span dir="auto">${esc(x.name || 'Untitled project')}</span></div>
+    <div class="crumbs"><a href="#/projects">Projects</a><span>›</span>${p && !p.system ? `${personLink(p)}<span>›</span>` : ''}<span dir="auto">${esc(projectTitle(x))}</span></div>
     <div class="page-head"><div class="grow">
-      <h1 dir="auto">${x.name ? esc(x.name) : '<i class="faint">Untitled project</i>'}</h1>
+      <h1 dir="auto">${esc(projectTitle(x))}</h1>
       <div class="sub">${p ? `<span class="row" style="gap:6px">${avatarHtml(p, 'sm')}${personLink(p)}</span>` : ''}
         <span>Created ${esc(fmtDateTime(x.created))}</span><span>Updated ${esc(fmtDateTime(x.updated))}</span>
         ${x.isStarter ? '<span class="chip">Starter project</span>' : ''}<span class="chip${x.isPrivate ? '' : ' on'}">${x.isPrivate ? 'Private' : 'Shared'}</span>
@@ -5604,14 +5623,14 @@ function drawSearchResults(res, q, t, deep) {
 // Search results of the kinds this file draws (see KINDS.searchResult).
 function projectResult({ item: x }, terms) {
   const d = x.docs.find(dd => terms.every(tt => (dd.filename + dd.content).toLowerCase().includes(tt)));
-  return `<a class="result" href="#/p/${encodeURIComponent(x.id)}"><div class="r-title"><span dir="auto">${esc(x.name || 'Untitled project')}</span></div>
+  return `<a class="result" href="#/p/${encodeURIComponent(x.id)}"><div class="r-title"><span dir="auto">${esc(projectTitle(x))}</span></div>
     <div class="r-snip" dir="auto">${d ? '<b>' + esc(d.filename) + ':</b> ' + snippetHtml(d.content, terms) : snippetHtml(x.description || x.name, terms)}</div>
     <div class="r-meta">${avatarHtml(x.owner, 'sm')}<span>${esc(x.owner.name)}</span></div></a>`;
 }
 
 function memoryResult({ item: m, text }, terms) {
   const f = m.files.find(ff => terms.every(tt => ff.content.toLowerCase().includes(tt)));
-  return `<a class="result" href="#/memory/${encodeURIComponent(m.id)}"><div class="r-title">${avatarHtml(m.owner, 'sm')}<span>${esc(m.owner.name)}</span>${f ? `<span class="chip mono">${esc(f.path)}</span>` : ''}</div>
+  return `<a class="result" href="#/memory/${encodeURIComponent(m.id)}"><div class="r-title">${avatarHtml(m.owner, 'sm')}<span>${esc(KIND.memory.title(m))}</span>${f ? `<span class="chip mono">${esc(f.path)}</span>` : ''}</div>
     <div class="r-snip" dir="auto">${snippetHtml(f ? f.body : text, terms)}</div></a>`;
 }
 

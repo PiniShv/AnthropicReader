@@ -5,8 +5,8 @@
 
 function projectTable(list, key, showOwner) {
   const columns = [{
-    id: 'name', label: 'Project', cls: 'title', link: true, asc: true, sortVal: x => (x.name || '').toLowerCase(),
-    html: x => `<div dir="auto">${x.name ? esc(x.name) : '<i class="faint">Untitled project</i>'}</div>
+    id: 'name', label: 'Project', cls: 'title', link: true, asc: true, sortVal: x => projectTitle(x).toLowerCase(),
+    html: x => `<div dir="auto">${esc(projectTitle(x))}</div>
       ${x.description ? `<div class="snip" dir="auto">${esc(truncate(x.description, 200))}</div>` : ''}
       <div class="row wrap" style="margin-top:5px;gap:4px">${x.isStarter ? '<span class="chip">Starter</span>' : ''}${!x.isPrivate ? '<span class="chip on">Shared</span>' : ''}${x.memoryRefs.length ? '<span class="chip">🧠 memory</span>' : ''}</div>`,
   }];
@@ -17,7 +17,7 @@ function projectTable(list, key, showOwner) {
   return tableHtml({
     key, rows: list, columns, sort: 'updated', dir: -1, noun: 'project',
     href: x => '#/p/' + encodeURIComponent(x.id),
-    text: x => [x.name, x.description, x.owner && x.owner.name, x.owner && x.owner.email, ...x.docs.map(d => d.filename)].join(' '),
+    text: x => [projectTitle(x), x.description, x.owner && x.owner.name, x.owner && x.owner.email, ...x.docs.map(d => d.filename)].join(' '),
     placeholder: 'Filter by name, doc name or person…', empty: 'No projects.',
   });
 }
@@ -37,9 +37,9 @@ function viewProject(id) {
   const p = x.owner;
   const pm = x.memoryRefs;
   return `<div class="page narrow">
-    <div class="crumbs"><a href="#/projects">Projects</a><span>›</span>${p && !p.system ? `${personLink(p)}<span>›</span>` : ''}<span dir="auto">${esc(x.name || 'Untitled project')}</span></div>
+    <div class="crumbs"><a href="#/projects">Projects</a><span>›</span>${p && !p.system ? `${personLink(p)}<span>›</span>` : ''}<span dir="auto">${esc(projectTitle(x))}</span></div>
     <div class="page-head"><div class="grow">
-      <h1 dir="auto">${x.name ? esc(x.name) : '<i class="faint">Untitled project</i>'}</h1>
+      <h1 dir="auto">${esc(projectTitle(x))}</h1>
       <div class="sub">${p ? `<span class="row" style="gap:6px">${avatarHtml(p, 'sm')}${personLink(p)}</span>` : ''}
         <span>Created ${esc(fmtDateTime(x.created))}</span><span>Updated ${esc(fmtDateTime(x.updated))}</span>
         ${x.isStarter ? '<span class="chip">Starter project</span>' : ''}<span class="chip${x.isPrivate ? '' : ' on'}">${x.isPrivate ? 'Private' : 'Shared'}</span>
@@ -238,14 +238,14 @@ function drawSearchResults(res, q, t, deep) {
 // Search results of the kinds this file draws (see KINDS.searchResult).
 function projectResult({ item: x }, terms) {
   const d = x.docs.find(dd => terms.every(tt => (dd.filename + dd.content).toLowerCase().includes(tt)));
-  return `<a class="result" href="#/p/${encodeURIComponent(x.id)}"><div class="r-title"><span dir="auto">${esc(x.name || 'Untitled project')}</span></div>
+  return `<a class="result" href="#/p/${encodeURIComponent(x.id)}"><div class="r-title"><span dir="auto">${esc(projectTitle(x))}</span></div>
     <div class="r-snip" dir="auto">${d ? '<b>' + esc(d.filename) + ':</b> ' + snippetHtml(d.content, terms) : snippetHtml(x.description || x.name, terms)}</div>
     <div class="r-meta">${avatarHtml(x.owner, 'sm')}<span>${esc(x.owner.name)}</span></div></a>`;
 }
 
 function memoryResult({ item: m, text }, terms) {
   const f = m.files.find(ff => terms.every(tt => ff.content.toLowerCase().includes(tt)));
-  return `<a class="result" href="#/memory/${encodeURIComponent(m.id)}"><div class="r-title">${avatarHtml(m.owner, 'sm')}<span>${esc(m.owner.name)}</span>${f ? `<span class="chip mono">${esc(f.path)}</span>` : ''}</div>
+  return `<a class="result" href="#/memory/${encodeURIComponent(m.id)}"><div class="r-title">${avatarHtml(m.owner, 'sm')}<span>${esc(KIND.memory.title(m))}</span>${f ? `<span class="chip mono">${esc(f.path)}</span>` : ''}</div>
     <div class="r-snip" dir="auto">${snippetHtml(f ? f.body : text, terms)}</div></a>`;
 }
 

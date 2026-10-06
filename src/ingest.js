@@ -112,9 +112,9 @@ function addConversation(c, source, rawText) {
   const conv = {
     type: 'conversation',
     id: c.uuid,
-    // No name: first prompt, else Claude's first reply, else what was uploaded.
-    title: name || truncate(oneLine(firstHuman || firstReply), 70) || (files ? plural(files, 'uploaded file') + ' (not in export)' : ''),
-    titleIsDerived: !name,
+    name,
+    // A chat without a name gets its title from the first prompt, else Claude's first reply.
+    firstText: name ? '' : truncate(oneLine(firstHuman || firstReply), 70),
     summary: String(c.summary || ''),
     created: parseTime(c.created_at),
     updated,
@@ -293,11 +293,10 @@ function addDesignChat(d, source) {
   let ownerId = null, best = -1;
   for (const id of authorOrder) { const n = realCounts.get(id) || 0; if (n > best) { best = n; ownerId = id; } }
   const projectName = d.project && d.project.name ? String(d.project.name) : '';
-  const rawTitle = String(d.title || '').trim();
   const chat = {
     type: 'design',
     id: d.uuid,
-    title: rawTitle && rawTitle !== 'Chat' ? rawTitle : (firstPrompt ? truncate(oneLine(firstPrompt), 80) : (projectName || 'Empty design chat')),
+    name: String(d.title || '').trim(),
     firstPrompt,
     project: d.project && typeof d.project === 'object' ? { id: d.project.uuid || '', name: projectName } : { id: '', name: '' },
     created: parseTime(d.created_at),

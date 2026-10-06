@@ -3,8 +3,8 @@
 
 function designTable(list, key, showOwner) {
   const columns = [{
-    id: 'title', label: 'Design chat', cls: 'title', link: true, asc: true, sortVal: d => d.title.toLowerCase(),
-    html: d => `<div dir="auto">${esc(d.title)}</div><div class="row wrap" style="margin-top:5px;gap:4px"><span class="chip" dir="auto">✎ ${esc(d.project.name || 'design project')}</span>${d.msgCount ? '' : '<span class="chip warn">empty</span>'}${d.authors.length > 1 ? `<span class="chip">${d.authors.length} people</span>` : ''}</div>`,
+    id: 'title', label: 'Design chat', cls: 'title', link: true, asc: true, sortVal: d => designTitle(d).toLowerCase(),
+    html: d => `<div dir="auto">${esc(designTitle(d))}</div><div class="row wrap" style="margin-top:5px;gap:4px"><span class="chip" dir="auto">✎ ${esc(d.project.name || 'design project')}</span>${d.msgCount ? '' : '<span class="chip warn">empty</span>'}${d.authors.length > 1 ? `<span class="chip">${d.authors.length} people</span>` : ''}</div>`,
   }];
   if (showOwner) columns.push(COL.owner);
   columns.push(COL.num('msgs', 'Messages', d => d.msgCount));
@@ -12,7 +12,7 @@ function designTable(list, key, showOwner) {
   return tableHtml({
     key, rows: list, columns, sort: 'last', dir: -1, noun: 'design chat',
     href: d => '#/d/' + encodeURIComponent(d.id),
-    text: d => [d.title, d.project.name, d.firstPrompt, ...d.authors.map(p => p.name + ' ' + p.email)].join(' '),
+    text: d => [designTitle(d), d.project.name, d.firstPrompt, ...d.authors.map(p => p.name + ' ' + p.email)].join(' '),
     placeholder: 'Filter by prompt, design project or person…', empty: 'No design chats.',
   });
 }
@@ -27,7 +27,7 @@ function viewDesignChats() {
 
 // One design chat in the search results; it opens with the words highlighted (qs).
 function designResult({ item: d, text }, terms, qs) {
-  return `<a class="result" href="#/d/${encodeURIComponent(d.id)}${qs}"><div class="r-title"><span dir="auto">${esc(d.title)}</span><span class="chip">✎ ${esc(d.project.name || 'design project')}</span></div>
+  return `<a class="result" href="#/d/${encodeURIComponent(d.id)}${qs}"><div class="r-title"><span dir="auto">${esc(designTitle(d))}</span><span class="chip">✎ ${esc(d.project.name || 'design project')}</span></div>
     <div class="r-snip" dir="auto">${snippetHtml(text, terms)}</div>
     <div class="r-meta">${avatarHtml(d.owner, 'sm')}<span>${esc(d.owner.name)}</span><span>${esc(fmtDate(d.lastTs))}</span></div></a>`;
 }
@@ -47,7 +47,7 @@ function viewDesignChat(id) {
   return `<div class="page narrow">
     <div class="crumbs"><a href="#/design">Design chats</a><span>›</span>${d.owner && !d.owner.system ? `${personLink(d.owner)}<span>›</span>` : ''}<span dir="auto">${esc(d.project.name)}</span></div>
     <div class="page-head"><div class="grow">
-      <h1 dir="auto">${esc(d.title)}</h1>
+      <h1 dir="auto">${esc(designTitle(d))}</h1>
       <div class="sub"><span class="chip on" dir="auto">✎ ${esc(d.project.name || 'design project')}</span>
         ${d.authors.map(p => `<span class="row" style="gap:6px">${avatarHtml(p, 'sm')}${personLink(p)}</span>`).join('') || '<span class="faint">No author (empty chat)</span>'}
         <span>Started ${esc(fmtDateTime(d.created))}</span><span>Last ${esc(fmtDateTime(d.lastTs))}</span><span>${plural(d.msgCount, 'message')}</span>

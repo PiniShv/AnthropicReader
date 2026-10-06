@@ -7,30 +7,31 @@ const ICONS = { home: '⌂', people: '👥', search: '⌕', about: 'ⓘ' };
  * card, search tabs and sections). key: person tab, search type and the key of its hits in
  * runSearch()'s result. list / item: the route names of the list page and of one item.
  * allCount / personCount: the sidebar badge without and with focus; personCount is also the
- * person page's number. searchResult(hit, terms, qs): one search hit as a result link; qs is
- * the "?q=…" that a page which highlights the words can take. The view functions live in later
+ * person page's number. title(item): the title a page shows for one item (the rule per kind
+ * is in model.js). searchResult(hit, terms, qs): one search hit as a result link; qs is the
+ * "?q=…" that a page which highlights the words can take. The view functions live in later
  * files, so they are called through arrows. Every entry needs every field. */
 const KINDS = [
   {
-    key: 'conversations', list: 'conversations', item: 'c', icon: '💬', label: 'Conversations', noun: ['chat', 'chats'],
+    key: 'conversations', list: 'conversations', item: 'c', icon: '💬', label: 'Conversations', noun: ['chat', 'chats'], title: convTitle,
     allCount: () => withContent(DB.conversations).length, personCount: p => p.convCount(),
     listView: () => viewConversations(), itemView: b => viewConversation(b), personTab: p => convTable(p.conversations, 'pc-' + p.id, false),
     searchResult: (hit, terms, qs) => convResult(hit, terms, qs),
   },
   {
     key: 'artifacts', list: 'artifacts', item: 'a', icon: '◧', label: 'Artifacts & pages', searchTab: 'Artifacts', noun: ['artifact', 'artifacts'],
-    allCount: () => DB.artifacts.length, personCount: p => p.artifacts.length,
+    title: artifactTitle, allCount: () => DB.artifacts.length, personCount: p => p.artifacts.length,
     listView: () => viewArtifacts(), itemView: (b, c) => viewArtifact(b, c), personTab: p => artifactTable(p.artifacts, 'pa-' + p.id, false),
     searchResult: (hit, terms) => artifactResult(hit, terms),
   },
   {
-    key: 'projects', list: 'projects', item: 'p', icon: '📁', label: 'Projects', noun: ['project', 'projects'],
+    key: 'projects', list: 'projects', item: 'p', icon: '📁', label: 'Projects', noun: ['project', 'projects'], title: projectTitle,
     allCount: () => DB.projects.length, personCount: p => p.projects.length,
     listView: () => viewProjects(), itemView: b => viewProject(b), personTab: p => projectTable(p.projects, 'pp-' + p.id, false),
     searchResult: (hit, terms) => projectResult(hit, terms),
   },
   {
-    key: 'design', list: 'design', item: 'd', icon: '✎', label: 'Design chats', noun: ['design chat', 'design chats'],
+    key: 'design', list: 'design', item: 'd', icon: '✎', label: 'Design chats', noun: ['design chat', 'design chats'], title: designTitle,
     allCount: () => DB.designChats.length, personCount: p => p.designChats.length,
     listView: () => viewDesignChats(), itemView: b => viewDesignChat(b), personTab: p => designTable(p.designChats, 'pd-' + p.id, false),
     searchResult: (hit, terms, qs) => designResult(hit, terms, qs),
@@ -38,7 +39,7 @@ const KINDS = [
   {
     // Without focus the badge counts people with memory; with focus, that person's memory items.
     key: 'memory', list: 'memories', item: 'memory', icon: '🧠', label: 'Memory', noun: ['memory item', 'memory items'],
-    allCount: () => DB.memories.length, personCount: p => p.memoryCount(),
+    title: m => m.owner.name, allCount: () => DB.memories.length, personCount: p => p.memoryCount(),
     listView: () => viewMemories(), itemView: b => viewMemory(b),
     personTab: p => (p.memory ? memoryBody(p.memory) : '<div class="card empty">No memory for this person in this export.</div>'),
     searchResult: (hit, terms) => memoryResult(hit, terms),
@@ -333,7 +334,7 @@ function miniConvList(list) {
   if (!list.length) return '<div class="card empty">No conversations.</div>';
   return `<div class="table-wrap"><table class="list"><tbody>${list.map(c => `
     <tr data-href="#/c/${encodeURIComponent(c.id)}">
-      <td class="title"><a class="cell-link" href="#/c/${encodeURIComponent(c.id)}"><div dir="auto">${esc(c.title || 'Untitled conversation')}</div>${c.summary ? `<div class="snip" dir="auto">${esc(truncate(oneLine(stripMd(c.summary)), 220))}</div>` : ''}</a></td>
+      <td class="title"><a class="cell-link" href="#/c/${encodeURIComponent(c.id)}"><div dir="auto">${esc(convTitle(c))}</div>${c.summary ? `<div class="snip" dir="auto">${esc(truncate(oneLine(stripMd(c.summary)), 220))}</div>` : ''}</a></td>
       <td class="hide-sm">${whoCell(c.owner)}</td>
       <td class="num">${fmtNum(c.msgCount)} msgs</td>
       <td class="date">${esc(fmtDate(c.lastTs))}</td>
@@ -472,12 +473,13 @@ function personOverview(p, counts) {
   p.designChats.forEach(d => stamps.push(d.created));
   const chart = activityChart(stamps.filter(Boolean));
 
-  // Recent activity timeline.
+  // Recent activity timeline: each item links to its page, under its kind's title.
   const events = [];
-  withContent(p.conversations).forEach(c => events.push({ t: c.lastTs, kind: KIND.conversations, html: `<a href="#/c/${encodeURIComponent(c.id)}" dir="auto">${esc(c.title || 'Untitled conversation')}</a> <span class="faint">· ${plural(c.msgCount, 'message')}</span>` }));
-  p.artifacts.forEach(a => events.push({ t: a.updated, kind: KIND.artifacts, html: `<a href="#/a/${encodeURIComponent(a.id)}" dir="auto">${esc(artifactTitle(a))}</a> <span class="faint">· ${a.kind === 'page' ? 'page' : 'artifact'}, ${plural(a.versions.length, 'version')}</span>` }));
-  p.projects.forEach(x => events.push({ t: x.updated, kind: KIND.projects, html: `<a href="#/p/${encodeURIComponent(x.id)}" dir="auto">${esc(x.name || 'Untitled project')}</a> <span class="faint">· project</span>` }));
-  p.designChats.forEach(d => events.push({ t: d.lastTs, kind: KIND.design, html: `<a href="#/d/${encodeURIComponent(d.id)}" dir="auto">${esc(d.title)}</a> <span class="faint">· design chat in ${esc(d.project.name || 'a design project')}</span>` }));
+  const add = (kind, item, t, meta) => events.push({ kind, item, t, meta });
+  withContent(p.conversations).forEach(c => add(KIND.conversations, c, c.lastTs, plural(c.msgCount, 'message')));
+  p.artifacts.forEach(a => add(KIND.artifacts, a, a.updated, `${a.kind === 'page' ? 'page' : 'artifact'}, ${plural(a.versions.length, 'version')}`));
+  p.projects.forEach(x => add(KIND.projects, x, x.updated, 'project'));
+  p.designChats.forEach(d => add(KIND.design, d, d.lastTs, 'design chat in ' + (d.project.name || 'a design project')));
   events.sort((a, b) => b.t - a.t);
 
   const profile = p.memory && p.memory.files.find(f => /^\/profile\.md$/i.test(f.path));
@@ -488,7 +490,7 @@ function personOverview(p, counts) {
     ${profile || cm ? `<h2 class="section-title">What Claude remembers <a class="chip" href="${base}/memory">open memory</a></h2>
       <div class="card card-pad">${profile ? memoryText(profile.body, p.memory) : mdBlock(truncate(cm, 1800))}</div>` : ''}
     <h2 class="section-title">Recent activity</h2>
-    ${events.length ? `<div class="card card-pad"><ul class="timeline">${events.slice(0, 40).map(e => `<li><span class="when" title="${esc(fmtDateTime(e.t))}">${esc(fmtDate(e.t))}</span><span class="kind" role="img" aria-label="${esc(e.kind.noun[0])}">${e.kind.icon}</span><span>${e.html}</span></li>`).join('')}</ul>
+    ${events.length ? `<div class="card card-pad"><ul class="timeline">${events.slice(0, 40).map(e => `<li><span class="when" title="${esc(fmtDateTime(e.t))}">${esc(fmtDate(e.t))}</span><span class="kind" role="img" aria-label="${esc(e.kind.noun[0])}">${e.kind.icon}</span><span><a href="#/${e.kind.item}/${encodeURIComponent(e.item.id)}" dir="auto">${esc(e.kind.title(e.item))}</a> <span class="faint">· ${esc(e.meta)}</span></span></li>`).join('')}</ul>
       ${events.length > 40 ? `<p class="muted" style="font-size:13px;margin:10px 0 0">Showing the latest 40 of ${fmtNum(events.length)}. Use the tabs above for everything.</p>` : ''}</div>`
       : '<div class="card empty">No activity in this export.</div>'}`;
 }

@@ -378,11 +378,29 @@ function scopeOf(p) {
 
 function projectName(id) {
   const p = DB.projectById.get(id);
-  return p ? (p.name || 'Untitled project') : '';
+  return p ? projectTitle(p) : '';
 }
 
-// An artifact's title, or a fallback by kind. Worked out when shown, not stored in a.title:
-// that field belongs to the import, and page.md can come in a later load.
+/* ---------- Titles ---------- */
+
+/* The title a page shows for an item: one function per kind, the `title` of its KINDS entry.
+ * Records keep what the export says (a chat's and a design chat's name, an artifact's title, a
+ * project's name) and text worked out from their content (a chat's first message). The
+ * fallback is worked out here, when shown: the file that decides it can come in a later load
+ * (page.md makes an artifact a page). */
+function convTitle(c) {
+  return c.name || c.firstText || (c.fileCount ? plural(c.fileCount, 'uploaded file') + ' (not in export)' : 'Untitled conversation');
+}
+
 function artifactTitle(a) {
   return a.title || (a.pageNode ? 'Untitled page' : 'Untitled artifact');
+}
+
+function projectTitle(x) {
+  return x.name || 'Untitled project';
+}
+
+// "Chat" is the name every new design chat gets, so it says nothing.
+function designTitle(d) {
+  return (d.name !== 'Chat' && d.name) || (d.firstPrompt && truncate(oneLine(d.firstPrompt), 80)) || d.project.name || 'Empty design chat';
 }

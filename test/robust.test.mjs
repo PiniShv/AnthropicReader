@@ -18,7 +18,7 @@ test('a null message does not cost the rest of conversations.json', async () => 
     conversation(3, 'third', [message(31, 'yo')]),
   ])]);
   assert.deepEqual(plain(api.DB.warnings), []);
-  assert.deepEqual(plain(api.DB.conversations.map(c => c.title).sort()), ['bad', 'first', 'third']);
+  assert.deepEqual(plain(api.DB.conversations.map(c => c.name).sort()), ['bad', 'first', 'third']);
   // The views read the messages from raw, so raw holds the readable ones only.
   const bad = api.DB.convById.get(U(2));
   assert.equal(bad.msgCount, 1);
@@ -46,7 +46,7 @@ test('a record that cannot be read is skipped with a warning, and the rest of th
   // Stands in for any bug in an add…() function.
   app.run(`{ const add = addConversation; addConversation = (c, s, t) => { if (c.name === 'boom') throw new Error('cannot read it'); add(c, s, t); }; }`);
   await app.api.importExport([looseFile('x/conversations.json', [conversation(1, 'a', []), conversation(2, 'boom', []), conversation(3, 'c', [])])], quietUi);
-  assert.deepEqual(plain(app.api.DB.conversations.map(c => c.title).sort()), ['a', 'c']);
+  assert.deepEqual(plain(app.api.DB.conversations.map(c => c.name).sort()), ['a', 'c']);
   assert.deepEqual(plain(app.api.DB.warnings), ['x/conversations.json: record 2 was skipped: cannot read it']);
 });
 
@@ -85,7 +85,7 @@ test('numbers where the export has strings load, and names still fall back', asy
   ]);
   const { DB } = api;
   assert.deepEqual(plain(DB.warnings), []);
-  assert.equal(DB.convById.get(U(1)).title, '5');
+  assert.equal(DB.convById.get(U(1)).name, '5');
   assert.equal(DB.projectById.get(U(2)).name, '7');
   const p = DB.people.get('42');
   assert.ok(p, 'a numeric account id becomes the string id of one person');

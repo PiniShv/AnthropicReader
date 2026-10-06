@@ -7,7 +7,7 @@
 function convToMarkdown(conv, path) {
   const p = conv.owner;
   const lines = [];
-  lines.push('# ' + (conv.title || 'Untitled conversation'));
+  lines.push('# ' + convTitle(conv));
   lines.push('');
   lines.push(`- Person: ${p ? p.name : 'unknown'}${p && p.email ? ' <' + p.email + '>' : ''}`);
   lines.push(`- Started: ${fmtDateTime(conv.created)} · Last message: ${fmtDateTime(conv.lastTs)}`);
@@ -96,19 +96,19 @@ async function buildPersonZip(p, opts, progress, isCancelled) {
   let i = 0;
   for (const c of p.conversations) {
     if (isCancelled()) return null;
-    const base = 'conversations/' + nameOf(c.created, c.title, c.id);
+    const base = 'conversations/' + nameOf(c.created, convTitle(c), c.id);
     // The newest branch, whatever branches were opened in this tab.
     z.add(base + '.md', convToMarkdown(c, branchPath(c)));
     z.add(base + '.json', JSON.stringify(c.raw, null, 2));
     if (++i % 20 === 0) { progress(`Conversations ${i} / ${p.conversations.length}`); await new Promise(r => setTimeout(r, 0)); }
   }
   for (const x of p.projects) {
-    const base = 'projects/' + nameOf(0, x.name, x.id) + '/';
+    const base = 'projects/' + nameOf(0, projectTitle(x), x.id) + '/';
     z.add(base + 'project.json', JSON.stringify(x.raw, null, 2));
     for (const d of x.docs) z.add(base + 'docs/' + cleanPath(d.filename), d.content);
   }
   for (const d of p.designChats) {
-    z.add('design_chats/' + nameOf(d.created, (d.project.name ? d.project.name + ' - ' : '') + d.title, d.id) + '.json', JSON.stringify(d.raw, null, 2));
+    z.add('design_chats/' + nameOf(d.created, (d.project.name ? d.project.name + ' - ' : '') + designTitle(d), d.id) + '.json', JSON.stringify(d.raw, null, 2));
   }
   if (p.memory) {
     const m = p.memory;

@@ -46,6 +46,16 @@ test('the sample export has every kind of data', async () => {
   for (const t of CONTENT_TYPES) assert.ok(types.has(t), `an artifact of type "${t}" (found: ${Array.from(types).join(', ')})`);
 });
 
+test('every item of the sample export has a title from its kind', async () => {
+  await loaded();
+  const all = api.scopeOf(null);
+  const lists = { conversations: all.conversations, artifacts: all.artifacts, projects: all.projects, design: all.designChats, memory: all.memories };
+  for (const k of api.KINDS) {
+    assert.ok(lists[k.key].length, `the sample has ${k.key}`);
+    for (const x of lists[k.key]) assert.ok(String(k.title(x)).trim(), `${k.key} ${x.id} has a title`);
+  }
+});
+
 test('the sample export uses only reserved example domains for email addresses', async () => {
   const DB = await loaded();
   // RFC 2606 / 6761 names cannot belong to a real person or company.

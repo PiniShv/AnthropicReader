@@ -58,7 +58,7 @@ function countHits(hay, terms) {
 // Text of a design chat: prompts, replies and comments on the design.
 function designSearchText(d) {
   const commentText = atts => (Array.isArray(atts) ? atts : []).filter(a => a && a.type === 'comment').map(a => String(a.content || '')).join('\n');
-  return [d.title, d.project.name, ...d.messages.map(m => {
+  return [designTitle(d), d.project.name, ...d.messages.map(m => {
     const c = m.content || {};
     const parts = [typeof c.content === 'string' ? c.content : '', commentText(c.attachments)];
     for (const b of (Array.isArray(c.contentBlocks) ? c.contentBlocks : [])) {
@@ -121,7 +121,7 @@ async function runSearch(q, { deep, scope, signal, onProgress }) {
     const e = searchEntry(c);
     if (!e.lcMsgs) e.lcMsgs = (c.raw.chat_messages || []).map(m => msgProse(m).toLowerCase());
     if (deep && !e.lcDeep) e.lcDeep = (c.raw.chat_messages || []).map(m => msgDeep(m).toLowerCase());
-    const head = (c.title + '\n' + c.summary).toLowerCase();
+    const head = (convTitle(c) + '\n' + c.summary).toLowerCase();
     const msgs = e.lcMsgs;
     const joined = head + '\n' + msgs.join('\n') + (deep ? '\n' + e.lcDeep.join('\n') : '');
     const score = countHits(joined, terms);
