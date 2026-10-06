@@ -38,7 +38,7 @@ function childrenByParent(msgs) {
 function buildTree(conv) {
   let t = TREE.get(conv);
   if (t) return t;
-  const msgs = conv.raw.chat_messages;
+  const msgs = conv.messages;
   const children = childrenByParent(msgs);
   t = { msgs, byId: new Map(), children: children || new Map(), newest: new Map(), linear: !children, created: new Map() };
   for (const m of msgs) {
@@ -227,7 +227,7 @@ function cpToUnits(text, cp) {
 // as { use, msg }, then the published artifacts the chat links to, as { art: id }.
 function collectOutputs(conv) {
   const out = [];
-  for (const m of conv.raw.chat_messages) {
+  for (const m of conv.messages) {
     for (const b of m.content) {
       if (b.type === 'tool_use' && isOutput(b)) out.push({ use: b, msg: m.uuid });
     }

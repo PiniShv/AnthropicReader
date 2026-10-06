@@ -377,19 +377,18 @@ test('the lookup script swaps a path set from a script before the browser loads 
 function forkedConversation(id, extra = []) {
   const m = (uuid, parent, sender) => ({ uuid, parent_message_uuid: parent, sender, content: [{ type: 'text', text: uuid }] });
   const root = api.ROOT_PARENT;
+  const messages = [
+    m('m1', root, 'human'),
+    m('m2', 'm1', 'assistant'),
+    m('m3', 'm2', 'human'),
+    m('m4', 'm3', 'assistant'),
+    m('m3b', 'm2', 'human'),
+    m('m4b', 'm3b', 'assistant'),
+    ...extra.map(([uuid, parent, sender]) => m(uuid, parent, sender)),
+  ];
+  // As the import leaves a clean chat: messages and raw.chat_messages are the same list.
   return {
-    id,
-    raw: {
-      chat_messages: [
-        m('m1', root, 'human'),
-        m('m2', 'm1', 'assistant'),
-        m('m3', 'm2', 'human'),
-        m('m4', 'm3', 'assistant'),
-        m('m3b', 'm2', 'human'),
-        m('m4b', 'm3b', 'assistant'),
-        ...extra.map(([uuid, parent, sender]) => m(uuid, parent, sender)),
-      ],
-    },
+    id, messages, raw: { chat_messages: messages },
   };
 }
 
@@ -398,7 +397,7 @@ const pathOf = c => Array.from(api.currentPath(c), m => m.uuid);
 test('branches: the default path follows the newest message', () => {
   const c = forkedConversation('conv-a');
   assert.deepEqual(pathOf(c), ['m1', 'm2', 'm3b', 'm4b']);
-  assert.deepEqual(Array.from(api.siblingsOf(c, c.raw.chat_messages[2]), m => m.uuid), ['m3', 'm3b']);
+  assert.deepEqual(Array.from(api.siblingsOf(c, c.messages[2]), m => m.uuid), ['m3', 'm3b']);
 });
 
 test('branches: a later reply on the old branch makes it the default again', () => {
@@ -418,13 +417,14 @@ test('branches: selectBranchFor makes an off-branch message visible', () => {
 
 test('branches: a parent missing from the export starts a root branch', () => {
   const c = forkedConversation('conv-d');
-  c.raw.chat_messages[0].parent_message_uuid = 'deleted-message';
+  c.messages[0].parent_message_uuid = 'deleted-message';
   assert.deepEqual(pathOf(c), ['m1', 'm2', 'm3b', 'm4b']);
 });
 
 test('branches: messages without parents are one straight line', () => {
   // As the import leaves them (cleanMessages): every message has its list of blocks.
-  const c = { id: 'conv-e', raw: { chat_messages: ['x1', 'x2', 'x3'].map(uuid => ({ uuid, content: [] })) } };
+  const messages = ['x1', 'x2', 'x3'].map(uuid => ({ uuid, content: [] }));
+  const c = { id: 'conv-e', messages, raw: { chat_messages: messages } };
   assert.equal(api.buildTree(c).linear, true);
   assert.deepEqual(pathOf(c), ['x1', 'x2', 'x3']);
   api.selectBranchFor(c, 'x2');

@@ -58,7 +58,7 @@ function addUser(u) {
 // Artifact ids referenced from chat JSON: published links and tool result ids.
 const RE_ART_REF = new RegExp('(?:/artifact/|artifact_id\\\\?"\\s*:\\s*\\\\?")(' + UUID_PAT + ')', 'g');
 
-// A chat's messages as the views read them (from raw): objects only, and their blocks
+// A chat's messages as the views read them (conv.messages): objects only, and their blocks
 // (content), attachments and files always lists of objects, also when the export leaves one
 // out or gives null, an object or a number. The list comes back as it is when it is clean.
 function cleanMessages(list) {
@@ -127,7 +127,8 @@ function addConversation(c, source, rawText) {
     toolCount: tools,
     forks,
     artRefs,
-    raw: msgs === c.chat_messages ? c : Object.assign({}, c, { chat_messages: msgs }),
+    messages: msgs,
+    raw: c,   // exactly as parsed: the ".json (original)" downloads write this
     source,
   };
   if (prev) DB.convById.delete(id);

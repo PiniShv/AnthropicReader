@@ -35,6 +35,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - **Reopen last export** in Chrome and Edge, and with it the File System Access pickers: **Choose files…** and **Choose a folder…** now use the browser's normal file picker in every browser. See **Security**.
 
 ### Fixed
+- The ".json (original)" download of a chat, and the chats in the per-person zip, are the original export again. Cleaning malformed messages for display no longer changes them.
 
 - In the preview of a multi-file artifact, an image or script path that the artifact builds while it runs (`img.src = 'icons/' + name`) is swapped for the exported file before the browser tries to load it. Before, the browser tried the path first, which logged errors such as "Not allowed to load local resource".
 - Counts of chats and messages agree everywhere. The start page, the person page, the conversation list and "About this export" count only the messages of chats with content, next to the number of those chats. The download dialog and `person.json` in the per-person zip count chats with content and without, like the person page. Before, they counted every chat as a conversation.

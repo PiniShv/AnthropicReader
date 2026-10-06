@@ -20,12 +20,14 @@ test('a null message does not cost the rest of conversations.json', async () => 
   ])]);
   assert.deepEqual(plain(api.DB.warnings), []);
   assert.deepEqual(plain(api.DB.conversations.map(c => c.name).sort()), ['bad', 'first', 'third']);
-  // The views read the messages from raw, so raw holds the readable ones only.
+  // The views read the readable messages; raw stays exactly as exported.
   const bad = api.DB.convById.get(U(2));
   assert.equal(bad.msgCount, 1);
-  assert.deepEqual(plain(bad.raw.chat_messages.map(m => m.uuid)), [U(21)]);
-  // A clean chat keeps its original JSON object.
+  assert.deepEqual(plain(bad.messages.map(m => m.uuid)), [U(21)]);
+  assert.equal(bad.raw.chat_messages.length, 3);
+  assert.equal(bad.raw.chat_messages[0], null);
   const first = api.DB.convById.get(U(1));
+  assert.equal(first.messages.length, 1);
   assert.equal(first.raw.chat_messages.length, 1);
 });
 
@@ -127,7 +129,7 @@ test('lists of the wrong type become clean lists, and ids become strings, so sea
   assert.deepEqual(plain(DB.warnings), []);
   assert.deepEqual(plain(DB.conversations.map(c => c.id).sort()), [U(2), '7']);
   for (const c of DB.conversations) {
-    for (const m of c.raw.chat_messages) for (const k of ['content', 'attachments', 'files']) assert.ok(Array.isArray(m[k]) && m[k].every(x => x && typeof x === 'object'), `${c.name}: ${k}`);
+    for (const m of c.messages) for (const k of ['content', 'attachments', 'files']) assert.ok(Array.isArray(m[k]) && m[k].every(x => x && typeof x === 'object'), `${c.name}: ${k}`);
   }
   const d = DB.designById.get('8');
   assert.ok(d, 'a numeric design chat id becomes a string');
@@ -203,4 +205,13 @@ test('artifact files get safe names in the per-person zip', async () => {
   const out = await api.ZipArchive.open(new File([blob], 'person.zip'));
   const names = Array.from(out.entries, e => e.name.split(`/versions/${vid}/`)[1]).filter(Boolean).sort();
   assert.deepEqual(names, ['_con.js', 'img/a b.png', 'notes']);
+});
+
+test('the original .json of a chat is left exactly as exported, even when messages need cleaning', async () => {
+  // An old-format message: no content, attachments or files keys, and a null among them.
+  const original = conversation(1, 'old format', [{ uuid: U(11), sender: 'human', text: 'hi', created_at: T }, null]);
+  const { api } = await importFiles([users(), looseFile('x/conversations.json', [original])]);
+  const c = api.DB.convById.get(U(1));
+  assert.deepEqual(JSON.parse(JSON.stringify(c.raw)), original);
+  assert.deepEqual(plain(Object.keys(c.messages[0]).sort()), ['attachments', 'content', 'created_at', 'files', 'sender', 'text', 'uuid']);
 });
