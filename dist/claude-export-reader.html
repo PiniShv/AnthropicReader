@@ -887,6 +887,16 @@ class ZipArchive {
  * and streaming JSON parsing for very large top-level arrays. */
 'use strict';
 
+// Calls fn(item, index) for every item, at most `limit` at a time. Each call gets its own
+// index, so results can keep the input order whatever finishes first.
+async function mapLimit(items, limit, fn) {
+  let i = 0;
+  const workers = Array.from({ length: Math.min(limit, items.length) }, async () => {
+    while (i < items.length) { const idx = i++; await fn(items[idx], idx); }
+  });
+  await Promise.all(workers);
+}
+
 /* ---------- File nodes: loose files, with the same interface as zip entries (ZipEntry) ---------- */
 
 class FileNode {
@@ -960,20 +970,32 @@ async function filesFromDataTransfer(dt) {
   return Array.from(dt.files || []);
 }
 
-// File System Access API handles (Chrome/Edge): lets us offer "Reopen last export".
+// How many folders are listed, or files opened, at the same time from saved handles.
+const HANDLE_READS = 16;
+
+/* File System Access API handles (Chrome/Edge): lets us offer "Reopen last export". Folders
+ * are listed one level at a time, and then the files are opened, both HANDLE_READS at a time.
+ * The files come back in folder order (depth first), whatever read finishes first, so the
+ * same folder always gives the same result (the import keeps the first copy of a file). */
 async function filesFromHandles(handles) {
-  const out = [];
-  async function walk(h, prefix) {
-    if (h.kind === 'file') {
-      const f = await h.getFile();
-      f.relPath = prefix + f.name;
-      out.push(f);
-    } else {
-      for await (const child of h.values()) await walk(child, prefix + h.name + '/');
-    }
+  const roots = handles.map(h => ({ h, prefix: '' }));
+  let level = roots;
+  while (level.length) {
+    const dirs = level.filter(n => n.h.kind !== 'file');
+    await mapLimit(dirs, HANDLE_READS, async n => {
+      n.kids = [];
+      for await (const child of n.h.values()) n.kids.push({ h: child, prefix: n.prefix + n.h.name + '/' });
+    });
+    level = dirs.flatMap(n => n.kids);
   }
-  for (const h of handles) await walk(h, '');
-  return out;
+  const files = [];
+  const visit = n => (n.h.kind === 'file' ? files.push(n) : n.kids.forEach(visit));
+  roots.forEach(visit);
+  await mapLimit(files, HANDLE_READS, async n => {
+    n.file = await n.h.getFile();
+    n.file.relPath = n.prefix + n.file.name;
+  });
+  return files.map(n => n.file);
 }
 
 const HandleStore = {
@@ -2292,14 +2314,6 @@ function decodeEntities(s) {
 }
 
 /* ---------- Import pipeline ---------- */
-
-async function mapLimit(items, limit, fn) {
-  let i = 0;
-  const workers = Array.from({ length: Math.min(limit, items.length) }, async () => {
-    while (i < items.length) { const idx = i++; await fn(items[idx], idx); }
-  });
-  await Promise.all(workers);
-}
 
 async function readJson(node) {
   const text = await node.text();

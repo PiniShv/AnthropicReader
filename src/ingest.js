@@ -368,14 +368,6 @@ function decodeEntities(s) {
 
 /* ---------- Import pipeline ---------- */
 
-async function mapLimit(items, limit, fn) {
-  let i = 0;
-  const workers = Array.from({ length: Math.min(limit, items.length) }, async () => {
-    while (i < items.length) { const idx = i++; await fn(items[idx], idx); }
-  });
-  await Promise.all(workers);
-}
-
 async function readJson(node) {
   const text = await node.text();
   return JSON.parse(text.charCodeAt(0) === 0xfeff ? text.slice(1) : text);

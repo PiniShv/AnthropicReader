@@ -21,11 +21,11 @@ For the format of the export itself, see [export-format.md](export-format.md).
 | `vendor/marked.min.js` | Markdown to HTML. |
 | `vendor/purify.min.js` | DOMPurify: HTML sanitizer. |
 | `src/zip.js` | `ZipArchive` / `ZipEntry`: random-access zip reader. `ZipWriter`: small zip writer for downloads. |
-| `src/load.js` | `FileNode`: a loose file with the same interface as a `ZipEntry` (`path`, `size`, `container`, `stream()`, `bytes()`, `text()`, `blob()`). File and folder picking, drag and drop, remembered file handles (`HandleStore`), and `parseJsonArrayStream()`. |
+| `src/load.js` | `FileNode`: a loose file with the same interface as a `ZipEntry` (`path`, `size`, `container`, `stream()`, `bytes()`, `text()`, `blob()`). File and folder picking, drag and drop, remembered file handles (`HandleStore`), `parseJsonArrayStream()`, and `mapLimit()` (async work a few at a time, used by the import and search too). |
 | `src/render.js` | Escaping (`esc`), reading and formatting of dates (`parseTime`; 0 means unknown and shows as nothing), numbers and sizes, Markdown (`mdToHtml`, `mdBlock`), sanitizing, search highlighting, sandboxed frames (`sandboxFrame()`, `withFrameShim()`), small helpers (toast, copy, download, MIME types). Pure formatting and sanitizing: it binds no handlers and keeps no page state. A code block's Copy button carries no key; one click listener in `app.js` handles every `.copy-code` button. |
 | `src/ui.js` | `App` (route and focus), `focusPerson()` / `focusScope()`, the `$` / `$$` shortcuts, and the lifetime of one drawn page: `VIEW`, `after()`, `viewKey()`, `on()` for click behaviour, `blk()` for collapsible blocks, and `preHtml()` for long text with a **Show all** button. |
 | `src/model.js` | The in-memory model: `Person`, the `DB` object, `finalize()` (links and derived data), `parseVersionRel()` (which version an artifact file belongs to), `versionInfo()` (what an artifact version holds) and small queries (`scopeOf()`, `peopleMatching()`, `artifactTitle()`, `latestManifest()`, `missingFiles()`, `hasRecords()`). |
-| `src/ingest.js` | Reading files into the model: `classify()` and `sniffShape()`, one `add…()` function per record type, `OUTPUTS` (which tool calls count as outputs), `importExport()` (the import pipeline) and `mapLimit()`. |
+| `src/ingest.js` | Reading files into the model: `classify()` and `sniffShape()`, one `add…()` function per record type, `OUTPUTS` (which tool calls count as outputs) and `importExport()` (the import pipeline). |
 | `src/conversation.js` | Conversations as data: the message tree and branches (`childrenByParent()`, `buildTree()`, `currentPath()`, `selectBranchFor()`), tool names and inputs, and the outputs Claude produced (`collectOutputs()`). |
 | `src/search.js` | The search engine (`runSearch()`), the searchable text of each record and the search index. No DOM. |
 | `src/export.js` | Files made for download: a conversation as Markdown (`convToMarkdown()`) and the per-person zip (`buildPersonZip()`). |
@@ -87,7 +87,7 @@ A few small pieces carry most of the app. When you add something, reach for thes
 
 - **Drag and drop** walks dropped folders with `webkitGetAsEntry`. Files are read in parallel but kept in folder order, so the same drop always gives the same result. In Chrome and Edge it also asks for persistent file handles (`getAsFileSystemHandle`).
 - **Choose files / Choose a folder** use the File System Access API when it exists (`showOpenFilePicker`, `showDirectoryPicker`) and fall back to `<input type="file">`.
-- File handles are stored in IndexedDB (`HandleStore`), so **Reopen last export** can open the same files after a reload. Only handles are stored, never content.
+- File handles are stored in IndexedDB (`HandleStore`), so **Reopen last export** can open the same files after a reload. Only handles are stored, never content. The saved folders are listed one level at a time and their files opened, 16 at a time (`filesFromHandles()`), and the files keep folder order, as with a drop.
 - Dropping files on an open export asks first, then adds them to the same model. That is how several exports are merged.
 
 ### Loading screen
