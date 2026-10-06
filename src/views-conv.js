@@ -246,7 +246,7 @@ function messageHtml(m, ctx) {
       ${branch}
       <span class="msg-actions">
         <button class="btn small ghost" type="button" ${on(() => copyText(messageToMarkdown(conv, m)))} title="Copy message text" aria-label="Copy message text">⧉</button>
-        <button class="btn small ghost" type="button" ${on(() => copyText(location.href.split('#')[0] + '#/c/' + conv.id + '?m=' + m.uuid))} title="Copy link to this message" aria-label="Copy link to this message">#</button>
+        <button class="btn small ghost" type="button" ${on(() => copyText(location.href.split('#')[0] + '#/c/' + encodeURIComponent(conv.id) + '?m=' + encodeURIComponent(m.uuid)))} title="Copy link to this message" aria-label="Copy link to this message">#</button>
       </span>
     </div>
     <div class="msg-body">${body || '<span class="faint">(empty message)</span>'}</div>

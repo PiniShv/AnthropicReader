@@ -284,7 +284,7 @@ function viewAbout() {
   const m = latestManifest();
   const people = realPeople();
   return `<div class="page narrow"><div class="page-head"><div class="grow"><h1>About this export</h1></div></div>
-    ${m ? `<div class="card card-pad"><dl class="kv"><dt>Exported</dt><dd>${esc(fmtDateTime(m.createdAt))}</dd><dt>Files in export</dt><dd>${esc(m.totalFiles)} (${m.files.map(f => esc(f.filename)).join(', ')})</dd></dl></div>` : ''}
+    ${m ? `<div class="card card-pad"><dl class="kv"><dt>Exported</dt><dd>${esc(fmtDateTime(m.createdAt) || 'unknown')}</dd><dt>Files in export</dt><dd>${esc(m.totalFiles)} (${m.files.map(f => esc(f.filename)).join(', ')})</dd></dl></div>` : ''}
     <h2 class="section-title">What was loaded</h2>
     <div class="table-wrap"><table class="list"><thead><tr><th>Source</th><th class="num">Size</th><th class="num">Entries</th><th>Status</th></tr></thead><tbody>
       ${DB.sources.map(s => `<tr><td class="mono">${esc(s.name)}</td><td class="num">${s.size ? fmtBytes(s.size) : ''}</td><td class="num">${fmtNum(s.entries || 0)}</td><td>${s.error ? `<span class="chip err">${esc(s.error)}</span>` : '<span class="chip ok">ok</span>'}</td></tr>`).join('')}
@@ -321,7 +321,7 @@ function manifestDownloadsHtml(m, files) {
   return `<div class="notice${expired ? ' warn' : ''}" style="margin:0 0 10px">
       ${expired
         ? `These download links expired on ${esc(fmtDateTime(expires))} (24 hours after the export was made). Ask for a new export in claude.ai settings to get fresh links.`
-        : `Links work until <b>${esc(fmtDateTime(expires))}</b> and may work <b>only once</b>. Be signed in to claude.ai in this browser. When the downloads finish, drop the zips onto this page.`}
+        : `Links work ${expires ? `until <b>${esc(fmtDateTime(expires))}</b>` : 'for 24 hours after the export was made'} and may work <b>only once</b>. Be signed in to claude.ai in this browser. When the downloads finish, drop the zips onto this page.`}
     </div>
     <div class="table-wrap"><table class="list"><tbody>${files.map(f => `<tr>
       <td class="mono">${esc(f.filename)}</td><td class="muted">${esc(f.category || '')}</td>

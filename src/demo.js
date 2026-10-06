@@ -3,7 +3,7 @@
  *
  * Everything here is invented: the company (Northwind Labs), its people, their chats,
  * files and numbers. Ids come from fixed keys and every date is fixed, so each run builds
- * exactly the same bytes. It runs in the browser and in Node 20+: it needs only File,
+ * exactly the same bytes. It runs in the browser and in Node 22+: it needs only File,
  * Blob and TextEncoder, plus ZipWriter from zip.js.
  *
  * This file has the helpers, the people and the packaging (demoExportFiles). The content

@@ -48,6 +48,13 @@ test('an attachment stands for one file of its name, in the thread and in the Ma
   assert.deepEqual(md.split('\n').filter(l => l.startsWith('> 📄')), ['> 📄 a.md (not in export)', '> 📄 b.png (not in export)']);
 });
 
+test('download links of a manifest without a date say how long they work', () => {
+  const html = api.manifestDownloadsHtml({ createdAt: 0, files: [] }, []);
+  assert.match(html, /Links work for 24 hours after the export was made/);
+  assert.doesNotMatch(html, /until <b><\/b>/);
+  assert.match(api.manifestDownloadsHtml({ createdAt: Date.now(), files: [] }, []), /Links work until <b>.+<\/b>/);
+});
+
 test('names from the export never find something on Object.prototype', () => {
   assert.equal(decodeEntities('&constructor; &toString; &hasOwnProperty;'), '&constructor; &toString; &hasOwnProperty;');
   assert.equal(api.mimeFor('x.constructor'), 'application/octet-stream');

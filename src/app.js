@@ -113,7 +113,7 @@ function showManifestOnly() {
   Loader.rows.clear();
   box.hidden = false;
   box.innerHTML = `<h2 style="font-size:17px;margin:0 0 6px" tabindex="-1">This is your export’s file list</h2>
-    <p class="muted" style="margin:0 0 12px;font-size:14px">Exported ${esc(fmtDateTime(m.createdAt))}. Download the ${plural(m.files.length, 'part')} below, then drop the zip files onto this page.</p>
+    <p class="muted" style="margin:0 0 12px;font-size:14px">${m.createdAt ? `Exported ${esc(fmtDateTime(m.createdAt))}. ` : ''}Download the ${plural(m.files.length, 'part')} below, then drop the zip files onto this page.</p>
     ${manifestDownloadsHtml(m, m.files)}`;
   box.querySelector('h2').focus();
 }

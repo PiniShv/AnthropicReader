@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Builds the single-file reader: inlines the stylesheet, the vendored libraries and the
-// app scripts into dist/claude-export-reader.html. No dependencies; Node 20+.
+// app scripts into dist/claude-export-reader.html. No dependencies; Node 22+.
 //
 //   npm run build            write the file
 //   npm run build -- --check fail if the committed file is out of date (used by CI)

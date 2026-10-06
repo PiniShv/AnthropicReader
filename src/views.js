@@ -303,7 +303,7 @@ function viewHome() {
     <div class="page-head"><div class="grow">
       <h1>Your Claude export</h1>
       <div class="sub">
-        ${manifest ? `<span>Exported ${esc(fmtDateTime(manifest.createdAt))}</span>` : ''}
+        ${manifest && manifest.createdAt ? `<span>Exported ${esc(fmtDateTime(manifest.createdAt))}</span>` : ''}
         ${first ? `<span>Chats from ${esc(fmtDate(first))} to ${esc(fmtDate(last))}</span>` : ''}
       </div>
     </div></div>

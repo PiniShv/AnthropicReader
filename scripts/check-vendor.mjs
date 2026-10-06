@@ -2,7 +2,7 @@
 // Checks the vendored libraries in vendor/ against their official npm packages.
 // THIRD_PARTY_NOTICES.md is the one list: its table names the npm file each vendored file
 // was taken from, and its "Checksums" block pins the SHA-256 of each file. Needs the
-// network; no dependencies (Node 20+).
+// network; no dependencies (Node 22+).
 //
 //   node scripts/check-vendor.mjs
 //

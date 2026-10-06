@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Writes the built-in sample export (src/demo*.js) as real files, so you can try the reader on
 // zips without a real export: the six zip parts plus the manifest, like a real download.
-// All data is made up. No dependencies; Node 20+.
+// All data is made up. No dependencies; Node 22+.
 //
 //   npm run demo                 write the files to ./demo/
 //   npm run demo -- <folder>     write them somewhere else
