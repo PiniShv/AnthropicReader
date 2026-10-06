@@ -161,7 +161,7 @@ Size limits keep the tab responsive:
 
 ## Lazy rendering
 
-- **Collapsed blocks** (tool calls, thinking, attachments, docs, memory files) are made with `blk({ summary }, render)`. The block starts with only its `body` (usually empty), and `render` is kept in the current view under a key (`data-lazy`). A capturing `toggle` listener draws the body the first time the block is opened. A block that starts open (`open: true`) draws its body right away.
+- **Collapsed blocks** (tool calls, thinking, attachments, docs, memory files) are made with `blk({ summary }, render)`. The block starts with only its `body` (usually empty), and `render` is kept in the current view under a key (`data-lazy`). A capturing `toggle` listener draws the body the first time the block is opened. A block that starts open (`open: true`) draws its body right away. A page opened from a search result (a conversation or design chat) puts the search words in `VIEW.terms`, and the listener marks them in each body it draws. The listener itself never reads the URL.
 - **Long conversations** are drawn in batches: the first 30 messages (or enough to reach a linked message) at once, then 25 more every few milliseconds. A sequence number (`threadSeq`) stops an old batch run when the thread is redrawn (for example after a branch switch).
 - **Tables** show 200 rows at a time with a **Show more** button.
 - **Artifact metadata** is read at load time, but version files are read only when a version is opened.

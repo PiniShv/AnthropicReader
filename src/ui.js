@@ -16,8 +16,9 @@ const focusScope = () => scopeOf(focusPerson());
 
 /* Everything that lives exactly as long as one drawn page. onRoute() aborts the old view and
  * starts a new one: listeners added with its signal go away, and async drawers stop at their
- * next `if (signal.aborted) return;`. */
-const newView = () => ({ ac: new AbortController(), fns: new Map(), mounts: [] });
+ * next `if (signal.aborted) return;`. terms: the search words the page highlights. The view
+ * that owns them sets them, and every lazy block marks them in the body it draws later. */
+const newView = () => ({ ac: new AbortController(), fns: new Map(), mounts: [], terms: [] });
 let VIEW = newView();
 
 // One counter for every view, so a key or a generated id never means two things: an element

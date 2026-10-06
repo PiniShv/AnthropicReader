@@ -1517,8 +1517,9 @@ const focusScope = () => scopeOf(focusPerson());
 
 /* Everything that lives exactly as long as one drawn page. onRoute() aborts the old view and
  * starts a new one: listeners added with its signal go away, and async drawers stop at their
- * next `if (signal.aborted) return;`. */
-const newView = () => ({ ac: new AbortController(), fns: new Map(), mounts: [] });
+ * next `if (signal.aborted) return;`. terms: the search words the page highlights. The view
+ * that owns them sets them, and every lazy block marks them in the body it draws later. */
+const newView = () => ({ ac: new AbortController(), fns: new Map(), mounts: [], terms: [] });
 let VIEW = newView();
 
 // One counter for every view, so a key or a generated id never means two things: an element
@@ -3825,6 +3826,11 @@ function viewConversation(id) {
   const q = App.route.query.q || '';
   const target = App.route.query.m || '';
   if (target) selectBranchFor(conv, target);
+  // Opened from a search: mark the words, in the thread and in blocks opened later.
+  const terms = searchTerms(q);
+  VIEW.terms = terms;
+  // Draws the thread again in place (branch switch, option change, a jump to an output).
+  const draw = opts => drawThread(conv, terms, opts);
   const p = conv.owner;
   const totalMsgs = conv.msgCount;
   const path = currentPath(conv);
@@ -3832,7 +3838,7 @@ function viewConversation(id) {
   const outputs = collectOutputs(conv);
 
   after(() => {
-    drawThread(conv, { q, target });
+    draw({ target });
     // drawThread runs again on branch switches, so the sticky toolbar is wired here, once.
     const main = $('#main'), tb = $('#conv-toolbar');
     if (tb) main.addEventListener('scroll', () => tb.classList.toggle('stuck', main.scrollTop > 120), { passive: true, signal: VIEW.ac.signal });
@@ -3860,12 +3866,12 @@ function viewConversation(id) {
     </div>
 
     ${conv.summary && conv.summary.trim() ? `<details class="card summary-box"><summary>Summary written by Claude</summary>${mdBlock(conv.summary)}</details>` : ''}
-    ${outputs.length ? outputsBox(conv, outputs) : ''}
+    ${outputs.length ? outputsBox(conv, outputs, draw) : ''}
 
     <div class="conv-toolbar" id="conv-toolbar">
-      <label class="chip${CONV_OPTS.showTools ? ' on' : ''}"><input type="checkbox" ${on(el => setConvOpt(conv, 'showTools', el))} ${CONV_OPTS.showTools ? 'checked' : ''} hidden>⚙ Tool calls</label>
-      <label class="chip${CONV_OPTS.showThinking ? ' on' : ''}"><input type="checkbox" ${on(el => setConvOpt(conv, 'showThinking', el))} ${CONV_OPTS.showThinking ? 'checked' : ''} hidden>💭 Thinking</label>
-      <label class="chip${CONV_OPTS.showSystem ? ' on' : ''}" title="Text the platform added to messages (memory snapshots, dates)"><input type="checkbox" ${on(el => setConvOpt(conv, 'showSystem', el))} ${CONV_OPTS.showSystem ? 'checked' : ''} hidden>⚑ System notes</label>
+      <label class="chip${CONV_OPTS.showTools ? ' on' : ''}"><input type="checkbox" ${on(el => setConvOpt(draw, 'showTools', el))} ${CONV_OPTS.showTools ? 'checked' : ''} hidden>⚙ Tool calls</label>
+      <label class="chip${CONV_OPTS.showThinking ? ' on' : ''}"><input type="checkbox" ${on(el => setConvOpt(draw, 'showThinking', el))} ${CONV_OPTS.showThinking ? 'checked' : ''} hidden>💭 Thinking</label>
+      <label class="chip${CONV_OPTS.showSystem ? ' on' : ''}" title="Text the platform added to messages (memory snapshots, dates)"><input type="checkbox" ${on(el => setConvOpt(draw, 'showSystem', el))} ${CONV_OPTS.showSystem ? 'checked' : ''} hidden>⚑ System notes</label>
       <button class="chip" type="button" ${on(expandAll)}>Expand all</button>
       <button class="chip" type="button" ${on(collapseAll)}>Collapse all</button>
       ${q ? `<span class="chip on">Highlighting “${esc(q)}” <a href="#/c/${encodeURIComponent(conv.id)}" title="Clear">×</a></span><span class="muted" id="hit-count" style="font-size:13px"></span>` : ''}
@@ -3879,11 +3885,11 @@ function viewConversation(id) {
 }
 
 // A toolbar option (tool calls, thinking, system notes): save it and redraw the thread in place.
-function setConvOpt(conv, key, el) {
+function setConvOpt(draw, key, el) {
   CONV_OPTS[key] = el.checked;
   saveConvOpts();
   el.closest('.chip').classList.toggle('on', el.checked);
-  drawThread(conv, { q: App.route.query.q || '', anchor: threadAnchor() });
+  draw({ anchor: threadAnchor() });
 }
 
 // Expand all / Collapse all, for conversations and design chats.
@@ -3903,14 +3909,14 @@ function threadAnchor() {
 // Counts thread draws; a newer draw (branch switch, option change) stops the batches of an older one.
 let threadSeq = 0;
 
-/* opts: q (highlight), target (message to scroll to and flash),
- *       anchor {id, top} (keep this message at the same screen position after a redraw). */
-function drawThread(conv, opts) {
+/* terms: the search words to highlight. opts: target (message to scroll to and flash),
+ * anchor {id, top} (keep this message at the same screen position after a redraw). */
+function drawThread(conv, terms, opts) {
   const thread = $('#thread');
   const tok = ++threadSeq;
   const path = currentPath(conv);
-  const terms = opts.q ? searchTerms(opts.q) : [];
-  const ctx = { conv, created: buildTree(conv).created };
+  // ctx.draw draws the thread again, with the same words (branch arrows use it).
+  const ctx = { conv, created: buildTree(conv).created, draw: o => drawThread(conv, terms, o) };
   dropKeys(thread);
   thread.innerHTML = '';
   let i = 0;
@@ -3969,9 +3975,9 @@ function messageHtml(m, ctx) {
   const prev = sibs[idx - 1], next = sibs[idx + 1];
   const branch = sibs.length > 1
     ? `<span class="branch-nav" title="${human ? 'This message was edited' : 'This reply was regenerated'}: ${sibs.length} versions">
-        <button type="button" ${prev ? on(el => switchBranch(conv, prev.uuid, el)) : 'disabled'} aria-label="Previous version">‹</button>
+        <button type="button" ${prev ? on(el => switchBranch(ctx, prev.uuid, el)) : 'disabled'} aria-label="Previous version">‹</button>
         ${idx + 1} / ${sibs.length}
-        <button type="button" ${next ? on(el => switchBranch(conv, next.uuid, el)) : 'disabled'} aria-label="Next version">›</button>
+        <button type="button" ${next ? on(el => switchBranch(ctx, next.uuid, el)) : 'disabled'} aria-label="Next version">›</button>
       </span>` : '';
   const blocks = Array.isArray(m.content) ? m.content : [];
   const firstStart = blocks.reduce((min, b) => { const t = parseTime(b && b.start_timestamp); return t && (!min || t < min) ? t : min; }, 0);
@@ -3995,11 +4001,11 @@ function messageHtml(m, ctx) {
 }
 
 // Show another version of an edited or regenerated message, keeping it where it is on screen.
-function switchBranch(conv, to, el) {
+function switchBranch(ctx, to, el) {
   const msgEl = el.closest('.msg');
   const anchor = msgEl ? { id: to, top: msgEl.getBoundingClientRect().top } : threadAnchor();
-  selectBranchFor(conv, to);
-  drawThread(conv, { q: App.route.query.q || '', anchor });
+  selectBranchFor(ctx.conv, to);
+  ctx.draw({ anchor });
 }
 
 const HUMAN_FOLD = 3000;
@@ -4434,25 +4440,25 @@ function simpleBarTable(input) {
 }
 
 // outputs: collectOutputs(). A tool call's chip comes from TOOL_CARDS; a published artifact
-// links to its page.
-function outputsBox(conv, outputs) {
+// links to its page. draw: draws the thread again (see viewConversation).
+function outputsBox(conv, outputs, draw) {
   const chip = o => {
     if (o.art) {
       const a = DB.artifactById.get(o.art);
       return `<a class="file-chip" href="#/a/${encodeURIComponent(o.art)}">◧ <span dir="auto">${esc(truncate(a ? artifactTitle(a) : 'Published artifact ' + o.art.slice(0, 8), 60))}</span> <span class="sz">published</span></a>`;
     }
     const c = TOOL_CARDS.get(o.use.name).chip(o.use.input || {});
-    return `<button class="file-chip" type="button" ${on(() => gotoBlock(conv, o.msg, 't-' + (o.use.id || '')))} style="cursor:pointer">${c.ico} <span dir="auto">${esc(truncate(c.label, 60))}</span> <span class="sz">${esc(c.kind)}</span></button>`;
+    return `<button class="file-chip" type="button" ${on(() => gotoBlock(conv, draw, o.msg, 't-' + (o.use.id || '')))} style="cursor:pointer">${c.ico} <span dir="auto">${esc(truncate(c.label, 60))}</span> <span class="sz">${esc(c.kind)}</span></button>`;
   };
   return `<details class="card summary-box"${outputs.length <= 6 ? ' open' : ''}><summary>What Claude produced here <span class="badge">${outputs.length}</span></summary>
     <div style="padding:0 16px 14px" class="files-row">${outputs.map(chip).join('')}</div></details>`;
 }
 
 // Open a produced file or widget in the thread. It may be on another branch or not drawn yet.
-function gotoBlock(conv, msgId, target) {
+function gotoBlock(conv, draw, msgId, target) {
   if (!document.getElementById(target) && msgId) {
     if (!currentPath(conv).some(m => m.uuid === msgId)) selectBranchFor(conv, msgId);
-    drawThread(conv, { q: App.route.query.q || '', target: msgId });
+    draw({ target: msgId });
   }
   revealBlock(target);
 }
@@ -4531,17 +4537,20 @@ function viewArtifact(id, vid) {
   const selected = vid && versions.some(v => v.id === vid) ? vid : a.activeVersion;
   const sel = versions.find(v => v.id === selected);
   const isPage = a.kind === 'page';
+  // What the URL asks for, read once: the handlers below get it from here.
+  const query = App.route.query;
+  const board = query.board || '';
 
   // Design boards: the board picker and links between boards. The URL keeps its version part as is.
-  const pickBoard = board => navigate('#/a/' + encodeURIComponent(id) + (vid ? '/' + encodeURIComponent(vid) : '') + '?board=' + encodeURIComponent(board), true);
+  const pickBoard = file => navigate('#/a/' + encodeURIComponent(id) + (vid ? '/' + encodeURIComponent(vid) : '') + '?board=' + encodeURIComponent(file), true);
   after(() => {
-    if (isPage) return drawPage(a);
+    if (isPage) return drawPage(a, query.tab);
     addEventListener('message', e => {
       const f = document.getElementById('art-frame');
       if (!f || e.source !== f.contentWindow || !e.data || typeof e.data.cerBoard !== 'string') return;
       pickBoard(e.data.cerBoard);
     }, { signal: VIEW.ac.signal });
-    return drawVersion(a, selected, App.route.query.view || 'preview', pickBoard);
+    return drawVersion(a, selected, query.view || 'preview', board, pickBoard);
   });
 
   const versionList = versions.map(v => {
@@ -4583,15 +4592,14 @@ function viewArtifact(id, vid) {
 
 /* ---------- Versions ---------- */
 
-async function drawVersion(a, vid, view, pickBoard) {
+async function drawVersion(a, vid, view, board, pickBoard) {
   const box = $('#art-main');
   const info = versionInfo(a, vid);
-  const board = App.route.query.board || '';
   const tabs = [['preview', 'Preview'], ['source', 'Source'], ['files', 'Files']];
   const bar = (extra) => `<div class="frame-bar">
       ${tabs.map(([k, l]) => `<button class="btn small${view === k ? ' primary' : ''}" type="button" ${on(() => navigate('#/a/' + encodeURIComponent(a.id) + '/' + encodeURIComponent(vid) + '?view=' + k, true))}>${l}</button>`).join('')}
       <span class="grow"></span>${extra || ''}
-      <button class="btn small" type="button" ${on(() => openPreviewTab(a, vid))} title="Open the preview in a new tab">↗ New tab</button>
+      <button class="btn small" type="button" ${on(() => openPreviewTab(a, vid, board))} title="Open the preview in a new tab">↗ New tab</button>
       <button class="btn small" type="button" ${on(el => el.closest('.frame-box').classList.toggle('full'))} title="Full screen (Esc to leave)">⤢</button>
       <button class="btn small" type="button" ${on(() => downloadVersion(a, vid))} title="Download this version">⇩</button>
     </div>`;
@@ -4671,7 +4679,8 @@ async function openArtifactFile(path, node) {
 
 /* ---------- Pages (Claude Docs) ---------- */
 
-async function drawPage(a) {
+// want: the title of the doc tab to show (?tab=); without it, the first tab.
+async function drawPage(a, want) {
   const box = $('#art-main');
   if (!a.pageNode) { box.innerHTML = '<div class="card empty">This doc has no page.md in the loaded files.</div>'; return; }
   const { signal } = VIEW.ac;
@@ -4686,7 +4695,6 @@ async function drawPage(a) {
   }
   if (signal.aborted) return;
   const tabs = splitTabs(md);
-  const want = App.route.query.tab;
   const idx = Math.max(0, tabs.findIndex(t => t.title === want));
   const tab = tabs[idx] || { title: '', body: md };
   const threads = (a.comments || []).filter(t => !t.tab || t.tab === tab.title || tabs.length === 1);
@@ -4744,14 +4752,14 @@ function threadCommentsHtml(a) {
 
 // Open the window first (inside the click, so pop-up blockers allow it), then fill it.
 // The artifact runs inside a sandboxed frame there too, so it cannot reach this reader.
-async function openPreviewTab(a, vid) {
+async function openPreviewTab(a, vid, board) {
   const w = window.open('', '_blank');
   if (!w) { toast('Pop-up blocked. Allow pop-ups for this page, or use Download.'); return; }
   w.document.open();
   w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>${esc(artifactTitle(a))}</title><style>html,body,iframe{margin:0;border:0;width:100%;height:100%;display:block;font-family:system-ui,sans-serif}</style></head><body><p style="padding:20px">Opening ${esc(artifactTitle(a))}…</p></body></html>`);
   w.document.close();
   try {
-    const built = await getBuilt(a, vid, versionInfo(a, vid), App.route.query.board || '');
+    const built = await getBuilt(a, vid, versionInfo(a, vid), board);
     if (built.html == null) { w.document.body.innerHTML = '<p style="padding:20px">Nothing to preview for this version.</p>'; return; }
     w.document.body.innerHTML = '<iframe sandbox="allow-scripts allow-popups allow-forms allow-modals allow-downloads" referrerpolicy="no-referrer"></iframe>';
     w.document.querySelector('iframe').srcdoc = built.html;
@@ -4816,8 +4824,9 @@ function viewDesignChat(id) {
   const receipts = new Map();
   for (const m of msgs) { const c = m.content || {}; if (c.questionReceipt && c.questionReceipt.questionId) receipts.set(c.questionReceipt.questionId, c.questionReceipt); }
   const tokens = msgs.reduce((a, m) => a + ((m.content && m.content.turnInputTokens) || 0), 0);
-  const q = App.route.query.q;
-  if (q) after(() => highlightIn($('#thread'), searchTerms(q)));
+  // Opened from a search: mark the words, in the thread now and in blocks opened later.
+  VIEW.terms = searchTerms(App.route.query.q);
+  if (VIEW.terms.length) after(() => highlightIn($('#thread'), VIEW.terms));
   return `<div class="page narrow">
     <div class="crumbs"><a href="#/design">Design chats</a><span>›</span>${d.owner && !d.owner.system ? `${personLink(d.owner)}<span>›</span>` : ''}<span dir="auto">${esc(d.project.name)}</span></div>
     <div class="page-head"><div class="grow">
@@ -7784,7 +7793,7 @@ function setupShell() {
     // The body is drawn once, so the key is not needed again.
     delete d.dataset.lazy;
     VIEW.fns.delete(key);
-    if (App.route.query.q) highlightIn(body, searchTerms(App.route.query.q));
+    if (VIEW.terms.length) highlightIn(body, VIEW.terms);
   }, true);
 }
 

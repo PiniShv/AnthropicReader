@@ -59,17 +59,20 @@ function viewArtifact(id, vid) {
   const selected = vid && versions.some(v => v.id === vid) ? vid : a.activeVersion;
   const sel = versions.find(v => v.id === selected);
   const isPage = a.kind === 'page';
+  // What the URL asks for, read once: the handlers below get it from here.
+  const query = App.route.query;
+  const board = query.board || '';
 
   // Design boards: the board picker and links between boards. The URL keeps its version part as is.
-  const pickBoard = board => navigate('#/a/' + encodeURIComponent(id) + (vid ? '/' + encodeURIComponent(vid) : '') + '?board=' + encodeURIComponent(board), true);
+  const pickBoard = file => navigate('#/a/' + encodeURIComponent(id) + (vid ? '/' + encodeURIComponent(vid) : '') + '?board=' + encodeURIComponent(file), true);
   after(() => {
-    if (isPage) return drawPage(a);
+    if (isPage) return drawPage(a, query.tab);
     addEventListener('message', e => {
       const f = document.getElementById('art-frame');
       if (!f || e.source !== f.contentWindow || !e.data || typeof e.data.cerBoard !== 'string') return;
       pickBoard(e.data.cerBoard);
     }, { signal: VIEW.ac.signal });
-    return drawVersion(a, selected, App.route.query.view || 'preview', pickBoard);
+    return drawVersion(a, selected, query.view || 'preview', board, pickBoard);
   });
 
   const versionList = versions.map(v => {
@@ -111,15 +114,14 @@ function viewArtifact(id, vid) {
 
 /* ---------- Versions ---------- */
 
-async function drawVersion(a, vid, view, pickBoard) {
+async function drawVersion(a, vid, view, board, pickBoard) {
   const box = $('#art-main');
   const info = versionInfo(a, vid);
-  const board = App.route.query.board || '';
   const tabs = [['preview', 'Preview'], ['source', 'Source'], ['files', 'Files']];
   const bar = (extra) => `<div class="frame-bar">
       ${tabs.map(([k, l]) => `<button class="btn small${view === k ? ' primary' : ''}" type="button" ${on(() => navigate('#/a/' + encodeURIComponent(a.id) + '/' + encodeURIComponent(vid) + '?view=' + k, true))}>${l}</button>`).join('')}
       <span class="grow"></span>${extra || ''}
-      <button class="btn small" type="button" ${on(() => openPreviewTab(a, vid))} title="Open the preview in a new tab">↗ New tab</button>
+      <button class="btn small" type="button" ${on(() => openPreviewTab(a, vid, board))} title="Open the preview in a new tab">↗ New tab</button>
       <button class="btn small" type="button" ${on(el => el.closest('.frame-box').classList.toggle('full'))} title="Full screen (Esc to leave)">⤢</button>
       <button class="btn small" type="button" ${on(() => downloadVersion(a, vid))} title="Download this version">⇩</button>
     </div>`;
@@ -199,7 +201,8 @@ async function openArtifactFile(path, node) {
 
 /* ---------- Pages (Claude Docs) ---------- */
 
-async function drawPage(a) {
+// want: the title of the doc tab to show (?tab=); without it, the first tab.
+async function drawPage(a, want) {
   const box = $('#art-main');
   if (!a.pageNode) { box.innerHTML = '<div class="card empty">This doc has no page.md in the loaded files.</div>'; return; }
   const { signal } = VIEW.ac;
@@ -214,7 +217,6 @@ async function drawPage(a) {
   }
   if (signal.aborted) return;
   const tabs = splitTabs(md);
-  const want = App.route.query.tab;
   const idx = Math.max(0, tabs.findIndex(t => t.title === want));
   const tab = tabs[idx] || { title: '', body: md };
   const threads = (a.comments || []).filter(t => !t.tab || t.tab === tab.title || tabs.length === 1);
@@ -272,14 +274,14 @@ function threadCommentsHtml(a) {
 
 // Open the window first (inside the click, so pop-up blockers allow it), then fill it.
 // The artifact runs inside a sandboxed frame there too, so it cannot reach this reader.
-async function openPreviewTab(a, vid) {
+async function openPreviewTab(a, vid, board) {
   const w = window.open('', '_blank');
   if (!w) { toast('Pop-up blocked. Allow pop-ups for this page, or use Download.'); return; }
   w.document.open();
   w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>${esc(artifactTitle(a))}</title><style>html,body,iframe{margin:0;border:0;width:100%;height:100%;display:block;font-family:system-ui,sans-serif}</style></head><body><p style="padding:20px">Opening ${esc(artifactTitle(a))}…</p></body></html>`);
   w.document.close();
   try {
-    const built = await getBuilt(a, vid, versionInfo(a, vid), App.route.query.board || '');
+    const built = await getBuilt(a, vid, versionInfo(a, vid), board);
     if (built.html == null) { w.document.body.innerHTML = '<p style="padding:20px">Nothing to preview for this version.</p>'; return; }
     w.document.body.innerHTML = '<iframe sandbox="allow-scripts allow-popups allow-forms allow-modals allow-downloads" referrerpolicy="no-referrer"></iframe>';
     w.document.querySelector('iframe').srcdoc = built.html;

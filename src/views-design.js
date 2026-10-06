@@ -41,8 +41,9 @@ function viewDesignChat(id) {
   const receipts = new Map();
   for (const m of msgs) { const c = m.content || {}; if (c.questionReceipt && c.questionReceipt.questionId) receipts.set(c.questionReceipt.questionId, c.questionReceipt); }
   const tokens = msgs.reduce((a, m) => a + ((m.content && m.content.turnInputTokens) || 0), 0);
-  const q = App.route.query.q;
-  if (q) after(() => highlightIn($('#thread'), searchTerms(q)));
+  // Opened from a search: mark the words, in the thread now and in blocks opened later.
+  VIEW.terms = searchTerms(App.route.query.q);
+  if (VIEW.terms.length) after(() => highlightIn($('#thread'), VIEW.terms));
   return `<div class="page narrow">
     <div class="crumbs"><a href="#/design">Design chats</a><span>›</span>${d.owner && !d.owner.system ? `${personLink(d.owner)}<span>›</span>` : ''}<span dir="auto">${esc(d.project.name)}</span></div>
     <div class="page-head"><div class="grow">

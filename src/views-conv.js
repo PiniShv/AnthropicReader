@@ -74,6 +74,11 @@ function viewConversation(id) {
   const q = App.route.query.q || '';
   const target = App.route.query.m || '';
   if (target) selectBranchFor(conv, target);
+  // Opened from a search: mark the words, in the thread and in blocks opened later.
+  const terms = searchTerms(q);
+  VIEW.terms = terms;
+  // Draws the thread again in place (branch switch, option change, a jump to an output).
+  const draw = opts => drawThread(conv, terms, opts);
   const p = conv.owner;
   const totalMsgs = conv.msgCount;
   const path = currentPath(conv);
@@ -81,7 +86,7 @@ function viewConversation(id) {
   const outputs = collectOutputs(conv);
 
   after(() => {
-    drawThread(conv, { q, target });
+    draw({ target });
     // drawThread runs again on branch switches, so the sticky toolbar is wired here, once.
     const main = $('#main'), tb = $('#conv-toolbar');
     if (tb) main.addEventListener('scroll', () => tb.classList.toggle('stuck', main.scrollTop > 120), { passive: true, signal: VIEW.ac.signal });
@@ -109,12 +114,12 @@ function viewConversation(id) {
     </div>
 
     ${conv.summary && conv.summary.trim() ? `<details class="card summary-box"><summary>Summary written by Claude</summary>${mdBlock(conv.summary)}</details>` : ''}
-    ${outputs.length ? outputsBox(conv, outputs) : ''}
+    ${outputs.length ? outputsBox(conv, outputs, draw) : ''}
 
     <div class="conv-toolbar" id="conv-toolbar">
-      <label class="chip${CONV_OPTS.showTools ? ' on' : ''}"><input type="checkbox" ${on(el => setConvOpt(conv, 'showTools', el))} ${CONV_OPTS.showTools ? 'checked' : ''} hidden>⚙ Tool calls</label>
-      <label class="chip${CONV_OPTS.showThinking ? ' on' : ''}"><input type="checkbox" ${on(el => setConvOpt(conv, 'showThinking', el))} ${CONV_OPTS.showThinking ? 'checked' : ''} hidden>💭 Thinking</label>
-      <label class="chip${CONV_OPTS.showSystem ? ' on' : ''}" title="Text the platform added to messages (memory snapshots, dates)"><input type="checkbox" ${on(el => setConvOpt(conv, 'showSystem', el))} ${CONV_OPTS.showSystem ? 'checked' : ''} hidden>⚑ System notes</label>
+      <label class="chip${CONV_OPTS.showTools ? ' on' : ''}"><input type="checkbox" ${on(el => setConvOpt(draw, 'showTools', el))} ${CONV_OPTS.showTools ? 'checked' : ''} hidden>⚙ Tool calls</label>
+      <label class="chip${CONV_OPTS.showThinking ? ' on' : ''}"><input type="checkbox" ${on(el => setConvOpt(draw, 'showThinking', el))} ${CONV_OPTS.showThinking ? 'checked' : ''} hidden>💭 Thinking</label>
+      <label class="chip${CONV_OPTS.showSystem ? ' on' : ''}" title="Text the platform added to messages (memory snapshots, dates)"><input type="checkbox" ${on(el => setConvOpt(draw, 'showSystem', el))} ${CONV_OPTS.showSystem ? 'checked' : ''} hidden>⚑ System notes</label>
       <button class="chip" type="button" ${on(expandAll)}>Expand all</button>
       <button class="chip" type="button" ${on(collapseAll)}>Collapse all</button>
       ${q ? `<span class="chip on">Highlighting “${esc(q)}” <a href="#/c/${encodeURIComponent(conv.id)}" title="Clear">×</a></span><span class="muted" id="hit-count" style="font-size:13px"></span>` : ''}
@@ -128,11 +133,11 @@ function viewConversation(id) {
 }
 
 // A toolbar option (tool calls, thinking, system notes): save it and redraw the thread in place.
-function setConvOpt(conv, key, el) {
+function setConvOpt(draw, key, el) {
   CONV_OPTS[key] = el.checked;
   saveConvOpts();
   el.closest('.chip').classList.toggle('on', el.checked);
-  drawThread(conv, { q: App.route.query.q || '', anchor: threadAnchor() });
+  draw({ anchor: threadAnchor() });
 }
 
 // Expand all / Collapse all, for conversations and design chats.
@@ -152,14 +157,14 @@ function threadAnchor() {
 // Counts thread draws; a newer draw (branch switch, option change) stops the batches of an older one.
 let threadSeq = 0;
 
-/* opts: q (highlight), target (message to scroll to and flash),
- *       anchor {id, top} (keep this message at the same screen position after a redraw). */
-function drawThread(conv, opts) {
+/* terms: the search words to highlight. opts: target (message to scroll to and flash),
+ * anchor {id, top} (keep this message at the same screen position after a redraw). */
+function drawThread(conv, terms, opts) {
   const thread = $('#thread');
   const tok = ++threadSeq;
   const path = currentPath(conv);
-  const terms = opts.q ? searchTerms(opts.q) : [];
-  const ctx = { conv, created: buildTree(conv).created };
+  // ctx.draw draws the thread again, with the same words (branch arrows use it).
+  const ctx = { conv, created: buildTree(conv).created, draw: o => drawThread(conv, terms, o) };
   dropKeys(thread);
   thread.innerHTML = '';
   let i = 0;
@@ -218,9 +223,9 @@ function messageHtml(m, ctx) {
   const prev = sibs[idx - 1], next = sibs[idx + 1];
   const branch = sibs.length > 1
     ? `<span class="branch-nav" title="${human ? 'This message was edited' : 'This reply was regenerated'}: ${sibs.length} versions">
-        <button type="button" ${prev ? on(el => switchBranch(conv, prev.uuid, el)) : 'disabled'} aria-label="Previous version">‹</button>
+        <button type="button" ${prev ? on(el => switchBranch(ctx, prev.uuid, el)) : 'disabled'} aria-label="Previous version">‹</button>
         ${idx + 1} / ${sibs.length}
-        <button type="button" ${next ? on(el => switchBranch(conv, next.uuid, el)) : 'disabled'} aria-label="Next version">›</button>
+        <button type="button" ${next ? on(el => switchBranch(ctx, next.uuid, el)) : 'disabled'} aria-label="Next version">›</button>
       </span>` : '';
   const blocks = Array.isArray(m.content) ? m.content : [];
   const firstStart = blocks.reduce((min, b) => { const t = parseTime(b && b.start_timestamp); return t && (!min || t < min) ? t : min; }, 0);
@@ -244,11 +249,11 @@ function messageHtml(m, ctx) {
 }
 
 // Show another version of an edited or regenerated message, keeping it where it is on screen.
-function switchBranch(conv, to, el) {
+function switchBranch(ctx, to, el) {
   const msgEl = el.closest('.msg');
   const anchor = msgEl ? { id: to, top: msgEl.getBoundingClientRect().top } : threadAnchor();
-  selectBranchFor(conv, to);
-  drawThread(conv, { q: App.route.query.q || '', anchor });
+  selectBranchFor(ctx.conv, to);
+  ctx.draw({ anchor });
 }
 
 const HUMAN_FOLD = 3000;
@@ -683,25 +688,25 @@ function simpleBarTable(input) {
 }
 
 // outputs: collectOutputs(). A tool call's chip comes from TOOL_CARDS; a published artifact
-// links to its page.
-function outputsBox(conv, outputs) {
+// links to its page. draw: draws the thread again (see viewConversation).
+function outputsBox(conv, outputs, draw) {
   const chip = o => {
     if (o.art) {
       const a = DB.artifactById.get(o.art);
       return `<a class="file-chip" href="#/a/${encodeURIComponent(o.art)}">◧ <span dir="auto">${esc(truncate(a ? artifactTitle(a) : 'Published artifact ' + o.art.slice(0, 8), 60))}</span> <span class="sz">published</span></a>`;
     }
     const c = TOOL_CARDS.get(o.use.name).chip(o.use.input || {});
-    return `<button class="file-chip" type="button" ${on(() => gotoBlock(conv, o.msg, 't-' + (o.use.id || '')))} style="cursor:pointer">${c.ico} <span dir="auto">${esc(truncate(c.label, 60))}</span> <span class="sz">${esc(c.kind)}</span></button>`;
+    return `<button class="file-chip" type="button" ${on(() => gotoBlock(conv, draw, o.msg, 't-' + (o.use.id || '')))} style="cursor:pointer">${c.ico} <span dir="auto">${esc(truncate(c.label, 60))}</span> <span class="sz">${esc(c.kind)}</span></button>`;
   };
   return `<details class="card summary-box"${outputs.length <= 6 ? ' open' : ''}><summary>What Claude produced here <span class="badge">${outputs.length}</span></summary>
     <div style="padding:0 16px 14px" class="files-row">${outputs.map(chip).join('')}</div></details>`;
 }
 
 // Open a produced file or widget in the thread. It may be on another branch or not drawn yet.
-function gotoBlock(conv, msgId, target) {
+function gotoBlock(conv, draw, msgId, target) {
   if (!document.getElementById(target) && msgId) {
     if (!currentPath(conv).some(m => m.uuid === msgId)) selectBranchFor(conv, msgId);
-    drawThread(conv, { q: App.route.query.q || '', target: msgId });
+    draw({ target: msgId });
   }
   revealBlock(target);
 }

@@ -373,7 +373,7 @@ function setupShell() {
     // The body is drawn once, so the key is not needed again.
     delete d.dataset.lazy;
     VIEW.fns.delete(key);
-    if (App.route.query.q) highlightIn(body, searchTerms(App.route.query.q));
+    if (VIEW.terms.length) highlightIn(body, VIEW.terms);
   }, true);
 }
 
