@@ -44,6 +44,18 @@ const Loader = {
   },
 };
 
+// A note and a button under the loading rows, for the person to decide what comes next.
+function loaderAction(note, label, action) {
+  const row = document.createElement('div');
+  row.className = 'row wrap';
+  row.style.marginTop = '12px';
+  row.innerHTML = `<span class="grow muted" style="font-size:14px">${esc(note)}</span><button class="btn primary" type="button">${esc(label)}</button>`;
+  Loader.box().appendChild(row);
+  const btn = row.querySelector('button');
+  btn.addEventListener('click', action);
+  btn.focus();
+}
+
 async function startLoad(files, handles) {
   if (!files || !files.length) return;
   $('#landing').hidden = false;
@@ -60,14 +72,9 @@ async function startLoad(files, handles) {
       // Do not hide failures behind the app: say what is missing and let the person decide.
       problems.slice(0, 8).forEach((w, i) => Loader.set('warn' + i, w, 1, '', 'error'));
       if (problems.length > 8) Loader.set('warn-more', `…and ${problems.length - 8} more (see “About this export”).`, 1, '', 'error');
-      const row = document.createElement('div');
-      row.className = 'row wrap';
-      row.style.marginTop = '12px';
-      row.innerHTML = `<span class="grow muted" style="font-size:14px">Some files could not be read, so part of the data is missing.</span><button class="btn primary" type="button" id="continue-anyway">Continue anyway</button>`;
-      Loader.box().appendChild(row);
-      $('#continue-anyway').addEventListener('click', showApp);
-      announce('Some files could not be read, so part of the data is missing.');
-      $('#continue-anyway').focus();
+      const note = 'Some files or records could not be read, so part of the data is missing.';
+      loaderAction(note, 'Continue anyway', showApp);
+      announce(note);
       return;
     }
     if (!hasRecords() && DB.manifests.length) { showManifestOnly(); return; }
@@ -77,6 +84,8 @@ async function startLoad(files, handles) {
     const msg = 'Could not read the export: ' + (err && err.message ? err.message : err);
     Loader.set('fatal', msg, 1, '', 'error');
     announce(msg);
+    // A failed import leaves DB as it was, so an export that was open is still there.
+    if (hasRecords()) loaderAction('The export that was open is not changed.', 'Back to the open export', showApp);
   } finally {
     $$('#dropzone button').forEach(b => (b.disabled = false));
   }

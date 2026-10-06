@@ -7,6 +7,11 @@
 
 const NO_OWNER = '__none__';
 
+// Lists in an export can hold null or other junk where an object should be: read objects only.
+const isObj = v => !!v && typeof v === 'object' && !Array.isArray(v);
+const objects = list => (Array.isArray(list) ? list.filter(isObj) : []);
+const hasText = v => typeof v === 'string' && v.trim() !== '';
+
 // The chats that have content. Chats the export left empty are listed, but never counted as
 // conversations: every count, badge and timeline goes through this one rule.
 const withContent = convs => convs.filter(c => !c.empty);
@@ -75,11 +80,34 @@ const DB = Object.assign(emptyDB(), {
 });
 
 function personFor(id, hint) {
-  if (!id) id = NO_OWNER;
+  id = id ? String(id) : NO_OWNER;   // an id of another type would break the name fallbacks
   let p = DB.people.get(id);
   if (!p) { p = new Person(id); DB.people.set(id, p); }
   if (hint && typeof hint === 'string' && hint.trim() && !p.hints.includes(hint.trim())) p.hints.push(hint.trim());
   return p;
+}
+
+/* ---------- Undo for a failed import ---------- */
+
+// A copy of what an import can change: DB's maps and lists, and the people, memories and
+// artifacts it changes in place (one level deep). finalize() works the rest out again.
+function saveDB() {
+  const copy = v => (Array.isArray(v) ? v.slice() : v instanceof Map ? new Map(v) : v instanceof Set ? new Set(v) : v);
+  const fields = o => Object.fromEntries(Object.entries(o).map(([k, v]) => [k, copy(v)]));
+  const records = new Map();
+  for (const map of [DB.people, DB.memoryByPerson, DB.artifactById]) for (const x of map.values()) records.set(x, fields(x));
+  const top = fields(DB);
+  delete top.generation;   // keeps counting up, so no cache from the failed import is used
+  return { top, records };
+}
+
+function restoreDB(saved) {
+  for (const [x, o] of saved.records) {
+    for (const k of Object.keys(x)) if (!(k in o)) delete x[k];
+    Object.assign(x, o);
+  }
+  Object.assign(DB, saved.top);
+  finalize();
 }
 
 /* ---------- Artifact versions ---------- */
@@ -211,21 +239,21 @@ function finalize() {
     a.owner.artifacts.push(a);
     a.owner.touch(a.updated);
     // Page comments carry real author uuids.
-    for (const th of a.comments || []) {
-      for (const cm of (th && th.comments) || []) {
-        const au = cm.author || null;
+    for (const th of objects(a.comments)) {
+      for (const cm of objects(th.comments)) {
+        const au = cm.author;
         const who = au && au.uuid ? personFor(au.uuid, au.full_name) : null;
         if (who) { who.comments.push({ artifact: a, thread: th, comment: cm, byAgent: !!cm.posted_by_agent, source: 'page' }); who.touch(parseTime(cm.created_at)); }
       }
     }
     // Threads with the comments that do not repeat a doc comment; threads with none are left out.
     a.threadView = [];
-    for (const th of a.threads || []) {
+    for (const th of objects(a.threads)) {
       const comments = [];
-      for (const cm of (th && th.comments) || []) if (!isDuplicateThreadComment(a, cm)) comments.push(cm);
+      for (const cm of objects(th.comments)) if (!isDuplicateThreadComment(a, cm)) comments.push(cm);
       if (comments.length) a.threadView.push({ th, comments });
     }
-    a.commentCount = (a.comments || []).reduce((n, t) => n + (t && t.comments ? t.comments.length : 0), 0) +
+    a.commentCount = objects(a.comments).reduce((n, t) => n + objects(t.comments).length, 0) +
       a.threadView.reduce((n, x) => n + x.comments.length, 0);
     // Thread comments are anonymous; only the owner's own (non-Claude) comments are attributable.
     for (const { th, comments } of a.threadView) {

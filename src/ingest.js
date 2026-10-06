@@ -47,12 +47,12 @@ function sniffShape(v) {
 /* ---------- Ingest: each record type ---------- */
 
 function addUser(u) {
-  if (!u || !u.uuid) return;
+  if (!u.uuid) return;
   const p = personFor(u.uuid);
   p.known = true;
   if (u.full_name && String(u.full_name).trim()) p.fullName = String(u.full_name).trim();
-  if (u.email_address) p.email = u.email_address;
-  if (u.verified_phone_number) p.phone = u.verified_phone_number;
+  if (u.email_address) p.email = String(u.email_address);
+  if (u.verified_phone_number) p.phone = String(u.verified_phone_number);
 }
 
 /* Tools whose output the person saw (files, artifacts, widgets, drafts): name -> whether one
@@ -73,16 +73,29 @@ function isOutput(b) {
 // Artifact ids referenced from chat JSON: published links and tool result ids.
 const RE_ART_REF = /(?:\/artifact\/|artifact_id\\?"\s*:\s*\\?")([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/g;
 
+// A chat's messages as the views read them (from raw): objects only, and their lists of blocks,
+// attachments and files hold objects only. The list itself comes back when it is clean already.
+function cleanMessages(list) {
+  if (!Array.isArray(list)) return [];
+  let changed = false;
+  const out = [];
+  for (const m of list) {
+    if (!isObj(m)) { changed = true; continue; }
+    const fix = {};
+    for (const k of ['content', 'attachments', 'files']) if (Array.isArray(m[k]) && !m[k].every(isObj)) fix[k] = objects(m[k]);
+    if (Object.keys(fix).length) changed = true;
+    out.push(Object.keys(fix).length ? Object.assign({}, m, fix) : m);
+  }
+  return changed ? out : list;
+}
+
 function addConversation(c, source, rawText) {
-  if (!c || !c.uuid) return;
-  const msgs = Array.isArray(c.chat_messages) ? c.chat_messages : [];
+  if (!c.uuid) return;
+  const msgs = cleanMessages(c.chat_messages);
   const updated = parseTime(c.updated_at);
   const prev = DB.convById.get(c.uuid);
-  if (prev) {
-    // Same chat in two exports: keep the newer / longer copy. It moves to the end, like a new chat.
-    if (updated < prev.updated || (updated === prev.updated && msgs.length <= prev.msgCount)) return;
-    DB.convById.delete(c.uuid);
-  }
+  // Same chat in two exports: keep the newer / longer copy. It moves to the end, like a new chat.
+  if (prev && (updated < prev.updated || (updated === prev.updated && msgs.length <= prev.msgCount))) return;
   let human = 0, firstTs = 0, lastTs = 0, contentful = 0, files = 0, outputs = 0, tools = 0, firstHuman = '', firstReply = '';
   for (const m of msgs) {
     if (m.sender === 'human') human++;
@@ -90,14 +103,15 @@ function addConversation(c, source, rawText) {
     if (t && (!firstTs || t < firstTs)) firstTs = t;
     if (t > lastTs) lastTs = t;
     const blocks = Array.isArray(m.content) ? m.content : [];
-    if (blocks.length || (m.text && m.text.trim()) || (m.files && m.files.length) || (m.attachments && m.attachments.length)) contentful++;
-    if (m.sender === 'human') files += (m.files ? m.files.length : 0);   // assistant files are tool screenshots
+    const mfiles = objects(m.files);
+    if (blocks.length || hasText(m.text) || mfiles.length || objects(m.attachments).length) contentful++;
+    if (m.sender === 'human') files += mfiles.length;   // assistant files are tool screenshots
     for (const b of blocks) {
-      if (b && b.type === 'tool_use') { tools++; if (isOutput(b)) outputs++; }
-      else if (!firstHuman && m.sender === 'human' && b && b.type === 'text' && b.text && b.text.trim()) firstHuman = b.text;
-      else if (!firstReply && m.sender === 'assistant' && b && b.type === 'text' && b.text && b.text.trim()) firstReply = b.text;
+      if (b.type === 'tool_use') { tools++; if (isOutput(b)) outputs++; }
+      else if (!firstHuman && m.sender === 'human' && b.type === 'text' && hasText(b.text)) firstHuman = b.text;
+      else if (!firstReply && m.sender === 'assistant' && b.type === 'text' && hasText(b.text)) firstReply = b.text;
     }
-    if (!firstHuman && m.sender === 'human' && m.text && m.text.trim()) firstHuman = m.text;
+    if (!firstHuman && m.sender === 'human' && hasText(m.text)) firstHuman = m.text;
   }
   // Branch points as the thread shows them: the same rule as buildTree (conversation.js).
   let forks = 0;
@@ -109,14 +123,14 @@ function addConversation(c, source, rawText) {
     let m;
     while ((m = RE_ART_REF.exec(rawText))) artRefs.add(m[1]);
   }
-  const name = (c.name || '').trim();
+  const name = String(c.name || '').trim();
   const conv = {
     type: 'conversation',
     id: c.uuid,
     // No name: first prompt, else Claude's first reply, else what was uploaded.
     title: name || truncate(oneLine(firstHuman || firstReply), 70) || (files ? plural(files, 'uploaded file') + ' (not in export)' : ''),
     titleIsDerived: !name,
-    summary: c.summary || '',
+    summary: String(c.summary || ''),
     created: parseTime(c.created_at),
     updated,
     ownerId: (c.account && c.account.uuid) || null,
@@ -129,22 +143,23 @@ function addConversation(c, source, rawText) {
     toolCount: tools,
     forks,
     artRefs,
-    raw: c,
+    raw: msgs === c.chat_messages || c.chat_messages == null ? c : Object.assign({}, c, { chat_messages: msgs }),
     source,
   };
+  if (prev) DB.convById.delete(conv.id);
   DB.convById.set(conv.id, conv);
 }
 
 function addProject(p, source) {
-  if (!p || !p.uuid) return;
+  if (!p.uuid) return;
   const updated = parseTime(p.updated_at);
   const prev = DB.projectById.get(p.uuid);
   if (prev && prev.updated >= updated) return;
-  const creator = p.creator || {};
+  const creator = isObj(p.creator) ? p.creator : {};
   const proj = {
     type: 'project',
     id: p.uuid,
-    name: (p.name || '').trim(),
+    name: String(p.name || '').trim(),
     description: p.description || '',
     isPrivate: p.is_private !== false,
     isStarter: !!p.is_starter_project,
@@ -153,9 +168,9 @@ function addProject(p, source) {
     updated,
     ownerId: creator.uuid || null,
     ownerHint: creator.full_name || '',
-    docs: (Array.isArray(p.docs) ? p.docs : []).map(d => ({
+    docs: objects(p.docs).map(d => ({
       id: d.uuid || '',
-      filename: d.filename || '(unnamed)',
+      filename: String(d.filename || '(unnamed)'),
       content: d.content == null ? '' : String(d.content),
       created: parseTime(d.created_at),
     })),
@@ -192,19 +207,20 @@ function parseFrontmatter(text) {
 }
 
 function addMemory(m, source) {
-  if (!m || !m.account_uuid) return;
-  const files = (Array.isArray(m.memory_files) ? m.memory_files : []).map(f => {
-    const fm = parseFrontmatter(f.content || '');
+  if (!m.account_uuid) return;
+  const files = objects(m.memory_files).map(f => {
+    const content = String(f.content || ''), path = String(f.path || '');
+    const fm = parseFrontmatter(content);
     return {
-      path: f.path || '',
-      content: f.content || '',
+      path,
+      content,
       updated: parseTime(f.updated_at),
       meta: fm.meta,
       body: fm.body,
-      stem: (f.path || '').split('/').pop().replace(/\.md$/i, ''),
+      stem: path.split('/').pop().replace(/\.md$/i, ''),
     };
   });
-  const projectMemories = Object.entries(m.project_memories || {}).map(([projectId, text]) => ({ projectId, text: String(text || '') }));
+  const projectMemories = Object.entries(isObj(m.project_memories) ? m.project_memories : {}).map(([projectId, text]) => ({ projectId, text: String(text || '') }));
   const prev = DB.memoryByPerson.get(m.account_uuid);
   const mem = prev || { type: 'memory', id: m.account_uuid, ownerId: m.account_uuid, conversationsMemory: '', projectMemories: [], files: [], updated: 0, sources: [], rank: -1 };
   // Merge across exports. The summaries have no timestamp, so the copy whose memory files
@@ -212,7 +228,7 @@ function addMemory(m, source) {
   // Nothing is dropped: older text only fills gaps.
   const rank = files.reduce((mx, f) => Math.max(mx, f.updated || 0), 0);
   const newer = rank >= mem.rank;
-  if (m.conversations_memory && (newer || !mem.conversationsMemory)) mem.conversationsMemory = m.conversations_memory;
+  if (m.conversations_memory && (newer || !mem.conversationsMemory)) mem.conversationsMemory = String(m.conversations_memory);
   for (const pm of projectMemories) {
     const i = mem.projectMemories.findIndex(x => x.projectId === pm.projectId);
     if (i < 0) mem.projectMemories.push(pm); else if (newer) mem.projectMemories[i] = pm;
@@ -261,11 +277,11 @@ function dedupeDesignMessages(msgs) {
 }
 
 function addDesignChat(d, source) {
-  if (!d || !d.uuid) return;
+  if (!d.uuid) return;
   const updated = parseTime(d.updated_at);
   const prev = DB.designById.get(d.uuid);
   if (prev && prev.updated >= updated) return;
-  const msgs = dedupeDesignMessages(Array.isArray(d.messages) ? d.messages : []);
+  const msgs = dedupeDesignMessages(objects(d.messages));
   // Attribution: uuid authors, plus name-only messages resolved inside this chat.
   const nameToId = new Map();
   const hints = new Map();
@@ -295,7 +311,7 @@ function addDesignChat(d, source) {
   let ownerId = null, best = -1;
   for (const id of authorOrder) { const n = realCounts.get(id) || 0; if (n > best) { best = n; ownerId = id; } }
   const projectName = d.project && d.project.name ? String(d.project.name) : '';
-  const rawTitle = (d.title || '').trim();
+  const rawTitle = String(d.title || '').trim();
   const chat = {
     type: 'design',
     id: d.uuid,
@@ -333,9 +349,9 @@ function artifactFor(id) {
 
 // The artifact fields that one artifact.json gives, or null when it is not an object.
 function artifactMeta(j) {
-  if (!j || typeof j !== 'object') return null;
-  const versions = (Array.isArray(j.versions) ? j.versions : []).map(v => ({
-    id: v.id || '', title: decodeEntities(v.title || ''), description: v.description || '', created: parseTime(v.created_at), raw: v,
+  if (!isObj(j)) return null;
+  const versions = objects(j.versions).map(v => ({
+    id: String(v.id || ''), title: decodeEntities(String(v.title || '')), description: String(v.description || ''), created: parseTime(v.created_at), raw: v,
   }));
   const activeVersion = j.active_version || (versions[0] && versions[0].id) || '';
   const active = versions.find(v => v.id === activeVersion) || versions[0];
@@ -384,17 +400,45 @@ const SMALL_INGEST = new Map([
   ['manifest', addManifest],
 ]);
 
-// Calls fn for the record, or for each record when v is a list.
-/* Calls fn for each record of a file that holds one record or a list of them. A list is
- * streamed, one record at a time: an old-format projects.json or memories.json can be bigger
- * than the longest string Chrome allows (about 512 MB; Firefox and Safari allow more). */
-async function readEach(node, fn) {
-  let any = false;
-  await parseJsonArrayStream(await node.stream(), v => { any = true; fn(v); });
-  if (!any && !node.size) throw new Error('The file is empty.');
+// How many skipped records of one file get a warning of their own; the rest are counted.
+const SKIP_WARNINGS = 5;
+
+/* Calls add(record, text) for each record of a file that holds one record or a list of them.
+ * A list is streamed, one record at a time: conversations.json, or an old-format projects.json,
+ * can be bigger than the longest string Chrome allows (about 512 MB). A record that is not an
+ * object, or that add() cannot read, is skipped with a warning: it never costs the rest of
+ * the file. */
+async function readEach(node, add, onProgress) {
+  let n = 0, skipped = 0;
+  const skip = why => { if (++skipped <= SKIP_WARNINGS) DB.warnings.push(`${node.path}: record ${n} was skipped: ${why}`); };
+  try {
+    await parseJsonArrayStream(await node.stream(), (v, text) => {
+      n++;
+      if (!isObj(v)) skip('it is not an object');
+      else try { add(v, text); } catch (e) { skip(e.message); }
+    }, onProgress);
+  } finally {
+    if (skipped > SKIP_WARNINGS) DB.warnings.push(`${node.path}: ${skipped - SKIP_WARNINGS} more records were skipped`);
+  }
+  if (!n && !node.size) throw new Error('The file is empty.');
 }
 
+// Comment threads, and the comments in them, as objects only (finalize() and the views read them).
+const cleanThreads = list => objects(list).map(th => (Array.isArray(th.comments) && th.comments.every(isObj) ? th : Object.assign({}, th, { comments: objects(th.comments) })));
+
+/* Reads the files into DB and runs finalize(). All or nothing: when it fails, DB goes back to
+ * what it was, so an export that was open before stays as it was. */
 async function importExport(files, ui) {
+  const saved = saveDB();
+  try {
+    await readExport(files, ui);
+  } catch (e) {
+    restoreDB(saved);
+    throw e;
+  }
+}
+
+async function readExport(files, ui) {
   const t0 = performance.now();
   ui.set('scan', 'Reading ' + plural(files.length, 'file') + '…', 0.02, '');
   const { nodes, sources } = await nodesFromFiles(files, msg => ui.set('scan', msg, 0.05, ''));
@@ -434,7 +478,7 @@ async function importExport(files, ui) {
     try {
       const base = doneBytes;
       let lastPaint = 0;
-      await parseJsonArrayStream(await n.stream(), (c, text) => addConversation(c, n.container, text), bytes => {
+      await readEach(n, (c, text) => addConversation(c, n.container, text), bytes => {
         const now = performance.now();
         if (now - lastPaint > 80) {
           lastPaint = now;
@@ -483,8 +527,8 @@ async function importExport(files, ui) {
     try {
       const v = await readJson(n);
       if (rel === 'artifact.json') b.meta = artifactMeta(v);
-      else if (rel === 'comments.json') { if (Array.isArray(v)) b.comments = v; }
-      else if (v && Array.isArray(v.threads)) b.threads = v.threads;
+      else if (rel === 'comments.json') { if (Array.isArray(v)) b.comments = cleanThreads(v); }
+      else if (v && Array.isArray(v.threads)) b.threads = cleanThreads(v.threads);
     } catch (e) { DB.warnings.push(n.container + ': ' + n.path + ': ' + e.message); }
     metaDone++;
     if (metaDone % 50 === 0 || metaDone === reads.length) ui.set('art', 'Artifacts', metaDone / reads.length, fmtNum(metaDone) + ' / ' + fmtNum(reads.length) + ' metadata files');
@@ -505,11 +549,10 @@ async function importExport(files, ui) {
   finalize();
   ui.set('done', 'Ready in ' + fmtDuration(performance.now() - t0), 1, '', 'done');
   if (!hasRecords() && !DB.manifests.length) {
-    // Records are never removed, so nothing was loaded before this attempt either. Start
-    // clean, so the failed attempt leaves no sources, warnings or ignored files behind.
-    // When files failed, say why: the reason may be the browser, not the files.
+    // Records are never removed, so nothing was loaded before this attempt either. The throw
+    // puts DB back (importExport), so the attempt leaves no sources, warnings or ignored files
+    // behind. When files failed, say why: the reason may be the browser, not the files.
     const failed = DB.warnings.slice();
-    Object.assign(DB, emptyDB());
     throw new Error(failed.length
       ? `Nothing could be read from what you picked. ${failed[0]}${failed.length > 1 ? ` (${plural(failed.length - 1, 'more problem')})` : ''}`
       : 'No Claude export data found in what you picked. Choose the .zip files from the export, or the folder they were unpacked into.');
@@ -517,7 +560,6 @@ async function importExport(files, ui) {
 }
 
 function addManifest(v, source) {
-  if (!v || typeof v !== 'object') return;
   // export_url values are single-use download links. They stay in this tab's memory only,
   // are offered as "Download" links for parts that are not loaded, and are never stored,
   // logged or shown as text. Only https://claude.ai/export/… links are accepted.
@@ -525,7 +567,7 @@ function addManifest(v, source) {
     createdAt: parseTime(v.created_at),
     totalFiles: v.total_files,
     version: v.version,
-    files: (Array.isArray(v.data_files) ? v.data_files : []).map(f => ({
+    files: objects(v.data_files).map(f => ({
       category: f.category, part: f.part, filename: f.filename,
       url: typeof f.export_url === 'string' && /^https:\/\/claude\.ai\/export\//.test(f.export_url) ? f.export_url : '',
     })),

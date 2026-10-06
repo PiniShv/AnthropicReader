@@ -266,7 +266,7 @@ async function drawPage(a, want) {
   ${(a.comments || []).length ? `<h2 class="section-title">Comments${tabs.length > 1 ? ' on this tab' : ''} <span class="badge">${threads.reduce((n, t) => n + (t.comments || []).length, 0)}</span></h2><div class="card card-pad">${threads.length ? pageCommentsHtml(a, threads) : '<p class="faint">No comments on this tab.</p>'}</div>` : ''}`;
   refocus();
   // Highlight the text each comment thread points at.
-  const quotes = threads.map(t => t.quoted_text).filter(q => q && q.replace(/\s/g, '').length >= 3);
+  const quotes = threads.map(t => t.quoted_text).filter(q => typeof q === 'string' && q.replace(/\s/g, '').length >= 3);
   if (quotes.length) highlightIn(box.querySelector('#page-body'), quotes, { firstOnly: true });
 }
 

@@ -154,7 +154,7 @@ function designMessageHtml(m, d, receipts) {
       if (!b) continue;
       if (b.type === 'tool_call' && b.toolCall) { group.push(b.toolCall); continue; }
       flush();
-      if (b.type === 'text') { const t = (b.text || '').trim(); if (t && !DESIGN_NOISE.test(t)) out.push(`<div class="md" dir="auto">${mdToHtml(t)}</div>`); }
+      if (b.type === 'text') { const t = String(b.text || '').trim(); if (t && !DESIGN_NOISE.test(t)) out.push(`<div class="md" dir="auto">${mdToHtml(t)}</div>`); }
       else if (b.type === 'error') out.push(`<div class="notice warn" style="color:var(--err)">Error: ${esc(typeof b.message === 'string' ? b.message : JSON.stringify(b.message))}</div>`);
       else if (b.type === 'user_interjection' && b.message && b.message.pill === true) {
         // An automation notice that arrived mid-turn, not something the person typed.

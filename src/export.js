@@ -38,7 +38,7 @@ function messageToMarkdown(conv, m) {
   if (!blocks.length && m.text) out.push(m.text);
   for (const b of blocks) {
     if (!b) continue;
-    if (b.type === 'text' && b.text && b.text.trim()) out.push(b.text, '');
+    if (b.type === 'text' && hasText(b.text)) out.push(b.text, '');
     else if (b.type === 'tool_use') {
       const i = b.input || {};
       const s = toolInputSummary(b.name, i);

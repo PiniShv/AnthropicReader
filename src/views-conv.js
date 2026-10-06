@@ -273,8 +273,8 @@ const HUMAN_FOLD = 3000;
 function humanBody(m, ctx) {
   const parts = [];
   const blocks = Array.isArray(m.content) ? m.content : [];
-  let texts = blocks.filter(b => b && b.type === 'text' && b.text && b.text.trim()).map(b => b.text);
-  if (!blocks.length && m.text && m.text.trim()) texts = [m.text];
+  let texts = blocks.filter(b => b && b.type === 'text' && hasText(b.text)).map(b => b.text);
+  if (!blocks.length && hasText(m.text)) texts = [m.text];
   for (const t of texts) {
     if (t.length > HUMAN_FOLD) {
       // The preview stays; opening the box adds only the rest of the text.
@@ -326,7 +326,7 @@ function filesHtml(m) {
 
 function assistantBody(m, ctx) {
   const blocks = Array.isArray(m.content) ? m.content : [];
-  if (!blocks.length) return m.text && m.text.trim() ? `<div class="md">${mdToHtml(m.text)}</div>` : '';
+  if (!blocks.length) return hasText(m.text) ? `<div class="md">${mdToHtml(m.text)}</div>` : '';
   const results = new Map();
   for (const b of blocks) if (b && b.type === 'tool_result' && b.tool_use_id) results.set(b.tool_use_id, b);
   const knowledge = new Map();   // url -> {title, site} for citation labels
@@ -371,7 +371,7 @@ function assistantBody(m, ctx) {
     }
     flush();
     if (b.type === 'text') {
-      if (!b.text || !b.text.trim()) continue;
+      if (!hasText(b.text)) continue;
       out.push(textBlockHtml(b, knowledge));
     } else if (b.type === 'thinking') {
       if (!CONV_OPTS.showThinking) continue;
