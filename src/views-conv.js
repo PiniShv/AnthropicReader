@@ -147,6 +147,7 @@ function drawThread(conv, opts) {
   const path = currentPath(conv);
   const terms = opts.q ? searchTerms(opts.q) : [];
   const ctx = { conv, created: buildTree(conv).created };
+  dropKeys(thread);
   thread.innerHTML = '';
   let i = 0;
   const want = opts.target || (opts.anchor && opts.anchor.id);

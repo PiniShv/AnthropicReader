@@ -353,11 +353,14 @@ function setupShell() {
   // A collapsed blk() draws its body the first time it opens.
   document.addEventListener('toggle', e => {
     const d = e.target;
-    const fn = d.tagName === 'DETAILS' && d.open && VIEW.fns.get(d.dataset.lazy);
+    const key = d.tagName === 'DETAILS' && d.open ? d.dataset.lazy : '';
+    const fn = key && VIEW.fns.get(key);
     if (!fn) return;
     const body = d.querySelector(':scope > .blk-body');
     body.insertAdjacentHTML('beforeend', fn());
+    // The body is drawn once, so the key is not needed again.
     delete d.dataset.lazy;
+    VIEW.fns.delete(key);
     if (App.route.query.q) highlightIn(body, searchTerms(App.route.query.q));
   }, true);
 }

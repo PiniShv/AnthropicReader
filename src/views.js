@@ -128,7 +128,7 @@ const TABLE_STATE = new Map();
 function tableHtml(spec) {
   const st = TABLE_STATE.get(spec.key) || { sort: spec.sort, dir: spec.dir || -1, filter: '', facet: '', limit: spec.page || 200 };
   TABLE_STATE.set(spec.key, st);
-  const id = 'tbl' + ++VIEW.n;
+  const id = 'tbl' + ++KEY_SEQ;
   const chips = spec.facet ? facetChipsHtml(spec, st) : '';
   after(() => {
     // No wrapper element (it would change the page): the toolbar sits right before the rows.

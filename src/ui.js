@@ -17,14 +17,28 @@ const focusScope = () => scopeOf(focusPerson());
 /* Everything that lives exactly as long as one drawn page. onRoute() aborts the old view and
  * starts a new one: listeners added with its signal go away, and async drawers stop at their
  * next `if (signal.aborted) return;`. */
-const newView = () => ({ ac: new AbortController(), fns: new Map(), n: 0, mounts: [] });
+const newView = () => ({ ac: new AbortController(), fns: new Map(), mounts: [] });
 let VIEW = newView();
+
+// One counter for every view, so a key or a generated id never means two things: an element
+// left over from an old page can never call a function of the new one.
+let KEY_SEQ = 0;
 
 // Runs fn once, right after the view's HTML is in the page.
 const after = fn => VIEW.mounts.push(fn);
 
 // Keeps fn for this view only and returns a short key to put into the markup.
-const viewKey = fn => { const k = 'v' + ++VIEW.n; VIEW.fns.set(k, fn); return k; };
+const viewKey = fn => { const k = 'v' + ++KEY_SEQ; VIEW.fns.set(k, fn); return k; };
+
+// Forgets the keys inside root, before that part of the page is drawn again in place (the
+// conversation thread). Otherwise every redraw would add its keys on top of the old ones.
+function dropKeys(root) {
+  for (const el of root.querySelectorAll('[data-on],[data-on-change],[data-lazy]')) {
+    VIEW.fns.delete(el.dataset.on);
+    VIEW.fns.delete(el.dataset.onChange);
+    VIEW.fns.delete(el.dataset.lazy);
+  }
+}
 
 /* Behaviour bound where the markup is made: `<button ${on(() => save(conv))}>`. The listeners in
  * app.js call fn(el, event) on click (or on change for on.change). Never put a key into a string
