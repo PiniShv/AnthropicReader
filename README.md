@@ -31,11 +31,13 @@ All screenshots show made-up sample data (the built-in "Try it with sample data"
 
 ## Quick start
 
-1. **Get the reader.** Download [`dist/claude-export-reader.html`](https://github.com/PiniShv/AnthropicReader/raw/main/dist/claude-export-reader.html) from this repository (right-click the link and choose **Save Link As…**), or take it from the [latest release](https://github.com/PiniShv/AnthropicReader/releases/latest).
+1. **Get the reader.** Download `claude-export-reader.html` from the [latest release](https://github.com/PiniShv/AnthropicReader/releases/latest). For the newest, not yet released version, download [`dist/claude-export-reader.html`](https://github.com/PiniShv/AnthropicReader/raw/main/dist/claude-export-reader.html) from this repository instead (right-click the link and choose **Save Link As…**).
 2. **Open it.** Double-click the file. It opens in your browser from disk; no server is needed.
 3. **Load the export.** Drag all the export `.zip` files onto the page, or click **Choose files…**. You can also click **Choose a folder…** and pick a folder that holds the zips, or the folders your computer made when it unzipped them.
 
 No export at hand? Click **Try it with sample data** on the start page. It loads a small, made-up export so you can look around.
+
+**Check the download (optional).** Each release also has a `claude-export-reader.html.sha256` file. Save it in the same folder as the reader and run `sha256sum -c claude-export-reader.html.sha256` (on macOS: `shasum -a 256 -c claude-export-reader.html.sha256`). It prints `OK` when your file is exactly the one the release published. On Windows, run `Get-FileHash claude-export-reader.html` in PowerShell and compare the hash with the one in the `.sha256` file.
 
 ### Which files to load
 

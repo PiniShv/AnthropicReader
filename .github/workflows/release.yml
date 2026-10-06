@@ -1,0 +1,86 @@
+name: Release
+
+# Runs when a version tag such as v1.2.3 is pushed. See "Releasing" in CONTRIBUTING.md.
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+# No token rights by default. Only the release job gets write access.
+permissions: {}
+
+# Never run two releases of one tag at once, and never stop one halfway.
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Publish ${{ github.ref_name }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write # create the release and upload its files
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24.x
+          # No cache in a job that can write releases, so nothing cached can sneak in.
+          package-manager-cache: false
+
+      - name: Check that the tag matches package.json
+        run: |
+          version="$(node -p "require('./package.json').version")"
+          if [ "$GITHUB_REF_NAME" != "v$version" ]; then
+            echo "::error::Tag $GITHUB_REF_NAME does not match the package.json version $version. Push the tag v$version, or fix package.json."
+            exit 1
+          fi
+
+      # No npm install step: the project has no dependencies.
+      - name: Run tests
+        run: npm test
+
+      # Also proves the built page carries this version (the build writes it in).
+      - name: Check that dist/ matches the sources
+        run: npm run build:check
+
+      - name: Take the release notes from CHANGELOG.md
+        run: |
+          # The lines under "## [<version>] ...", up to the next "## [" heading
+          # or the link list at the end of the file.
+          version="${GITHUB_REF_NAME#v}"
+          awk -v head="## [$version]" '
+            index($0, "## [") == 1 { if (on) exit; on = index($0, head) == 1; next }
+            /^\[[^ ]+\]: / { if (on) exit }
+            on { print }
+          ' CHANGELOG.md > "$RUNNER_TEMP/notes.md"
+          if ! grep -q '[^[:space:]]' "$RUNNER_TEMP/notes.md"; then
+            echo "::error::CHANGELOG.md has no text under a \"## [$version]\" heading. Add the section, then tag again."
+            exit 1
+          fi
+
+      # Written next to the page, so "sha256sum -c" works in the download folder.
+      - name: Write the checksum file
+        working-directory: dist
+        run: sha256sum claude-export-reader.html > claude-export-reader.html.sha256
+
+      - name: Create the GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          # A version with a hyphen (1.1.0-rc.1) is a pre-release, so it never
+          # becomes the "latest release" that the README links to.
+          prerelease=()
+          case "$GITHUB_REF_NAME" in *-*) prerelease=(--prerelease) ;; esac
+          gh release create "$GITHUB_REF_NAME" \
+            dist/claude-export-reader.html \
+            dist/claude-export-reader.html.sha256 \
+            --verify-tag \
+            --title "$GITHUB_REF_NAME" \
+            --notes-file "$RUNNER_TEMP/notes.md" \
+            "${prerelease[@]}"
