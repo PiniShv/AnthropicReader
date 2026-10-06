@@ -1,0 +1,32 @@
+name: Vendor check
+
+# Checks vendor/ (marked and DOMPurify) against npm once a week: that the files are the
+# official builds, and that no security advisory names their version. A new advisory
+# makes the run fail, so it shows up in the Actions tab, and GitHub notifies the person who
+# last changed the schedule below.
+# Note: GitHub turns off scheduled runs after 60 days without activity in the repository.
+on:
+  schedule:
+    - cron: '41 6 * * 1' # every Monday, 06:41 UTC
+  workflow_dispatch:
+
+# Read-only token: the check only reads the repository and the public npm registry.
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: Check vendor/ against npm
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24.x
+
+      - name: Check the vendored libraries
+        run: node scripts/check-vendor.mjs

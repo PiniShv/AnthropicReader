@@ -79,4 +79,4 @@ These are trade-offs, not bugs. Reports that improve them are still welcome.
 
 ## Third-party code
 
-The reader includes [marked](https://github.com/markedjs/marked) and [DOMPurify](https://github.com/cure53/DOMPurify), vendored and unchanged. See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md). When a security fix comes out for either library, it will be updated here.
+The reader includes [marked](https://github.com/markedjs/marked) and [DOMPurify](https://github.com/cure53/DOMPurify), vendored and unchanged. See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md). A weekly workflow checks them against npm and fails when a security advisory names their version. When a security fix comes out for either library, it will be updated here.

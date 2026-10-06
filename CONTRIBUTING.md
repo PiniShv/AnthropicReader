@@ -36,7 +36,7 @@ cd AnthropicReader
 | `npm run build` | Builds `dist/claude-export-reader.html` from `src/` and `vendor/`. |
 | `npm run build:check` | Fails if `dist/claude-export-reader.html` does not match the sources. CI runs this. |
 | `npm test` | Runs the tests in `test/` with Node's built-in test runner. |
-| `node scripts/check-vendor.mjs` | Checks that the files in `vendor/` are the official npm builds named in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md), and lists known security advisories and newer releases. Needs the network, so CI does not run it. |
+| `node scripts/check-vendor.mjs` | Checks that the files in `vendor/` are the official npm builds named in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md), and lists known security advisories and newer releases. Needs the network. A weekly workflow (`.github/workflows/vendor-check.yml`) runs it too, so a new advisory shows up as a failed run. |
 | `npm run demo` | Writes the made-up sample export (six zip parts and a manifest) to `demo/`, for trying the reader on real files. `npm run demo -- <folder>` writes them somewhere else. |
 | `npm run a11y` | Checks accessibility (WCAG 2.2 AA) with axe-core and a few keyboard checks, on the sample data in headless Chrome. Needs the network the first time. See [Checking accessibility](#checking-accessibility). |
 | `npm run snapshot -- --out <folder>` | Saves the HTML of every page of the sample data, with every block opened, using headless Chrome (Node 22+; set `CHROME=<path>` if Chrome is not found). Run it before a refactor. After it, `npm run snapshot -- --compare <folder>` fails if any page changed. |

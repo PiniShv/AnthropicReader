@@ -24,7 +24,7 @@ Each file in `vendor/` is byte for byte the official file from its npm package, 
 ```
 
 - `npm test` fails when a file in `vendor/` does not match its checksum here, or when this page names a different version than the file. So an edited or swapped file cannot slip in unnoticed.
-- `node scripts/check-vendor.mjs` downloads the packages from npm and checks everything again. It also lists known security advisories and newer releases. It needs the network, so CI does not run it.
+- `node scripts/check-vendor.mjs` downloads the packages from npm and checks everything again. It also lists known security advisories and newer releases. It needs the network. A weekly workflow ([vendor-check.yml](.github/workflows/vendor-check.yml)) runs it too, so a new advisory shows up as a failed run.
 - To update a library, see [Updating a vendored library](CONTRIBUTING.md#updating-a-vendored-library).
 
 ---
