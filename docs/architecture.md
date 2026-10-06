@@ -22,7 +22,7 @@ For the format of the export itself, see [export-format.md](export-format.md).
 | `vendor/purify.min.js` | DOMPurify: HTML sanitizer. |
 | `src/zip.js` | `ZipArchive` / `ZipEntry`: random-access zip reader. `ZipWriter`: small zip writer for downloads. |
 | `src/load.js` | `FileNode`: a loose file with the same interface as a `ZipEntry` (`path`, `size`, `container`, `stream()`, `bytes()`, `text()`, `blob()`). File and folder picking, drag and drop, remembered file handles (`HandleStore`), and `parseJsonArrayStream()`. |
-| `src/render.js` | Escaping (`esc`), reading and formatting of dates (`parseTime`; 0 means unknown and shows as nothing), numbers and sizes, Markdown (`mdToHtml`, `mdBlock`), sanitizing, search highlighting, the sandbox frame shim, small helpers (toast, copy, download, MIME types). |
+| `src/render.js` | Escaping (`esc`), reading and formatting of dates (`parseTime`; 0 means unknown and shows as nothing), numbers and sizes, Markdown (`mdToHtml`, `mdBlock`), sanitizing, search highlighting, sandboxed frames (`sandboxFrame()`, `withFrameShim()`), small helpers (toast, copy, download, MIME types). |
 | `src/ui.js` | `App` (route and focus), `focusPerson()` / `focusScope()`, the `$` / `$$` shortcuts, and the lifetime of one drawn page: `VIEW`, `after()`, `viewKey()`, `on()` for click behaviour, and `blk()` for collapsible blocks. |
 | `src/model.js` | The in-memory model: `Person`, the `DB` object, `classify()`, one `add…()` function per record type, `importExport()` (the import pipeline), `finalize()` (links and derived data), `parseVersionRel()` (which version an artifact file belongs to), `versionInfo()` (what an artifact version holds) and small queries (`scopeOf()`, `peopleMatching()`, `artifactTitle()`, `latestManifest()`, `missingFiles()`, `hasRecords()`). |
 | `src/conversation.js` | Conversations as data: the message tree and branches (`childrenByParent()`, `buildTree()`, `currentPath()`, `selectBranchFor()`), tool names and inputs, and the outputs Claude produced (`collectOutputs()`). |
@@ -109,7 +109,7 @@ When the same item is loaded twice (two exports), the `add…()` functions keep 
 - picks display names and adds the email local part when two people share a name
 - sorts everything newest first, and puts the conversation, project, design chat and memory maps in the same order, so a later load starts from it
 
-These values change only when files are loaded, so the views read them instead of working them out on every draw. Fields read from the export are never overwritten with a display fallback: a title like "Untitled page" is worked out when it is shown (`artifactTitle()`), because the file that decides it can come in a later load. `Person` has one definition of each count (`convCount()`, `memoryCount()`, `total()`), so every card, tile, tab and badge shows the same number.
+These values change only when files are loaded, so the views read them instead of working them out on every draw. Fields read from the export are never overwritten with a display fallback: a title like "Untitled page" is worked out when it is shown (`artifactTitle()`), because the file that decides it can come in a later load. `Person` has one definition of each count (`convCount()`, `memoryCount()`, `total()`), so every card, tile, tab and badge shows the same number. Chats that the export left empty are listed but never counted as conversations; `withContent()` is the one rule for that.
 
 ## ZIP reader
 

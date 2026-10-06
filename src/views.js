@@ -11,7 +11,7 @@ const ICONS = { home: '⌂', people: '👥', search: '⌕', about: 'ⓘ' };
 const KINDS = [
   {
     key: 'conversations', list: 'conversations', item: 'c', icon: '💬', label: 'Conversations', noun: ['chat', 'chats'],
-    allCount: () => DB.conversations.filter(c => !c.empty).length, personCount: p => p.convCount(),
+    allCount: () => withContent(DB.conversations).length, personCount: p => p.convCount(),
     listView: () => viewConversations(), itemView: b => viewConversation(b), personTab: p => convTable(p.conversations, 'pc-' + p.id, false),
   },
   {
@@ -243,6 +243,7 @@ function viewHome() {
   const people = peopleSorted().filter(p => !p.system);
   const active = people.filter(p => p.total() > 0);
   const totalMsgs = DB.conversations.reduce((a, c) => a + c.msgCount, 0);
+  const convs = KIND.conversations.allCount(), emptyConvs = DB.conversations.length - convs;
   const manifest = latestManifest();
   const missing = manifest ? missingFiles(manifest) : [];
   const dates = DB.conversations.map(c => c.created).filter(Boolean);
@@ -273,7 +274,7 @@ function viewHome() {
     ${DB.warnings.length ? `<div class="notice warn" style="margin-bottom:14px">${plural(DB.warnings.length, 'file')} could not be read, so some data is missing. <a href="#/about">See which</a>.</div>` : ''}
     <div class="tiles">
       <a class="tile" href="#/people"><div class="num">${fmtNum(active.length)}</div><div class="lbl">people with data <span class="faint">of ${fmtNum(people.length)}</span></div></a>
-      <a class="tile" href="#/conversations"><div class="num">${fmtNum(DB.conversations.filter(c => !c.empty).length)}</div><div class="lbl">conversations · ${fmtNum(totalMsgs)} messages${DB.conversations.some(c => c.empty) ? ` <span class="faint">· ${fmtNum(DB.conversations.filter(c => c.empty).length)} more without content</span>` : ''}</div></a>
+      <a class="tile" href="#/conversations"><div class="num">${fmtNum(convs)}</div><div class="lbl">conversations · ${fmtNum(totalMsgs)} messages${emptyConvs ? ` <span class="faint">· ${fmtNum(emptyConvs)} more without content</span>` : ''}</div></a>
       <a class="tile" href="#/artifacts"><div class="num">${fmtNum(DB.artifacts.length)}</div><div class="lbl">artifacts & pages</div></a>
       <a class="tile" href="#/projects"><div class="num">${fmtNum(DB.projects.length)}</div><div class="lbl">projects</div></a>
       <a class="tile" href="#/design"><div class="num">${fmtNum(DB.designChats.length)}</div><div class="lbl">design chats</div></a>
@@ -426,7 +427,7 @@ function personOverview(p, counts) {
 
   // Activity by month across all item types.
   const stamps = [];
-  p.conversations.forEach(c => { if (!c.empty) stamps.push(c.created); });
+  withContent(p.conversations).forEach(c => stamps.push(c.created));
   p.artifacts.forEach(a => stamps.push(a.created || a.updated));
   p.projects.forEach(x => stamps.push(x.created));
   p.designChats.forEach(d => stamps.push(d.created));
@@ -434,7 +435,7 @@ function personOverview(p, counts) {
 
   // Recent activity timeline.
   const events = [];
-  p.conversations.filter(c => !c.empty).forEach(c => events.push({ t: c.lastTs, ico: KIND.conversations.icon, html: `<a href="#/c/${encodeURIComponent(c.id)}" dir="auto">${esc(c.title || 'Untitled conversation')}</a> <span class="faint">· ${plural(c.msgCount, 'message')}</span>` }));
+  withContent(p.conversations).forEach(c => events.push({ t: c.lastTs, ico: KIND.conversations.icon, html: `<a href="#/c/${encodeURIComponent(c.id)}" dir="auto">${esc(c.title || 'Untitled conversation')}</a> <span class="faint">· ${plural(c.msgCount, 'message')}</span>` }));
   p.artifacts.forEach(a => events.push({ t: a.updated, ico: KIND.artifacts.icon, html: `<a href="#/a/${encodeURIComponent(a.id)}" dir="auto">${esc(artifactTitle(a))}</a> <span class="faint">· ${a.kind === 'page' ? 'page' : 'artifact'}, ${plural(a.versions.length, 'version')}</span>` }));
   p.projects.forEach(x => events.push({ t: x.updated, ico: KIND.projects.icon, html: `<a href="#/p/${encodeURIComponent(x.id)}" dir="auto">${esc(x.name || 'Untitled project')}</a> <span class="faint">· project</span>` }));
   p.designChats.forEach(d => events.push({ t: d.lastTs, ico: KIND.design.icon, html: `<a href="#/d/${encodeURIComponent(d.id)}" dir="auto">${esc(d.title)}</a> <span class="faint">· design chat in ${esc(d.project.name || 'a design project')}</span>` }));

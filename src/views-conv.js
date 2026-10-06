@@ -17,8 +17,9 @@ function convBadges(c) {
 }
 
 function convTable(list, key, showOwner) {
-  const empties = list.filter(c => c.empty).length;
-  const rows = CONV_OPTS.hideEmpty ? list.filter(c => !c.empty) : list;
+  const shown = withContent(list);
+  const empties = list.length - shown.length;
+  const rows = CONV_OPTS.hideEmpty ? shown : list;
   const columns = [
     {
       id: 'title', label: 'Conversation', cls: 'title', link: true, asc: true, sortVal: c => (c.title || '').toLowerCase(),
@@ -44,9 +45,10 @@ function convTable(list, key, showOwner) {
 function viewConversations() {
   const s = focusScope();
   const list = s.conversations;
+  const shown = withContent(list).length, empties = list.length - shown;
   return `<div class="page">
     <div class="page-head"><div class="grow"><h1>Conversations</h1>
-      <div class="sub">${s.person ? `<span>Only ${personLink(s.person)}’s</span>` : `<span>All people</span>`}<span>${plural(list.filter(c => !c.empty).length, 'conversation')}${list.some(c => c.empty) ? ` <span class="faint">+ ${fmtNum(list.filter(c => c.empty).length)} without content</span>` : ''}</span>
+      <div class="sub">${s.person ? `<span>Only ${personLink(s.person)}’s</span>` : `<span>All people</span>`}<span>${plural(shown, 'conversation')}${empties ? ` <span class="faint">+ ${fmtNum(empties)} without content</span>` : ''}</span>
       <span>${fmtNum(list.reduce((a, c) => a + c.msgCount, 0))} messages</span></div></div></div>
     ${convTable(list, 'conv-' + s.key, !s.person)}
   </div>`;
@@ -551,12 +553,6 @@ function artifactLinkHtml(id, title, action) {
 }
 
 /* ---------- Visible outputs: files, artifacts, widgets ---------- */
-
-// The HTML goes into the srcdoc attribute, escaped, and the browser decodes it back. The frame
-// loads when its block is put into the page.
-function sandboxFrame(html, height) {
-  return `<iframe class="preview" sandbox="allow-scripts allow-popups allow-forms allow-modals" referrerpolicy="no-referrer" style="height:${height || 420}px" title="Sandboxed preview" srcdoc="${esc(withFrameShim(html))}"></iframe>`;
-}
 
 function specialToolHtml(name, input, res, ctx, use) {
   const tid = 't-' + (use.id || '');   // the outputs box and "show content" scroll to this id

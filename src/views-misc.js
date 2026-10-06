@@ -274,7 +274,7 @@ function viewAbout() {
     <h2 class="section-title">Counts</h2>
     <div class="card card-pad"><dl class="kv">
       <dt>People</dt><dd>${fmtNum(people.length)} (${fmtNum(people.filter(p => p.known).length)} in users.json, ${fmtNum(people.filter(p => !p.known).length)} only seen in data)</dd>
-      <dt>Conversations</dt><dd>${fmtNum(DB.conversations.length)} · ${fmtNum(DB.conversations.reduce((a, c) => a + c.msgCount, 0))} messages · ${fmtNum(DB.conversations.filter(c => c.empty).length)} without content</dd>
+      <dt>Conversations</dt><dd>${fmtNum(DB.conversations.length)} · ${fmtNum(DB.conversations.reduce((a, c) => a + c.msgCount, 0))} messages · ${fmtNum(DB.conversations.length - withContent(DB.conversations).length)} without content</dd>
       <dt>Artifacts</dt><dd>${fmtNum(DB.artifacts.length)} · ${fmtNum(DB.artifacts.reduce((a, x) => a + x.versions.length, 0))} versions</dd>
       <dt>Projects</dt><dd>${fmtNum(DB.projects.length)}</dd>
       <dt>Design chats</dt><dd>${fmtNum(DB.designChats.length)}</dd>

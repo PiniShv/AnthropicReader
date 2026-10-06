@@ -1433,6 +1433,13 @@ function withFrameShim(html, extra) {
   return shim + s;
 }
 
+// HTML from the export in a sandboxed frame, never with allow-same-origin. The HTML goes into
+// the srcdoc attribute, escaped, and the browser decodes it back. The frame loads when its
+// block is put into the page.
+function sandboxFrame(html, height) {
+  return `<iframe class="preview" sandbox="allow-scripts allow-popups allow-forms allow-modals" referrerpolicy="no-referrer" style="height:${height || 420}px" title="Sandboxed preview" srcdoc="${esc(withFrameShim(html))}"></iframe>`;
+}
+
 /* ---------- Misc ---------- */
 
 function toast(msg) {
@@ -1567,6 +1574,10 @@ const RE_MEMORY = /(?:^|\/)memories[^/]*\/[^/]+\.json$/i;
 const RE_JUNK = /(^|\/)(__MACOSX\/|\.DS_Store$|\._)|Thumbs\.db$/i;
 const NO_OWNER = '__none__';
 
+// The chats that have content. Chats the export left empty are listed, but never counted as
+// conversations: every count, badge and timeline goes through this one rule.
+const withContent = convs => convs.filter(c => !c.empty);
+
 class Person {
   constructor(id) {
     this.id = id;
@@ -1597,7 +1608,7 @@ class Person {
     if (t > this.last) this.last = t;
   }
   // One definition of each count, used by every card, tile, tab and sidebar badge.
-  convCount() { return this.conversations.reduce((n, c) => n + (c.empty ? 0 : 1), 0); }
+  convCount() { return withContent(this.conversations).length; }
   emptyConvCount() { return this.conversations.length - this.convCount(); }
   memoryCount() {
     const m = this.memory;
@@ -3236,7 +3247,7 @@ const ICONS = { home: '⌂', people: '👥', search: '⌕', about: 'ⓘ' };
 const KINDS = [
   {
     key: 'conversations', list: 'conversations', item: 'c', icon: '💬', label: 'Conversations', noun: ['chat', 'chats'],
-    allCount: () => DB.conversations.filter(c => !c.empty).length, personCount: p => p.convCount(),
+    allCount: () => withContent(DB.conversations).length, personCount: p => p.convCount(),
     listView: () => viewConversations(), itemView: b => viewConversation(b), personTab: p => convTable(p.conversations, 'pc-' + p.id, false),
   },
   {
@@ -3468,6 +3479,7 @@ function viewHome() {
   const people = peopleSorted().filter(p => !p.system);
   const active = people.filter(p => p.total() > 0);
   const totalMsgs = DB.conversations.reduce((a, c) => a + c.msgCount, 0);
+  const convs = KIND.conversations.allCount(), emptyConvs = DB.conversations.length - convs;
   const manifest = latestManifest();
   const missing = manifest ? missingFiles(manifest) : [];
   const dates = DB.conversations.map(c => c.created).filter(Boolean);
@@ -3498,7 +3510,7 @@ function viewHome() {
     ${DB.warnings.length ? `<div class="notice warn" style="margin-bottom:14px">${plural(DB.warnings.length, 'file')} could not be read, so some data is missing. <a href="#/about">See which</a>.</div>` : ''}
     <div class="tiles">
       <a class="tile" href="#/people"><div class="num">${fmtNum(active.length)}</div><div class="lbl">people with data <span class="faint">of ${fmtNum(people.length)}</span></div></a>
-      <a class="tile" href="#/conversations"><div class="num">${fmtNum(DB.conversations.filter(c => !c.empty).length)}</div><div class="lbl">conversations · ${fmtNum(totalMsgs)} messages${DB.conversations.some(c => c.empty) ? ` <span class="faint">· ${fmtNum(DB.conversations.filter(c => c.empty).length)} more without content</span>` : ''}</div></a>
+      <a class="tile" href="#/conversations"><div class="num">${fmtNum(convs)}</div><div class="lbl">conversations · ${fmtNum(totalMsgs)} messages${emptyConvs ? ` <span class="faint">· ${fmtNum(emptyConvs)} more without content</span>` : ''}</div></a>
       <a class="tile" href="#/artifacts"><div class="num">${fmtNum(DB.artifacts.length)}</div><div class="lbl">artifacts & pages</div></a>
       <a class="tile" href="#/projects"><div class="num">${fmtNum(DB.projects.length)}</div><div class="lbl">projects</div></a>
       <a class="tile" href="#/design"><div class="num">${fmtNum(DB.designChats.length)}</div><div class="lbl">design chats</div></a>
@@ -3651,7 +3663,7 @@ function personOverview(p, counts) {
 
   // Activity by month across all item types.
   const stamps = [];
-  p.conversations.forEach(c => { if (!c.empty) stamps.push(c.created); });
+  withContent(p.conversations).forEach(c => stamps.push(c.created));
   p.artifacts.forEach(a => stamps.push(a.created || a.updated));
   p.projects.forEach(x => stamps.push(x.created));
   p.designChats.forEach(d => stamps.push(d.created));
@@ -3659,7 +3671,7 @@ function personOverview(p, counts) {
 
   // Recent activity timeline.
   const events = [];
-  p.conversations.filter(c => !c.empty).forEach(c => events.push({ t: c.lastTs, ico: KIND.conversations.icon, html: `<a href="#/c/${encodeURIComponent(c.id)}" dir="auto">${esc(c.title || 'Untitled conversation')}</a> <span class="faint">· ${plural(c.msgCount, 'message')}</span>` }));
+  withContent(p.conversations).forEach(c => events.push({ t: c.lastTs, ico: KIND.conversations.icon, html: `<a href="#/c/${encodeURIComponent(c.id)}" dir="auto">${esc(c.title || 'Untitled conversation')}</a> <span class="faint">· ${plural(c.msgCount, 'message')}</span>` }));
   p.artifacts.forEach(a => events.push({ t: a.updated, ico: KIND.artifacts.icon, html: `<a href="#/a/${encodeURIComponent(a.id)}" dir="auto">${esc(artifactTitle(a))}</a> <span class="faint">· ${a.kind === 'page' ? 'page' : 'artifact'}, ${plural(a.versions.length, 'version')}</span>` }));
   p.projects.forEach(x => events.push({ t: x.updated, ico: KIND.projects.icon, html: `<a href="#/p/${encodeURIComponent(x.id)}" dir="auto">${esc(x.name || 'Untitled project')}</a> <span class="faint">· project</span>` }));
   p.designChats.forEach(d => events.push({ t: d.lastTs, ico: KIND.design.icon, html: `<a href="#/d/${encodeURIComponent(d.id)}" dir="auto">${esc(d.title)}</a> <span class="faint">· design chat in ${esc(d.project.name || 'a design project')}</span>` }));
@@ -3740,8 +3752,9 @@ function convBadges(c) {
 }
 
 function convTable(list, key, showOwner) {
-  const empties = list.filter(c => c.empty).length;
-  const rows = CONV_OPTS.hideEmpty ? list.filter(c => !c.empty) : list;
+  const shown = withContent(list);
+  const empties = list.length - shown.length;
+  const rows = CONV_OPTS.hideEmpty ? shown : list;
   const columns = [
     {
       id: 'title', label: 'Conversation', cls: 'title', link: true, asc: true, sortVal: c => (c.title || '').toLowerCase(),
@@ -3767,9 +3780,10 @@ function convTable(list, key, showOwner) {
 function viewConversations() {
   const s = focusScope();
   const list = s.conversations;
+  const shown = withContent(list).length, empties = list.length - shown;
   return `<div class="page">
     <div class="page-head"><div class="grow"><h1>Conversations</h1>
-      <div class="sub">${s.person ? `<span>Only ${personLink(s.person)}’s</span>` : `<span>All people</span>`}<span>${plural(list.filter(c => !c.empty).length, 'conversation')}${list.some(c => c.empty) ? ` <span class="faint">+ ${fmtNum(list.filter(c => c.empty).length)} without content</span>` : ''}</span>
+      <div class="sub">${s.person ? `<span>Only ${personLink(s.person)}’s</span>` : `<span>All people</span>`}<span>${plural(shown, 'conversation')}${empties ? ` <span class="faint">+ ${fmtNum(empties)} without content</span>` : ''}</span>
       <span>${fmtNum(list.reduce((a, c) => a + c.msgCount, 0))} messages</span></div></div></div>
     ${convTable(list, 'conv-' + s.key, !s.person)}
   </div>`;
@@ -4274,12 +4288,6 @@ function artifactLinkHtml(id, title, action) {
 }
 
 /* ---------- Visible outputs: files, artifacts, widgets ---------- */
-
-// The HTML goes into the srcdoc attribute, escaped, and the browser decodes it back. The frame
-// loads when its block is put into the page.
-function sandboxFrame(html, height) {
-  return `<iframe class="preview" sandbox="allow-scripts allow-popups allow-forms allow-modals" referrerpolicy="no-referrer" style="height:${height || 420}px" title="Sandboxed preview" srcdoc="${esc(withFrameShim(html))}"></iframe>`;
-}
 
 function specialToolHtml(name, input, res, ctx, use) {
   const tid = 't-' + (use.id || '');   // the outputs box and "show content" scroll to this id
@@ -5171,7 +5179,7 @@ function viewAbout() {
     <h2 class="section-title">Counts</h2>
     <div class="card card-pad"><dl class="kv">
       <dt>People</dt><dd>${fmtNum(people.length)} (${fmtNum(people.filter(p => p.known).length)} in users.json, ${fmtNum(people.filter(p => !p.known).length)} only seen in data)</dd>
-      <dt>Conversations</dt><dd>${fmtNum(DB.conversations.length)} · ${fmtNum(DB.conversations.reduce((a, c) => a + c.msgCount, 0))} messages · ${fmtNum(DB.conversations.filter(c => c.empty).length)} without content</dd>
+      <dt>Conversations</dt><dd>${fmtNum(DB.conversations.length)} · ${fmtNum(DB.conversations.reduce((a, c) => a + c.msgCount, 0))} messages · ${fmtNum(DB.conversations.length - withContent(DB.conversations).length)} without content</dd>
       <dt>Artifacts</dt><dd>${fmtNum(DB.artifacts.length)} · ${fmtNum(DB.artifacts.reduce((a, x) => a + x.versions.length, 0))} versions</dd>
       <dt>Projects</dt><dd>${fmtNum(DB.projects.length)}</dd>
       <dt>Design chats</dt><dd>${fmtNum(DB.designChats.length)}</dd>

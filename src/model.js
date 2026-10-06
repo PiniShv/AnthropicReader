@@ -10,6 +10,10 @@ const RE_MEMORY = /(?:^|\/)memories[^/]*\/[^/]+\.json$/i;
 const RE_JUNK = /(^|\/)(__MACOSX\/|\.DS_Store$|\._)|Thumbs\.db$/i;
 const NO_OWNER = '__none__';
 
+// The chats that have content. Chats the export left empty are listed, but never counted as
+// conversations: every count, badge and timeline goes through this one rule.
+const withContent = convs => convs.filter(c => !c.empty);
+
 class Person {
   constructor(id) {
     this.id = id;
@@ -40,7 +44,7 @@ class Person {
     if (t > this.last) this.last = t;
   }
   // One definition of each count, used by every card, tile, tab and sidebar badge.
-  convCount() { return this.conversations.reduce((n, c) => n + (c.empty ? 0 : 1), 0); }
+  convCount() { return withContent(this.conversations).length; }
   emptyConvCount() { return this.conversations.length - this.convCount(); }
   memoryCount() {
     const m = this.memory;
