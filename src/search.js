@@ -14,20 +14,20 @@ function searchTerms(q) {
   return terms;
 }
 
+// A message's lists of blocks, attachments and files are lists of objects (cleanMessages() in
+// ingest.js).
 function msgProse(m) {
-  const blocks = Array.isArray(m.content) ? m.content : [];
   let s = '';
-  for (const b of blocks) if (b && b.type === 'text' && b.text) s += b.text + '\n';
-  if (!blocks.length && m.text) s += m.text + '\n';
-  for (const a of (m.attachments || [])) if (a.file_name) s += a.file_name + '\n';
-  for (const f of (m.files || [])) if (f.file_name) s += f.file_name + '\n';
+  for (const b of m.content) if (b.type === 'text' && b.text) s += b.text + '\n';
+  if (!m.content.length && m.text) s += m.text + '\n';
+  for (const a of m.attachments) if (a.file_name) s += a.file_name + '\n';
+  for (const f of m.files) if (f.file_name) s += f.file_name + '\n';
   return s;
 }
 
 function msgDeep(m) {
   let s = '';
-  for (const b of (Array.isArray(m.content) ? m.content : [])) {
-    if (!b) continue;
+  for (const b of m.content) {
     if (b.type === 'thinking') { s += (b.thinking || '') + '\n'; for (const x of (b.summaries || [])) s += (x && x.summary || '') + '\n'; }
     else if (b.type === 'tool_use') { try { s += JSON.stringify(b.input || {}) + '\n'; } catch (e) { /* ignore */ } }
     else if (b.type === 'tool_result') {
@@ -39,7 +39,7 @@ function msgDeep(m) {
       }
     }
   }
-  for (const a of (m.attachments || [])) s += (a.extracted_content || '') + '\n';
+  for (const a of m.attachments) s += (a.extracted_content || '') + '\n';
   return s;
 }
 
@@ -95,11 +95,12 @@ function memorySearchText(mem) {
   return [mem.conversationsMemory, ...mem.projectMemories.map(x => x.text), ...mem.files.map(f => f.content)].join('\n');
 }
 
-// Text of an artifact, without its files: title, descriptions, doc page and comments.
+// Text of an artifact, without its files: title, descriptions, doc page and comments. Comment
+// lists are null until a file gives them; a thread's comments are a list (cleanThreads()).
 function artifactSearchText(a, page) {
   return [artifactTitle(a), a.description, a.contentType, ...a.versions.map(v => v.title + ' ' + v.description), page,
-    ...(a.comments || []).flatMap(t => [t.quoted_text, ...(t.comments || []).map(c => c.body)]),
-    ...(a.threads || []).flatMap(t => (t.comments || []).map(c => c.text))].join('\n');
+    ...(a.comments || []).flatMap(t => [t.quoted_text, ...t.comments.map(c => c.body)]),
+    ...(a.threads || []).flatMap(t => t.comments.map(c => c.text))].join('\n');
 }
 
 // Text of a design chat: prompts, replies and comments on the design.
@@ -108,8 +109,7 @@ function designSearchText(d) {
   return [designTitle(d), d.project.name, ...d.messages.map(m => {
     const c = m.content || {};
     const parts = [typeof c.content === 'string' ? c.content : '', commentText(c.attachments)];
-    for (const b of (Array.isArray(c.contentBlocks) ? c.contentBlocks : [])) {
-      if (!b) continue;
+    for (const b of (c.contentBlocks || [])) {
       if (b.type === 'text') parts.push(b.text || '');
       // Messages typed while Claude was working exist only inside these blocks.
       else if (b.type === 'user_interjection' && b.message) parts.push(String(b.message.content || ''), commentText(b.message.attachments));
@@ -165,7 +165,7 @@ async function runSearch(q, { deep, scope, signal, onProgress, shown = 200 }) {
   for (let ci = 0; ci < convs.length; ci++) {
     const c = convs[ci];
     const e = searchEntry(c);
-    const msgs = c.raw.chat_messages || [];
+    const msgs = c.raw.chat_messages;
     if (!e.prose) e.prose = joinLower([convTitle(c) + '\n' + c.summary, ...msgs.map(msgProse)]);
     if (deep && !e.deep) e.deep = joinLower(msgs.map(msgDeep));
     const score = countHits(deep ? [e.prose.text, e.deep.text] : [e.prose.text], terms);

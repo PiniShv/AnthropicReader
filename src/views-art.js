@@ -265,7 +265,7 @@ async function drawPage(a, want) {
       <button class="btn small" type="button" ${on(() => copyText(md))}>Copy Markdown</button>
     </div>
   </div>
-  ${(a.comments || []).length ? `<h2 class="section-title">Comments${tabs.length > 1 ? ' on this tab' : ''} <span class="badge">${threads.reduce((n, t) => n + (t.comments || []).length, 0)}</span></h2><div class="card card-pad">${threads.length ? pageCommentsHtml(a, threads) : '<p class="faint">No comments on this tab.</p>'}</div>` : ''}`;
+  ${(a.comments || []).length ? `<h2 class="section-title">Comments${tabs.length > 1 ? ' on this tab' : ''} <span class="badge">${threads.reduce((n, t) => n + t.comments.length, 0)}</span></h2><div class="card card-pad">${threads.length ? pageCommentsHtml(a, threads) : '<p class="faint">No comments on this tab.</p>'}</div>` : ''}`;
   refocus();
   // Highlight the text each comment thread points at.
   const quotes = threads.map(t => t.quoted_text).filter(q => typeof q === 'string' && q.replace(/\s/g, '').length >= 3);
@@ -285,7 +285,7 @@ function pageCommentsHtml(a, threads) {
   return threads.map(t => `<div class="comment">
     <div class="row wrap" style="font-size:12.5px;color:var(--muted)">${t.tab ? `<span class="chip" dir="auto">${esc(t.tab)}</span>` : ''}${t.resolved ? '<span class="chip ok">resolved</span>' : ''}</div>
     ${t.quoted_text ? `<div class="quote" dir="auto">“${esc(t.quoted_text)}”</div>` : ''}
-    ${(t.comments || []).map(c => {
+    ${t.comments.map(c => {
       const au = c.author && c.author.uuid ? DB.people.get(c.author.uuid) : null;
       const who = c.posted_by_agent ? `Claude <span class="faint">for ${au ? esc(au.name) : 'the owner'}</span>` : (au ? personLink(au) : '<span class="faint">Unknown</span>');
       return `<div class="reply"><div style="font-size:13px"><b>${who}</b> <span class="faint">${esc(fmtDateTime(c.created_at))}</span></div><div dir="auto">${mdToHtml(c.body || '')}</div></div>`;

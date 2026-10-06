@@ -138,7 +138,7 @@ function designMessageHtml(m, d, receipts) {
   if (c.kind === 'chat-summary') {
     return `<details class="card summary-box"><summary>Summary carried over from an earlier chat</summary>${mdBlock(c.content || '')}</details>`;
   }
-  const blocks = Array.isArray(c.contentBlocks) ? c.contentBlocks : null;
+  const blocks = c.contentBlocks || null;   // without blocks, the row's content is its text
   const out = [];
   if (!blocks) {
     if (c.content) out.push(`<div class="md" dir="auto">${mdToHtml(c.content)}</div>`);
@@ -151,7 +151,6 @@ function designMessageHtml(m, d, receipts) {
       group = [];
     };
     for (const b of blocks) {
-      if (!b) continue;
       if (b.type === 'tool_call' && b.toolCall) { group.push(b.toolCall); continue; }
       flush();
       if (b.type === 'text') { const t = String(b.text || '').trim(); if (t && !DESIGN_NOISE.test(t)) out.push(`<div class="md" dir="auto">${mdToHtml(t)}</div>`); }

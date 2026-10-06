@@ -119,7 +119,7 @@ Claude exports change over time. When you find a field the reader does not show 
 7. **Add a test** in `test/`. `test/harness.mjs` loads the browser scripts into a Node `vm` context (there is no real DOM), so test the model and parsing, not the drawing.
 8. **Document it** in [docs/export-format.md](docs/export-format.md), again with invented examples only.
 
-Be defensive: export fields are often missing, `null`, empty, or of a different type than usual. Older exports must keep working.
+Be defensive: export fields are often missing, `null`, empty, or of a different type than usual. Older exports must keep working. The import already makes a message's blocks, attachments and files lists of objects and every record id a string (see [Loading screen](docs/architecture.md#loading-screen)); fields inside them, such as a tool's input or result, are still as the export wrote them.
 
 ## Updating a vendored library
 

@@ -38,13 +38,13 @@ function childrenByParent(msgs) {
 function buildTree(conv) {
   let t = TREE.get(conv);
   if (t) return t;
-  const msgs = conv.raw.chat_messages || [];
+  const msgs = conv.raw.chat_messages;
   const children = childrenByParent(msgs);
   t = { msgs, byId: new Map(), children: children || new Map(), newest: new Map(), linear: !children, created: new Map() };
   for (const m of msgs) {
     t.byId.set(m.uuid, m);
-    for (const b of (Array.isArray(m.content) ? m.content : [])) {
-      if (b && b.type === 'tool_use' && b.name === 'create_file' && b.input && b.input.path) t.created.set(b.input.path, b);
+    for (const b of m.content) {
+      if (b.type === 'tool_use' && b.name === 'create_file' && b.input && b.input.path) t.created.set(b.input.path, b);
     }
   }
   if (!t.linear) {
@@ -215,11 +215,11 @@ function cpToUnits(text, cp) {
 // as { use, msg }, then the published artifacts the chat links to, as { art: id }.
 function collectOutputs(conv) {
   const out = [];
-  for (const m of conv.raw.chat_messages || []) {
-    for (const b of (Array.isArray(m.content) ? m.content : [])) {
-      if (b && b.type === 'tool_use' && isOutput(b)) out.push({ use: b, msg: m.uuid });
+  for (const m of conv.raw.chat_messages) {
+    for (const b of m.content) {
+      if (b.type === 'tool_use' && isOutput(b)) out.push({ use: b, msg: m.uuid });
     }
   }
-  for (const id of conv.artRefs || []) out.push({ art: id });
+  for (const id of conv.artRefs) out.push({ art: id });
   return out;
 }

@@ -2151,8 +2151,9 @@ function addUser(u) {
 // Artifact ids referenced from chat JSON: published links and tool result ids.
 const RE_ART_REF = new RegExp('(?:/artifact/|artifact_id\\\\?"\\s*:\\s*\\\\?")(' + UUID_PAT + ')', 'g');
 
-// A chat's messages as the views read them (from raw): objects only, and their lists of blocks,
-// attachments and files hold objects only. The list itself comes back when it is clean already.
+// A chat's messages as the views read them (from raw): objects only, and their blocks
+// (content), attachments and files always lists of objects, also when the export leaves one
+// out or gives null, an object or a number. The list comes back as it is when it is clean.
 function cleanMessages(list) {
   if (!Array.isArray(list)) return [];
   let changed = false;
@@ -2160,7 +2161,7 @@ function cleanMessages(list) {
   for (const m of list) {
     if (!isObj(m)) { changed = true; continue; }
     const fix = {};
-    for (const k of ['content', 'attachments', 'files']) if (Array.isArray(m[k]) && !m[k].every(isObj)) fix[k] = objects(m[k]);
+    for (const k of ['content', 'attachments', 'files']) if (!Array.isArray(m[k]) || !m[k].every(isObj)) fix[k] = objects(m[k]);
     if (Object.keys(fix).length) changed = true;
     out.push(Object.keys(fix).length ? Object.assign({}, m, fix) : m);
   }
@@ -2169,9 +2170,10 @@ function cleanMessages(list) {
 
 function addConversation(c, source, rawText) {
   if (!c.uuid) return;
+  const id = String(c.uuid);   // a number would never match the id in a route
   const msgs = cleanMessages(c.chat_messages);
   const updated = parseTime(c.updated_at);
-  const prev = DB.convById.get(c.uuid);
+  const prev = DB.convById.get(id);
   // Same chat in two exports: keep the newer / longer copy. It moves to the end, like a new chat.
   if (prev && (updated < prev.updated || (updated === prev.updated && msgs.length <= prev.msgCount))) return;
   let firstTs = 0, lastTs = 0, contentful = 0, files = 0, outputs = 0, tools = 0, firstHuman = '', firstReply = '';
@@ -2179,11 +2181,9 @@ function addConversation(c, source, rawText) {
     const t = parseTime(m.created_at);
     if (t && (!firstTs || t < firstTs)) firstTs = t;
     if (t > lastTs) lastTs = t;
-    const blocks = Array.isArray(m.content) ? m.content : [];
-    const mfiles = objects(m.files);
-    if (blocks.length || hasText(m.text) || mfiles.length || objects(m.attachments).length) contentful++;
-    if (m.sender === 'human') files += mfiles.length;   // assistant files are tool screenshots
-    for (const b of blocks) {
+    if (m.content.length || hasText(m.text) || m.files.length || m.attachments.length) contentful++;
+    if (m.sender === 'human') files += m.files.length;   // assistant files are tool screenshots
+    for (const b of m.content) {
       // isOutput (TOOLS in conversation.js) is the rule the outputs box uses too.
       if (b.type === 'tool_use') { tools++; if (isOutput(b)) outputs++; }
       else if (!firstHuman && m.sender === 'human' && b.type === 'text' && hasText(b.text)) firstHuman = b.text;
@@ -2204,7 +2204,7 @@ function addConversation(c, source, rawText) {
   const name = String(c.name || '').trim();
   const conv = {
     type: 'conversation',
-    id: c.uuid,
+    id,
     name,
     // A chat without a name gets its title from the first prompt, else Claude's first reply.
     firstText: name ? '' : truncate(oneLine(firstHuman || firstReply), 70),
@@ -2220,22 +2220,23 @@ function addConversation(c, source, rawText) {
     toolCount: tools,
     forks,
     artRefs,
-    raw: msgs === c.chat_messages || c.chat_messages == null ? c : Object.assign({}, c, { chat_messages: msgs }),
+    raw: msgs === c.chat_messages ? c : Object.assign({}, c, { chat_messages: msgs }),
     source,
   };
-  if (prev) DB.convById.delete(conv.id);
-  DB.convById.set(conv.id, conv);
+  if (prev) DB.convById.delete(id);
+  DB.convById.set(id, conv);
 }
 
 function addProject(p, source) {
   if (!p.uuid) return;
+  const id = String(p.uuid);
   const updated = parseTime(p.updated_at);
-  const prev = DB.projectById.get(p.uuid);
+  const prev = DB.projectById.get(id);
   if (prev && prev.updated >= updated) return;
   const creator = isObj(p.creator) ? p.creator : {};
   const proj = {
     type: 'project',
-    id: p.uuid,
+    id,
     name: String(p.name || '').trim(),
     description: p.description || '',
     isPrivate: p.is_private !== false,
@@ -2285,6 +2286,7 @@ function parseFrontmatter(text) {
 
 function addMemory(m) {
   if (!m.account_uuid) return;
+  const id = String(m.account_uuid);
   const files = objects(m.memory_files).map(f => {
     const content = String(f.content || ''), path = String(f.path || '');
     const fm = parseFrontmatter(content);
@@ -2298,8 +2300,8 @@ function addMemory(m) {
     };
   });
   const projectMemories = Object.entries(isObj(m.project_memories) ? m.project_memories : {}).map(([projectId, text]) => ({ projectId, text: String(text || '') }));
-  const prev = DB.memoryByPerson.get(m.account_uuid);
-  const mem = prev || { type: 'memory', id: m.account_uuid, ownerId: m.account_uuid, conversationsMemory: '', projectMemories: [], files: [], updated: 0 };
+  const prev = DB.memoryByPerson.get(id);
+  const mem = prev || { type: 'memory', id, ownerId: id, conversationsMemory: '', projectMemories: [], files: [], updated: 0 };
   // Merge across exports. The summaries have no timestamp, so the copy whose memory files
   // are newest counts as the newer export: its newest file is at least mem.updated, the
   // newest file merged so far (old memories.json has no files: 0). Nothing is dropped:
@@ -2329,20 +2331,31 @@ function cleanDesignPrompt(s) {
     .trim();
 }
 
+/* A design chat's rows as the views read them: a row's attachments, and its content blocks, are
+ * lists of objects when the row has them (a row without content blocks shows its content as
+ * text). The row comes back as it is when it is clean. */
+function cleanDesignRow(m) {
+  const c = m.content;
+  if (!isObj(c)) return m;
+  const fix = {};
+  for (const k of ['attachments', 'contentBlocks']) if (c[k] != null && !(Array.isArray(c[k]) && c[k].every(isObj))) fix[k] = objects(c[k]);
+  return Object.keys(fix).length ? Object.assign({}, m, { content: Object.assign({}, c, fix) }) : m;
+}
+
 // Adjacent user rows with the same content.id are one message saved twice (server + client copy).
 function dedupeDesignMessages(msgs) {
   const out = [];
   for (const m of msgs) {
-    const c = m && m.content && typeof m.content === 'object' ? m.content : null;
+    const c = isObj(m.content) ? m.content : null;
     const prev = out[out.length - 1];
-    const pc = prev && prev.content && typeof prev.content === 'object' ? prev.content : null;
+    const pc = prev && isObj(prev.content) ? prev.content : null;
     if (c && pc && m.role === 'user' && prev.role === 'user' && c.id && c.id === pc.id) {
       const better = c.authorAccountUuid && !pc.authorAccountUuid ? m
         : (!c.authorAccountUuid && pc.authorAccountUuid ? prev : (Object.keys(c).length > Object.keys(pc).length ? m : prev));
       const other = better === m ? prev : m;
       const bc = better.content, oc = other.content;
-      const atts = Array.isArray(bc.attachments) ? bc.attachments.slice() : [];
-      for (const a of (Array.isArray(oc.attachments) ? oc.attachments : [])) if (a && !atts.some(x => x && x.id === a.id)) atts.push(a);
+      const atts = (bc.attachments || []).slice();
+      for (const a of (oc.attachments || [])) if (!atts.some(x => x.id === a.id)) atts.push(a);
       out[out.length - 1] = Object.assign({}, better, { content: Object.assign({}, oc, bc, { attachments: atts }) });
       continue;
     }
@@ -2353,17 +2366,18 @@ function dedupeDesignMessages(msgs) {
 
 function addDesignChat(d, source) {
   if (!d.uuid) return;
+  const chatId = String(d.uuid);
   const updated = parseTime(d.updated_at);
-  const prev = DB.designById.get(d.uuid);
+  const prev = DB.designById.get(chatId);
   if (prev && prev.updated >= updated) return;
-  const msgs = dedupeDesignMessages(objects(d.messages));
+  const msgs = dedupeDesignMessages(objects(d.messages).map(cleanDesignRow));
   // Attribution: uuid authors, plus name-only messages resolved inside this chat.
   const nameToId = new Map();
   const hints = new Map();
   const realCounts = new Map();   // typed (non-pill) messages per author
   const authorOrder = [];
   for (const m of msgs) {
-    const c = m && m.content && typeof m.content === 'object' ? m.content : {};
+    const c = isObj(m.content) ? m.content : {};
     if (c.authorAccountUuid) {
       if (!authorOrder.includes(c.authorAccountUuid)) authorOrder.push(c.authorAccountUuid);
       if (c.authorName) { nameToId.set(String(c.authorName).toLowerCase(), c.authorAccountUuid); hints.set(c.authorAccountUuid, c.authorName); }
@@ -2371,7 +2385,7 @@ function addDesignChat(d, source) {
   }
   let firstPrompt = '', lastTs = 0;
   for (const m of msgs) {
-    const c = m && m.content && typeof m.content === 'object' ? m.content : {};
+    const c = isObj(m.content) ? m.content : {};
     const id = c.authorAccountUuid || (c.authorName ? nameToId.get(String(c.authorName).toLowerCase()) : null);
     if (id && !authorOrder.includes(id)) authorOrder.push(id);
     if (m.role === 'user' && id && c.pill !== true) realCounts.set(id, (realCounts.get(id) || 0) + 1);
@@ -2388,7 +2402,7 @@ function addDesignChat(d, source) {
   const projectName = d.project && d.project.name ? String(d.project.name) : '';
   const chat = {
     type: 'design',
-    id: d.uuid,
+    id: chatId,
     name: String(d.title || '').trim(),
     firstPrompt,
     project: d.project && typeof d.project === 'object' ? { id: d.project.uuid || '', name: projectName } : { id: '', name: '' },
@@ -2692,13 +2706,13 @@ function childrenByParent(msgs) {
 function buildTree(conv) {
   let t = TREE.get(conv);
   if (t) return t;
-  const msgs = conv.raw.chat_messages || [];
+  const msgs = conv.raw.chat_messages;
   const children = childrenByParent(msgs);
   t = { msgs, byId: new Map(), children: children || new Map(), newest: new Map(), linear: !children, created: new Map() };
   for (const m of msgs) {
     t.byId.set(m.uuid, m);
-    for (const b of (Array.isArray(m.content) ? m.content : [])) {
-      if (b && b.type === 'tool_use' && b.name === 'create_file' && b.input && b.input.path) t.created.set(b.input.path, b);
+    for (const b of m.content) {
+      if (b.type === 'tool_use' && b.name === 'create_file' && b.input && b.input.path) t.created.set(b.input.path, b);
     }
   }
   if (!t.linear) {
@@ -2869,12 +2883,12 @@ function cpToUnits(text, cp) {
 // as { use, msg }, then the published artifacts the chat links to, as { art: id }.
 function collectOutputs(conv) {
   const out = [];
-  for (const m of conv.raw.chat_messages || []) {
-    for (const b of (Array.isArray(m.content) ? m.content : [])) {
-      if (b && b.type === 'tool_use' && isOutput(b)) out.push({ use: b, msg: m.uuid });
+  for (const m of conv.raw.chat_messages) {
+    for (const b of m.content) {
+      if (b.type === 'tool_use' && isOutput(b)) out.push({ use: b, msg: m.uuid });
     }
   }
-  for (const id of conv.artRefs || []) out.push({ art: id });
+  for (const id of conv.artRefs) out.push({ art: id });
   return out;
 }
 
@@ -2896,20 +2910,20 @@ function searchTerms(q) {
   return terms;
 }
 
+// A message's lists of blocks, attachments and files are lists of objects (cleanMessages() in
+// ingest.js).
 function msgProse(m) {
-  const blocks = Array.isArray(m.content) ? m.content : [];
   let s = '';
-  for (const b of blocks) if (b && b.type === 'text' && b.text) s += b.text + '\n';
-  if (!blocks.length && m.text) s += m.text + '\n';
-  for (const a of (m.attachments || [])) if (a.file_name) s += a.file_name + '\n';
-  for (const f of (m.files || [])) if (f.file_name) s += f.file_name + '\n';
+  for (const b of m.content) if (b.type === 'text' && b.text) s += b.text + '\n';
+  if (!m.content.length && m.text) s += m.text + '\n';
+  for (const a of m.attachments) if (a.file_name) s += a.file_name + '\n';
+  for (const f of m.files) if (f.file_name) s += f.file_name + '\n';
   return s;
 }
 
 function msgDeep(m) {
   let s = '';
-  for (const b of (Array.isArray(m.content) ? m.content : [])) {
-    if (!b) continue;
+  for (const b of m.content) {
     if (b.type === 'thinking') { s += (b.thinking || '') + '\n'; for (const x of (b.summaries || [])) s += (x && x.summary || '') + '\n'; }
     else if (b.type === 'tool_use') { try { s += JSON.stringify(b.input || {}) + '\n'; } catch (e) { /* ignore */ } }
     else if (b.type === 'tool_result') {
@@ -2921,7 +2935,7 @@ function msgDeep(m) {
       }
     }
   }
-  for (const a of (m.attachments || [])) s += (a.extracted_content || '') + '\n';
+  for (const a of m.attachments) s += (a.extracted_content || '') + '\n';
   return s;
 }
 
@@ -2977,11 +2991,12 @@ function memorySearchText(mem) {
   return [mem.conversationsMemory, ...mem.projectMemories.map(x => x.text), ...mem.files.map(f => f.content)].join('\n');
 }
 
-// Text of an artifact, without its files: title, descriptions, doc page and comments.
+// Text of an artifact, without its files: title, descriptions, doc page and comments. Comment
+// lists are null until a file gives them; a thread's comments are a list (cleanThreads()).
 function artifactSearchText(a, page) {
   return [artifactTitle(a), a.description, a.contentType, ...a.versions.map(v => v.title + ' ' + v.description), page,
-    ...(a.comments || []).flatMap(t => [t.quoted_text, ...(t.comments || []).map(c => c.body)]),
-    ...(a.threads || []).flatMap(t => (t.comments || []).map(c => c.text))].join('\n');
+    ...(a.comments || []).flatMap(t => [t.quoted_text, ...t.comments.map(c => c.body)]),
+    ...(a.threads || []).flatMap(t => t.comments.map(c => c.text))].join('\n');
 }
 
 // Text of a design chat: prompts, replies and comments on the design.
@@ -2990,8 +3005,7 @@ function designSearchText(d) {
   return [designTitle(d), d.project.name, ...d.messages.map(m => {
     const c = m.content || {};
     const parts = [typeof c.content === 'string' ? c.content : '', commentText(c.attachments)];
-    for (const b of (Array.isArray(c.contentBlocks) ? c.contentBlocks : [])) {
-      if (!b) continue;
+    for (const b of (c.contentBlocks || [])) {
       if (b.type === 'text') parts.push(b.text || '');
       // Messages typed while Claude was working exist only inside these blocks.
       else if (b.type === 'user_interjection' && b.message) parts.push(String(b.message.content || ''), commentText(b.message.attachments));
@@ -3047,7 +3061,7 @@ async function runSearch(q, { deep, scope, signal, onProgress, shown = 200 }) {
   for (let ci = 0; ci < convs.length; ci++) {
     const c = convs[ci];
     const e = searchEntry(c);
-    const msgs = c.raw.chat_messages || [];
+    const msgs = c.raw.chat_messages;
     if (!e.prose) e.prose = joinLower([convTitle(c) + '\n' + c.summary, ...msgs.map(msgProse)]);
     if (deep && !e.deep) e.deep = joinLower(msgs.map(msgDeep));
     const score = countHits(deep ? [e.prose.text, e.deep.text] : [e.prose.text], terms);
@@ -3175,10 +3189,8 @@ function messageToMarkdown(conv, m) {
   const human = m.sender === 'human';
   const who = human ? (conv.owner ? conv.owner.name : 'User') : 'Claude';
   const out = [`### ${human ? '👤' : '🤖'} ${who} — ${fmtDateTime(m.created_at)}`, ''];
-  const blocks = Array.isArray(m.content) ? m.content : [];
-  if (!blocks.length && m.text) out.push(m.text);
-  for (const b of blocks) {
-    if (!b) continue;
+  if (!m.content.length && m.text) out.push(m.text);
+  for (const b of m.content) {
     if (b.type === 'text' && hasText(b.text)) out.push(b.text, '');
     else if (b.type === 'tool_use') {
       const i = b.input || {};
@@ -3188,7 +3200,7 @@ function messageToMarkdown(conv, m) {
       if (t && t.markdown) out.push(...t.markdown(i));
     }
   }
-  for (const a of (m.attachments || [])) {
+  for (const a of m.attachments) {
     const text = a.extracted_content || '';
     out.push(`> 📎 ${a.file_name || 'Pasted text'} (${fmtBytes(a.file_size || text.length)})`, '');
     if (text) {
@@ -3196,7 +3208,7 @@ function messageToMarkdown(conv, m) {
       if (text.length > MD_ATTACH_CAP) out.push(`_Cut at ${fmtBytes(MD_ATTACH_CAP)}; the full text is in the .json file._`, '');
     }
   }
-  for (const f of (m.files || [])) if (!(m.attachments || []).some(a => a.file_name === f.file_name)) out.push(`> 📄 ${f.file_name || 'file'} (not in export)`);
+  for (const f of m.files) if (!m.attachments.some(a => a.file_name === f.file_name)) out.push(`> 📄 ${f.file_name || 'file'} (not in export)`);
   return out.join('\n');
 }
 
@@ -4174,7 +4186,7 @@ function viewConversations() {
 // One conversation in the search results: it opens at the matching message, with the words
 // highlighted (qs).
 function convResult({ item: c, hitIdx, hitDeep }, terms, qs) {
-  const msgs = c.raw.chat_messages || [];
+  const msgs = c.raw.chat_messages;
   const m = hitIdx >= 0 ? msgs[hitIdx] : null;
   const text = m ? (hitDeep ? msgDeep(m) : msgProse(m)) : (c.summary || '');
   return `<a class="result" href="#/c/${encodeURIComponent(c.id)}${qs}${m ? '&m=' + encodeURIComponent(m.uuid) : ''}">
@@ -4350,8 +4362,7 @@ function messageHtml(m, ctx) {
         ${idx + 1} / ${sibs.length}
         <button type="button" ${next ? on(el => switchBranch(ctx, next.uuid, el, 1)) : 'disabled'} aria-label="Next version">›</button>
       </span>` : '';
-  const blocks = Array.isArray(m.content) ? m.content : [];
-  const firstStart = blocks.reduce((min, b) => { const t = parseTime(b && b.start_timestamp); return t && (!min || t < min) ? t : min; }, 0);
+  const firstStart = m.content.reduce((min, b) => { const t = parseTime(b.start_timestamp); return t && (!min || t < min) ? t : min; }, 0);
   const created = parseTime(m.created_at);
   const dur = !human && firstStart && created > firstStart ? fmtDuration(created - firstStart) : '';
   const body = human ? humanBody(m, ctx) : assistantBody(m, ctx);
@@ -4389,9 +4400,8 @@ const HUMAN_FOLD = 3000;
 
 function humanBody(m, ctx) {
   const parts = [];
-  const blocks = Array.isArray(m.content) ? m.content : [];
-  let texts = blocks.filter(b => b && b.type === 'text' && hasText(b.text)).map(b => b.text);
-  if (!blocks.length && hasText(m.text)) texts = [m.text];
+  let texts = m.content.filter(b => b.type === 'text' && hasText(b.text)).map(b => b.text);
+  if (!m.content.length && hasText(m.text)) texts = [m.text];
   for (const t of texts) {
     if (t.length > HUMAN_FOLD) {
       // The preview stays; opening the box adds only the rest of the text.
@@ -4403,8 +4413,8 @@ function humanBody(m, ctx) {
     }
   }
   if (CONV_OPTS.showSystem) {
-    for (const b of blocks) {
-      if (b && b.type === 'injected_prompt_block') {
+    for (const b of m.content) {
+      if (b.type === 'injected_prompt_block') {
         parts.push(blk({ cls: 'thinking', summary: `<span class="lbl">System note</span><span class="desc">${esc(b.injection_source || '')} — added by the platform, not typed by the person</span><span class="meta">${fmtBytes((b.prompt || '').length)}</span>` },
           () => preHtml(b.prompt || '', { wrap: true })));
       }
@@ -4417,11 +4427,10 @@ function humanBody(m, ctx) {
 
 // Uploads: attachments carry extracted text; files[] are references only (no bytes in export).
 function filesHtml(m) {
-  const atts = Array.isArray(m.attachments) ? m.attachments.slice() : [];
-  const files = Array.isArray(m.files) ? m.files : [];
+  const files = m.files;
   const used = new Set();
   const out = [];
-  for (const a of atts) {
+  for (const a of m.attachments) {
     const name = a.file_name || 'Pasted text';
     const content = a.extracted_content || '';
     out.push(blk({ cls: 'attach', summary: `<span class="lbl" dir="auto">${esc(name)}</span><span class="desc">${esc(a.file_type || '')}</span><span class="meta">${fmtBytes(a.file_size || content.length)}</span>` },
@@ -4442,13 +4451,13 @@ function filesHtml(m) {
 }
 
 function assistantBody(m, ctx) {
-  const blocks = Array.isArray(m.content) ? m.content : [];
+  const blocks = m.content;
   if (!blocks.length) return hasText(m.text) ? `<div class="md">${mdToHtml(m.text)}</div>` : '';
   const results = new Map();
-  for (const b of blocks) if (b && b.type === 'tool_result' && b.tool_use_id) results.set(b.tool_use_id, b);
+  for (const b of blocks) if (b.type === 'tool_result' && b.tool_use_id) results.set(b.tool_use_id, b);
   const knowledge = new Map();   // url -> {title, site} for citation labels
   for (const b of blocks) {
-    if (b && b.type === 'tool_result') for (const it of (Array.isArray(b.content) ? b.content : [])) {
+    if (b.type === 'tool_result') for (const it of (Array.isArray(b.content) ? b.content : [])) {
       if (it && it.type === 'knowledge' && it.url) knowledge.set(it.url, { title: it.title, site: it.metadata && it.metadata.site_name });
     }
   }
@@ -4473,7 +4482,6 @@ function assistantBody(m, ctx) {
   };
   const usedResults = new Set();
   for (const b of blocks) {
-    if (!b) continue;
     if (b.type === 'tool_use') {
       const res = results.get(b.id);
       if (res) usedResults.add(res);
@@ -5128,7 +5136,7 @@ async function drawPage(a, want) {
       <button class="btn small" type="button" ${on(() => copyText(md))}>Copy Markdown</button>
     </div>
   </div>
-  ${(a.comments || []).length ? `<h2 class="section-title">Comments${tabs.length > 1 ? ' on this tab' : ''} <span class="badge">${threads.reduce((n, t) => n + (t.comments || []).length, 0)}</span></h2><div class="card card-pad">${threads.length ? pageCommentsHtml(a, threads) : '<p class="faint">No comments on this tab.</p>'}</div>` : ''}`;
+  ${(a.comments || []).length ? `<h2 class="section-title">Comments${tabs.length > 1 ? ' on this tab' : ''} <span class="badge">${threads.reduce((n, t) => n + t.comments.length, 0)}</span></h2><div class="card card-pad">${threads.length ? pageCommentsHtml(a, threads) : '<p class="faint">No comments on this tab.</p>'}</div>` : ''}`;
   refocus();
   // Highlight the text each comment thread points at.
   const quotes = threads.map(t => t.quoted_text).filter(q => typeof q === 'string' && q.replace(/\s/g, '').length >= 3);
@@ -5148,7 +5156,7 @@ function pageCommentsHtml(a, threads) {
   return threads.map(t => `<div class="comment">
     <div class="row wrap" style="font-size:12.5px;color:var(--muted)">${t.tab ? `<span class="chip" dir="auto">${esc(t.tab)}</span>` : ''}${t.resolved ? '<span class="chip ok">resolved</span>' : ''}</div>
     ${t.quoted_text ? `<div class="quote" dir="auto">“${esc(t.quoted_text)}”</div>` : ''}
-    ${(t.comments || []).map(c => {
+    ${t.comments.map(c => {
       const au = c.author && c.author.uuid ? DB.people.get(c.author.uuid) : null;
       const who = c.posted_by_agent ? `Claude <span class="faint">for ${au ? esc(au.name) : 'the owner'}</span>` : (au ? personLink(au) : '<span class="faint">Unknown</span>');
       return `<div class="reply"><div style="font-size:13px"><b>${who}</b> <span class="faint">${esc(fmtDateTime(c.created_at))}</span></div><div dir="auto">${mdToHtml(c.body || '')}</div></div>`;
@@ -5344,7 +5352,7 @@ function designMessageHtml(m, d, receipts) {
   if (c.kind === 'chat-summary') {
     return `<details class="card summary-box"><summary>Summary carried over from an earlier chat</summary>${mdBlock(c.content || '')}</details>`;
   }
-  const blocks = Array.isArray(c.contentBlocks) ? c.contentBlocks : null;
+  const blocks = c.contentBlocks || null;   // without blocks, the row's content is its text
   const out = [];
   if (!blocks) {
     if (c.content) out.push(`<div class="md" dir="auto">${mdToHtml(c.content)}</div>`);
@@ -5357,7 +5365,6 @@ function designMessageHtml(m, d, receipts) {
       group = [];
     };
     for (const b of blocks) {
-      if (!b) continue;
       if (b.type === 'tool_call' && b.toolCall) { group.push(b.toolCall); continue; }
       flush();
       if (b.type === 'text') { const t = String(b.text || '').trim(); if (t && !DESIGN_NOISE.test(t)) out.push(`<div class="md" dir="auto">${mdToHtml(t)}</div>`); }

@@ -57,7 +57,7 @@ function viewConversations() {
 // One conversation in the search results: it opens at the matching message, with the words
 // highlighted (qs).
 function convResult({ item: c, hitIdx, hitDeep }, terms, qs) {
-  const msgs = c.raw.chat_messages || [];
+  const msgs = c.raw.chat_messages;
   const m = hitIdx >= 0 ? msgs[hitIdx] : null;
   const text = m ? (hitDeep ? msgDeep(m) : msgProse(m)) : (c.summary || '');
   return `<a class="result" href="#/c/${encodeURIComponent(c.id)}${qs}${m ? '&m=' + encodeURIComponent(m.uuid) : ''}">
@@ -233,8 +233,7 @@ function messageHtml(m, ctx) {
         ${idx + 1} / ${sibs.length}
         <button type="button" ${next ? on(el => switchBranch(ctx, next.uuid, el, 1)) : 'disabled'} aria-label="Next version">›</button>
       </span>` : '';
-  const blocks = Array.isArray(m.content) ? m.content : [];
-  const firstStart = blocks.reduce((min, b) => { const t = parseTime(b && b.start_timestamp); return t && (!min || t < min) ? t : min; }, 0);
+  const firstStart = m.content.reduce((min, b) => { const t = parseTime(b.start_timestamp); return t && (!min || t < min) ? t : min; }, 0);
   const created = parseTime(m.created_at);
   const dur = !human && firstStart && created > firstStart ? fmtDuration(created - firstStart) : '';
   const body = human ? humanBody(m, ctx) : assistantBody(m, ctx);
@@ -272,9 +271,8 @@ const HUMAN_FOLD = 3000;
 
 function humanBody(m, ctx) {
   const parts = [];
-  const blocks = Array.isArray(m.content) ? m.content : [];
-  let texts = blocks.filter(b => b && b.type === 'text' && hasText(b.text)).map(b => b.text);
-  if (!blocks.length && hasText(m.text)) texts = [m.text];
+  let texts = m.content.filter(b => b.type === 'text' && hasText(b.text)).map(b => b.text);
+  if (!m.content.length && hasText(m.text)) texts = [m.text];
   for (const t of texts) {
     if (t.length > HUMAN_FOLD) {
       // The preview stays; opening the box adds only the rest of the text.
@@ -286,8 +284,8 @@ function humanBody(m, ctx) {
     }
   }
   if (CONV_OPTS.showSystem) {
-    for (const b of blocks) {
-      if (b && b.type === 'injected_prompt_block') {
+    for (const b of m.content) {
+      if (b.type === 'injected_prompt_block') {
         parts.push(blk({ cls: 'thinking', summary: `<span class="lbl">System note</span><span class="desc">${esc(b.injection_source || '')} — added by the platform, not typed by the person</span><span class="meta">${fmtBytes((b.prompt || '').length)}</span>` },
           () => preHtml(b.prompt || '', { wrap: true })));
       }
@@ -300,11 +298,10 @@ function humanBody(m, ctx) {
 
 // Uploads: attachments carry extracted text; files[] are references only (no bytes in export).
 function filesHtml(m) {
-  const atts = Array.isArray(m.attachments) ? m.attachments.slice() : [];
-  const files = Array.isArray(m.files) ? m.files : [];
+  const files = m.files;
   const used = new Set();
   const out = [];
-  for (const a of atts) {
+  for (const a of m.attachments) {
     const name = a.file_name || 'Pasted text';
     const content = a.extracted_content || '';
     out.push(blk({ cls: 'attach', summary: `<span class="lbl" dir="auto">${esc(name)}</span><span class="desc">${esc(a.file_type || '')}</span><span class="meta">${fmtBytes(a.file_size || content.length)}</span>` },
@@ -325,13 +322,13 @@ function filesHtml(m) {
 }
 
 function assistantBody(m, ctx) {
-  const blocks = Array.isArray(m.content) ? m.content : [];
+  const blocks = m.content;
   if (!blocks.length) return hasText(m.text) ? `<div class="md">${mdToHtml(m.text)}</div>` : '';
   const results = new Map();
-  for (const b of blocks) if (b && b.type === 'tool_result' && b.tool_use_id) results.set(b.tool_use_id, b);
+  for (const b of blocks) if (b.type === 'tool_result' && b.tool_use_id) results.set(b.tool_use_id, b);
   const knowledge = new Map();   // url -> {title, site} for citation labels
   for (const b of blocks) {
-    if (b && b.type === 'tool_result') for (const it of (Array.isArray(b.content) ? b.content : [])) {
+    if (b.type === 'tool_result') for (const it of (Array.isArray(b.content) ? b.content : [])) {
       if (it && it.type === 'knowledge' && it.url) knowledge.set(it.url, { title: it.title, site: it.metadata && it.metadata.site_name });
     }
   }
@@ -356,7 +353,6 @@ function assistantBody(m, ctx) {
   };
   const usedResults = new Set();
   for (const b of blocks) {
-    if (!b) continue;
     if (b.type === 'tool_use') {
       const res = results.get(b.id);
       if (res) usedResults.add(res);

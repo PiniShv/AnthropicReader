@@ -109,7 +109,32 @@ test('numbers where the export has strings load, and names still fall back', asy
   assert.ok(p, 'a numeric account id becomes the string id of one person');
   assert.equal(p.name, 'Unknown user · 42');
   assert.equal(p.conversations.length + p.projects.length, 2);
-  assert.equal(DB.memoryByPerson.get(42).files[0].path, '10');
+  assert.equal(DB.memoryByPerson.get('42').files[0].path, '10');
+});
+
+test('lists of the wrong type become clean lists, and ids become strings, so search and exports work', async () => {
+  const odd = (n, extra) => ({ uuid: U(n), sender: 'human', text: 'findme', created_at: T, ...extra });
+  const { api } = await importFiles([users(), looseFile('x/conversations.json', [
+    { uuid: 7, name: 'numeric id', account: { uuid: PERSON }, updated_at: T, chat_messages: [odd(11, { attachments: {}, files: 5, content: null })] },
+    { uuid: U(2), name: 'no lists', account: { uuid: PERSON }, updated_at: T, chat_messages: [odd(21, {}), odd(22, { content: [null, { type: 'text', text: 'findme too' }], attachments: [null] })] },
+  ]), looseFile('x/design_chats/d.json', { uuid: 8, messages: [
+    { role: 'user', content: { content: 'hi', authorAccountUuid: PERSON, attachments: {} } },
+    { role: 'assistant', content: { contentBlocks: [null, { type: 'text', text: 'ok' }] } },
+    { role: 'assistant', content: { content: 'plain text, no blocks' } },
+  ] })]);
+  const { DB } = api;
+  assert.deepEqual(plain(DB.warnings), []);
+  assert.deepEqual(plain(DB.conversations.map(c => c.id).sort()), [U(2), '7']);
+  for (const c of DB.conversations) {
+    for (const m of c.raw.chat_messages) for (const k of ['content', 'attachments', 'files']) assert.ok(Array.isArray(m[k]) && m[k].every(x => x && typeof x === 'object'), `${c.name}: ${k}`);
+  }
+  const d = DB.designById.get('8');
+  assert.ok(d, 'a numeric design chat id becomes a string');
+  assert.deepEqual(plain(d.messages.map(m => m.content.attachments || 'none')), [[], 'none', 'none']);
+  assert.deepEqual(plain(d.messages.map(m => m.content.contentBlocks || 'none')), ['none', [{ type: 'text', text: 'ok' }], 'none'], 'a row without blocks keeps none');
+  const res = await api.runSearch('findme', { deep: true, scope: api.scopeOf(null), signal: new AbortController().signal });
+  assert.equal(res.conversations.length, 2);
+  for (const c of DB.conversations) assert.ok(api.convToMarkdown(c, api.branchPath(c)).includes('findme'));
 });
 
 test('finalize() works through comment threads of any shape', () => {

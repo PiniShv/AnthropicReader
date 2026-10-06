@@ -34,10 +34,8 @@ function messageToMarkdown(conv, m) {
   const human = m.sender === 'human';
   const who = human ? (conv.owner ? conv.owner.name : 'User') : 'Claude';
   const out = [`### ${human ? '👤' : '🤖'} ${who} — ${fmtDateTime(m.created_at)}`, ''];
-  const blocks = Array.isArray(m.content) ? m.content : [];
-  if (!blocks.length && m.text) out.push(m.text);
-  for (const b of blocks) {
-    if (!b) continue;
+  if (!m.content.length && m.text) out.push(m.text);
+  for (const b of m.content) {
     if (b.type === 'text' && hasText(b.text)) out.push(b.text, '');
     else if (b.type === 'tool_use') {
       const i = b.input || {};
@@ -47,7 +45,7 @@ function messageToMarkdown(conv, m) {
       if (t && t.markdown) out.push(...t.markdown(i));
     }
   }
-  for (const a of (m.attachments || [])) {
+  for (const a of m.attachments) {
     const text = a.extracted_content || '';
     out.push(`> 📎 ${a.file_name || 'Pasted text'} (${fmtBytes(a.file_size || text.length)})`, '');
     if (text) {
@@ -55,7 +53,7 @@ function messageToMarkdown(conv, m) {
       if (text.length > MD_ATTACH_CAP) out.push(`_Cut at ${fmtBytes(MD_ATTACH_CAP)}; the full text is in the .json file._`, '');
     }
   }
-  for (const f of (m.files || [])) if (!(m.attachments || []).some(a => a.file_name === f.file_name)) out.push(`> 📄 ${f.file_name || 'file'} (not in export)`);
+  for (const f of m.files) if (!m.attachments.some(a => a.file_name === f.file_name)) out.push(`> 📄 ${f.file_name || 'file'} (not in export)`);
   return out.join('\n');
 }
 

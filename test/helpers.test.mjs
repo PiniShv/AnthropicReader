@@ -391,7 +391,8 @@ test('branches: a parent missing from the export starts a root branch', () => {
 });
 
 test('branches: messages without parents are one straight line', () => {
-  const c = { id: 'conv-e', raw: { chat_messages: [{ uuid: 'x1' }, { uuid: 'x2' }, { uuid: 'x3' }] } };
+  // As the import leaves them (cleanMessages): every message has its list of blocks.
+  const c = { id: 'conv-e', raw: { chat_messages: ['x1', 'x2', 'x3'].map(uuid => ({ uuid, content: [] })) } };
   assert.equal(api.buildTree(c).linear, true);
   assert.deepEqual(pathOf(c), ['x1', 'x2', 'x3']);
   api.selectBranchFor(c, 'x2');

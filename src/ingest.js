@@ -58,8 +58,9 @@ function addUser(u) {
 // Artifact ids referenced from chat JSON: published links and tool result ids.
 const RE_ART_REF = new RegExp('(?:/artifact/|artifact_id\\\\?"\\s*:\\s*\\\\?")(' + UUID_PAT + ')', 'g');
 
-// A chat's messages as the views read them (from raw): objects only, and their lists of blocks,
-// attachments and files hold objects only. The list itself comes back when it is clean already.
+// A chat's messages as the views read them (from raw): objects only, and their blocks
+// (content), attachments and files always lists of objects, also when the export leaves one
+// out or gives null, an object or a number. The list comes back as it is when it is clean.
 function cleanMessages(list) {
   if (!Array.isArray(list)) return [];
   let changed = false;
@@ -67,7 +68,7 @@ function cleanMessages(list) {
   for (const m of list) {
     if (!isObj(m)) { changed = true; continue; }
     const fix = {};
-    for (const k of ['content', 'attachments', 'files']) if (Array.isArray(m[k]) && !m[k].every(isObj)) fix[k] = objects(m[k]);
+    for (const k of ['content', 'attachments', 'files']) if (!Array.isArray(m[k]) || !m[k].every(isObj)) fix[k] = objects(m[k]);
     if (Object.keys(fix).length) changed = true;
     out.push(Object.keys(fix).length ? Object.assign({}, m, fix) : m);
   }
@@ -76,9 +77,10 @@ function cleanMessages(list) {
 
 function addConversation(c, source, rawText) {
   if (!c.uuid) return;
+  const id = String(c.uuid);   // a number would never match the id in a route
   const msgs = cleanMessages(c.chat_messages);
   const updated = parseTime(c.updated_at);
-  const prev = DB.convById.get(c.uuid);
+  const prev = DB.convById.get(id);
   // Same chat in two exports: keep the newer / longer copy. It moves to the end, like a new chat.
   if (prev && (updated < prev.updated || (updated === prev.updated && msgs.length <= prev.msgCount))) return;
   let firstTs = 0, lastTs = 0, contentful = 0, files = 0, outputs = 0, tools = 0, firstHuman = '', firstReply = '';
@@ -86,11 +88,9 @@ function addConversation(c, source, rawText) {
     const t = parseTime(m.created_at);
     if (t && (!firstTs || t < firstTs)) firstTs = t;
     if (t > lastTs) lastTs = t;
-    const blocks = Array.isArray(m.content) ? m.content : [];
-    const mfiles = objects(m.files);
-    if (blocks.length || hasText(m.text) || mfiles.length || objects(m.attachments).length) contentful++;
-    if (m.sender === 'human') files += mfiles.length;   // assistant files are tool screenshots
-    for (const b of blocks) {
+    if (m.content.length || hasText(m.text) || m.files.length || m.attachments.length) contentful++;
+    if (m.sender === 'human') files += m.files.length;   // assistant files are tool screenshots
+    for (const b of m.content) {
       // isOutput (TOOLS in conversation.js) is the rule the outputs box uses too.
       if (b.type === 'tool_use') { tools++; if (isOutput(b)) outputs++; }
       else if (!firstHuman && m.sender === 'human' && b.type === 'text' && hasText(b.text)) firstHuman = b.text;
@@ -111,7 +111,7 @@ function addConversation(c, source, rawText) {
   const name = String(c.name || '').trim();
   const conv = {
     type: 'conversation',
-    id: c.uuid,
+    id,
     name,
     // A chat without a name gets its title from the first prompt, else Claude's first reply.
     firstText: name ? '' : truncate(oneLine(firstHuman || firstReply), 70),
@@ -127,22 +127,23 @@ function addConversation(c, source, rawText) {
     toolCount: tools,
     forks,
     artRefs,
-    raw: msgs === c.chat_messages || c.chat_messages == null ? c : Object.assign({}, c, { chat_messages: msgs }),
+    raw: msgs === c.chat_messages ? c : Object.assign({}, c, { chat_messages: msgs }),
     source,
   };
-  if (prev) DB.convById.delete(conv.id);
-  DB.convById.set(conv.id, conv);
+  if (prev) DB.convById.delete(id);
+  DB.convById.set(id, conv);
 }
 
 function addProject(p, source) {
   if (!p.uuid) return;
+  const id = String(p.uuid);
   const updated = parseTime(p.updated_at);
-  const prev = DB.projectById.get(p.uuid);
+  const prev = DB.projectById.get(id);
   if (prev && prev.updated >= updated) return;
   const creator = isObj(p.creator) ? p.creator : {};
   const proj = {
     type: 'project',
-    id: p.uuid,
+    id,
     name: String(p.name || '').trim(),
     description: p.description || '',
     isPrivate: p.is_private !== false,
@@ -192,6 +193,7 @@ function parseFrontmatter(text) {
 
 function addMemory(m) {
   if (!m.account_uuid) return;
+  const id = String(m.account_uuid);
   const files = objects(m.memory_files).map(f => {
     const content = String(f.content || ''), path = String(f.path || '');
     const fm = parseFrontmatter(content);
@@ -205,8 +207,8 @@ function addMemory(m) {
     };
   });
   const projectMemories = Object.entries(isObj(m.project_memories) ? m.project_memories : {}).map(([projectId, text]) => ({ projectId, text: String(text || '') }));
-  const prev = DB.memoryByPerson.get(m.account_uuid);
-  const mem = prev || { type: 'memory', id: m.account_uuid, ownerId: m.account_uuid, conversationsMemory: '', projectMemories: [], files: [], updated: 0 };
+  const prev = DB.memoryByPerson.get(id);
+  const mem = prev || { type: 'memory', id, ownerId: id, conversationsMemory: '', projectMemories: [], files: [], updated: 0 };
   // Merge across exports. The summaries have no timestamp, so the copy whose memory files
   // are newest counts as the newer export: its newest file is at least mem.updated, the
   // newest file merged so far (old memories.json has no files: 0). Nothing is dropped:
@@ -236,20 +238,31 @@ function cleanDesignPrompt(s) {
     .trim();
 }
 
+/* A design chat's rows as the views read them: a row's attachments, and its content blocks, are
+ * lists of objects when the row has them (a row without content blocks shows its content as
+ * text). The row comes back as it is when it is clean. */
+function cleanDesignRow(m) {
+  const c = m.content;
+  if (!isObj(c)) return m;
+  const fix = {};
+  for (const k of ['attachments', 'contentBlocks']) if (c[k] != null && !(Array.isArray(c[k]) && c[k].every(isObj))) fix[k] = objects(c[k]);
+  return Object.keys(fix).length ? Object.assign({}, m, { content: Object.assign({}, c, fix) }) : m;
+}
+
 // Adjacent user rows with the same content.id are one message saved twice (server + client copy).
 function dedupeDesignMessages(msgs) {
   const out = [];
   for (const m of msgs) {
-    const c = m && m.content && typeof m.content === 'object' ? m.content : null;
+    const c = isObj(m.content) ? m.content : null;
     const prev = out[out.length - 1];
-    const pc = prev && prev.content && typeof prev.content === 'object' ? prev.content : null;
+    const pc = prev && isObj(prev.content) ? prev.content : null;
     if (c && pc && m.role === 'user' && prev.role === 'user' && c.id && c.id === pc.id) {
       const better = c.authorAccountUuid && !pc.authorAccountUuid ? m
         : (!c.authorAccountUuid && pc.authorAccountUuid ? prev : (Object.keys(c).length > Object.keys(pc).length ? m : prev));
       const other = better === m ? prev : m;
       const bc = better.content, oc = other.content;
-      const atts = Array.isArray(bc.attachments) ? bc.attachments.slice() : [];
-      for (const a of (Array.isArray(oc.attachments) ? oc.attachments : [])) if (a && !atts.some(x => x && x.id === a.id)) atts.push(a);
+      const atts = (bc.attachments || []).slice();
+      for (const a of (oc.attachments || [])) if (!atts.some(x => x.id === a.id)) atts.push(a);
       out[out.length - 1] = Object.assign({}, better, { content: Object.assign({}, oc, bc, { attachments: atts }) });
       continue;
     }
@@ -260,17 +273,18 @@ function dedupeDesignMessages(msgs) {
 
 function addDesignChat(d, source) {
   if (!d.uuid) return;
+  const chatId = String(d.uuid);
   const updated = parseTime(d.updated_at);
-  const prev = DB.designById.get(d.uuid);
+  const prev = DB.designById.get(chatId);
   if (prev && prev.updated >= updated) return;
-  const msgs = dedupeDesignMessages(objects(d.messages));
+  const msgs = dedupeDesignMessages(objects(d.messages).map(cleanDesignRow));
   // Attribution: uuid authors, plus name-only messages resolved inside this chat.
   const nameToId = new Map();
   const hints = new Map();
   const realCounts = new Map();   // typed (non-pill) messages per author
   const authorOrder = [];
   for (const m of msgs) {
-    const c = m && m.content && typeof m.content === 'object' ? m.content : {};
+    const c = isObj(m.content) ? m.content : {};
     if (c.authorAccountUuid) {
       if (!authorOrder.includes(c.authorAccountUuid)) authorOrder.push(c.authorAccountUuid);
       if (c.authorName) { nameToId.set(String(c.authorName).toLowerCase(), c.authorAccountUuid); hints.set(c.authorAccountUuid, c.authorName); }
@@ -278,7 +292,7 @@ function addDesignChat(d, source) {
   }
   let firstPrompt = '', lastTs = 0;
   for (const m of msgs) {
-    const c = m && m.content && typeof m.content === 'object' ? m.content : {};
+    const c = isObj(m.content) ? m.content : {};
     const id = c.authorAccountUuid || (c.authorName ? nameToId.get(String(c.authorName).toLowerCase()) : null);
     if (id && !authorOrder.includes(id)) authorOrder.push(id);
     if (m.role === 'user' && id && c.pill !== true) realCounts.set(id, (realCounts.get(id) || 0) + 1);
@@ -295,7 +309,7 @@ function addDesignChat(d, source) {
   const projectName = d.project && d.project.name ? String(d.project.name) : '';
   const chat = {
     type: 'design',
-    id: d.uuid,
+    id: chatId,
     name: String(d.title || '').trim(),
     firstPrompt,
     project: d.project && typeof d.project === 'object' ? { id: d.project.uuid || '', name: projectName } : { id: '', name: '' },
