@@ -574,15 +574,21 @@ try {
   // Saved view options live in storage that every local HTML file can write (Chromium gives all
   // file:// pages one origin). Plant hostile keys and values the way such a file would, then
   // open a chat: nothing may run, and the option buttons may only say true or false.
+  const hostileKey = `"><img src=x onerror="${X('conv-opts-key')}">`;
   const hostileOpts = JSON.stringify({ showTools: `"><img src=x onerror="${X('conv-opts-value')}">`, hideEmpty: 'false',
-    [`"><img src=x onerror="${X('conv-opts-key')}">`]: true, showThinking: { toString: 1 } });
+    [hostileKey]: true, showThinking: { toString: 1 } });
+  // The next page gets the hooks again, but not BEFORE_LOAD: its own options would replace the
+  // hostile ones. The hooks also note what storage holds before any of the reader's code runs.
   await tab.send('Page.removeScriptToEvaluateOnNewDocument', { identifier: beforeLoad });
-  const { identifier: plant } = await tab.send('Page.addScriptToEvaluateOnNewDocument', { source: `(() => {
+  const { identifier: hooks } = await tab.send('Page.addScriptToEvaluateOnNewDocument', { source: `(() => {
     if (window !== window.top) return;
     window.__xssHits = [];
     window.__xss = name => { window.__xssHits.push(String(name)); };
-    try { localStorage.setItem('cer-conv-opts', ${JSON.stringify(hostileOpts)}); } catch (e) {}
+    try { window.__optsAtStart = localStorage.getItem('cer-conv-opts'); } catch (e) {}
   })()` });
+  // This page is a file:// page too, so it writes them as another local file would. The reader
+  // saves its options only when a person changes one, so they wait in storage for its next start.
+  await tab.evaluate((key, value) => localStorage.setItem(key, value), 'cer-conv-opts', hostileOpts);
   await tab.send('Page.reload');
   await tab.waitFor('!!window.ExportReader');
   await tab.evaluate(`(${pageKit})(${JSON.stringify({ tags: TAGS, attrs: ATTRS, sandbox: FRAME_SANDBOX, appIds: ['main', 'q', 'sr-status', 'shell', 'landing', 'sidebar'] })}); 0`);
@@ -590,13 +596,18 @@ try {
   await tab.evaluate(`__sec.go(${JSON.stringify(`#/c/${ids.conv}`)})`);
   await sleep(1000);
   const optHits = await tab.evaluate('window.__xssHits.slice()');
+  const planted = await tab.evaluate('window.__optsAtStart');
   const pressed = await tab.evaluate(`Array.from(document.querySelectorAll('#conv-toolbar [aria-pressed]'), b => b.getAttribute('aria-pressed'))`);
+  // The options the reader took from storage: not the planted key, and each one true or false.
+  const taken = Object.entries(await tab.evaluate('({ ...CONV_OPTS })'));
   report('hostile saved view options are ignored', [
+    ...(planted === hostileOpts ? [] : ['the hostile options were not in storage when the reader started']),
+    ...taken.filter(([k, v]) => k === hostileKey || typeof v !== 'boolean').map(([k]) => `option taken from storage: ${k.slice(0, 60)}`),
     ...optHits.map(h => 'script ran: ' + h),
     ...pressed.filter(v => v !== 'true' && v !== 'false').map(v => `aria-pressed="${String(v).slice(0, 60)}"`),
     ...(pressed.length ? [] : ['no option buttons found on the conversation page']),
   ]);
-  await tab.send('Page.removeScriptToEvaluateOnNewDocument', { identifier: plant });
+  await tab.send('Page.removeScriptToEvaluateOnNewDocument', { identifier: hooks });
 
   // Browser storage, last, because the reload starts the page again. Chromium gives every
   // file:// page one storage origin, so any local HTML file can read what the reader stores:

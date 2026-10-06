@@ -207,8 +207,9 @@ function pageHelpers(cfg) {
 
 // Every page of the sample data, in a fixed order (ids sorted, not model order). The list
 // pages, person tabs and search types come from the page's own lists (KINDS), so a new kind
-// is visited too.
-const ROUTES_EXPR = `(() => {
+// is visited too. Runs in the page, where ExportReader, KINDS, PERSON_SECTIONS and realPeople
+// are globals. The queries come in as an argument (a JSON value), not as code.
+function pageRoutes(queries) {
   const DB = ExportReader.DB();
   const personTabs = ['', ...PERSON_SECTIONS.map(s => s.key)];
   const searchTypes = ['all', ...KINDS.map(k => k.key), 'people'];
@@ -231,7 +232,7 @@ const ROUTES_EXPR = `(() => {
   for (const id of ids(DB.designChats)) routes.push('#/d/' + enc(id));
   for (const id of [...DB.memoryByPerson.keys()].sort()) routes.push('#/memory/' + enc(id));
   routes.push('#/search');
-  for (const q of ${JSON.stringify(QUERIES)}) {
+  for (const q of queries) {
     for (const deep of [false, true]) {
       for (const t of searchTypes) routes.push('#/search?q=' + enc(q) + (deep ? '&deep=1' : '') + '&t=' + t);
     }
@@ -240,7 +241,7 @@ const ROUTES_EXPR = `(() => {
   const busiest = realPeople()
     .sort((a, b) => b.total - a.total || (a.id < b.id ? -1 : 1))[0];
   return { routes, focus: { id: busiest.id, name: busiest.name } };
-})()`;
+}
 
 /* ---------- One pass ---------- */
 
@@ -315,7 +316,7 @@ async function runPass(name, chromePath, write) {
   const chrome = await launchChrome(chromePath);
   try {
     const { tab, log } = await openReader(chrome);
-    const { routes, focus } = await tab.evaluate(ROUTES_EXPR);
+    const { routes, focus } = await tab.evaluate(pageRoutes, QUERIES);
     if (name === 'focus') {
       // Focus the way a person does: the "Focus on …" button on their page.
       await visit(tab, log, '#/person/' + encodeURIComponent(focus.id));
