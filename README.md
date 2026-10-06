@@ -130,7 +130,7 @@ Recent versions of **Chrome, Edge, Firefox and Safari** on desktop and mobile.
 
 ## Development
 
-You need **Node.js 20 or newer**. There are **no npm dependencies**: no `npm install` step, no bundler.
+You need **Node.js 22 or newer**. There are **no npm dependencies**: no `npm install` step, no bundler.
 
 ```bash
 npm run build

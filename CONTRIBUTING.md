@@ -19,7 +19,7 @@ Security problems go through a private report, not a public issue. See [SECURITY
 
 ## Set up
 
-You need **Node.js 20 or newer** and Git. There are no npm dependencies, so there is nothing to install.
+You need **Node.js 22 or newer** and Git. There are no npm dependencies, so there is nothing to install.
 
 ```bash
 git clone https://github.com/PiniShv/AnthropicReader.git
@@ -39,7 +39,7 @@ cd AnthropicReader
 | `node scripts/check-vendor.mjs` | Checks that the files in `vendor/` are the official npm builds named in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md), and lists known security advisories and newer releases. Needs the network. A weekly workflow (`.github/workflows/vendor-check.yml`) runs it too, so a new advisory shows up as a failed run. |
 | `npm run demo` | Writes the made-up sample export (six zip parts and a manifest) to `demo/`, for trying the reader on real files. `npm run demo -- <folder>` writes them somewhere else. |
 | `npm run a11y` | Checks accessibility (WCAG 2.2 AA) with axe-core and a few keyboard checks, on the sample data in headless Chrome. Needs the network the first time. See [Checking accessibility](#checking-accessibility). |
-| `npm run snapshot -- --out <folder>` | Saves the HTML of every page of the sample data, with every block opened, using headless Chrome (Node 22+; set `CHROME=<path>` if Chrome is not found). Run it before a refactor. After it, `npm run snapshot -- --compare <folder>` fails if any page changed. |
+| `npm run snapshot -- --out <folder>` | Saves the HTML of every page of the sample data, with every block opened, using headless Chrome (set `CHROME=<path>` if Chrome is not found). Run it before a refactor. After it, `npm run snapshot -- --compare <folder>` fails if any page changed. |
 
 To try your change, run `npm run build` and open `dist/claude-export-reader.html` in a browser. Load the sample data, and test with your own export if you have one (keep it on your computer).
 
@@ -76,7 +76,7 @@ The reader aims at WCAG 2.2 level AA. After a UI change, run:
 npm run build && npm run a11y
 ```
 
-`scripts/a11y.mjs` opens the built reader with the sample data in headless Chrome (Node 22+; set `CHROME=<path>` or pass `--chrome <path>` if Chrome is not found). It checks:
+`scripts/a11y.mjs` opens the built reader with the sample data in headless Chrome (set `CHROME=<path>` or pass `--chrome <path>` if Chrome is not found). It checks:
 
 - **axe-core** on about 30 pages and states (every kind of page, every person tab, blocks opened, search results, the person picker, the download dialog, full screen, the phone menu), in light and dark mode, at desktop and phone width. The rules are WCAG 2.0, 2.1 and 2.2 A and AA, plus axe's best practices. The content of preview frames is the artifact's own HTML, so it is left out.
 - **The keyboard**: the skip link, the focus after a page change and after a change in place, the person picker, the download dialog and full screen (the focus stays inside and comes back), a focus ring on every Tab stop, and the setting for less motion.
@@ -114,7 +114,7 @@ Update a library when it has a security fix, and keep DOMPurify current: it is t
    node scripts/check-vendor.mjs
    ```
 
-2. **Save a snapshot of the pages before the change** (Node 22+ and Chrome):
+2. **Save a snapshot of the pages before the change** (needs Chrome):
 
    ```bash
    npm run build && npm run snapshot -- --out ../snapshot-before
