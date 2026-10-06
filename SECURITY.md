@@ -36,6 +36,8 @@ Only the latest release, and the current `main` branch, get security fixes. The 
 
   Nothing about the export is stored: no content, no names or ids, no file names and no file handles. The person you focus on is kept in memory only. This matters because Chromium-based browsers (Chrome, Edge, Brave) give **every page opened from disk** (`file://`) one shared storage. Any other local HTML file you open, such as a downloaded artifact, can read what the reader stores there. Older versions kept file handles for **Reopen last export** in IndexedDB, which let such a page open your export files. That feature is gone, and the reader deletes the old `claude-export-reader` database when it starts.
 
+  The same shared storage means another local file can also **write** these two keys. The reader treats them as untrusted input: it accepts only `light` or `dark` for the theme and only true or false for the known view switches, and ignores anything else. `npm run security` plants hostile values there and checks that nothing runs.
+
 - **Phone numbers** are masked until you click **show**.
 - **Manifest download links.** A manifest holds single-use, secret download links. The reader accepts only `https://claude.ai/export/…` links, keeps them in memory only, and never saves, logs or fetches them. It shows them only as **Download** buttons. When you click one, your browser opens it in a new tab with your own claude.ai sign-in, and no referrer is sent.
 - **Links to claude.ai.** Pages have a "claude.ai ↗" link to the original item. It only opens when you click it.

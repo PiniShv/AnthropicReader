@@ -502,7 +502,7 @@ try {
   await tab.send('Page.enable');
   await tab.send('Network.enable');
   await tab.send('Target.setAutoAttach', { autoAttach: true, waitForDebuggerOnStart: true, flatten: true });
-  await tab.send('Page.addScriptToEvaluateOnNewDocument', { source: BEFORE_LOAD });
+  const { identifier: beforeLoad } = await tab.send('Page.addScriptToEvaluateOnNewDocument', { source: BEFORE_LOAD });
   await tab.send('Page.navigate', { url: PAGE });
   await tab.waitFor('!!window.ExportReader');
   await tab.evaluate(`(${pageKit})(${JSON.stringify({ tags: TAGS, attrs: ATTRS, sandbox: FRAME_SANDBOX, appIds: ['main', 'q', 'sr-status', 'shell', 'landing', 'sidebar'] })}); 0`);
@@ -568,6 +568,33 @@ try {
   const hits = await tab.evaluate('window.__xssHits.slice()');
   report('no script ran in the reader', [...hits.map(h => 'script ran: ' + h), ...dialogs.map(d => 'dialog: ' + d)]);
   report('no network request', [...new Set(requests)].map(u => 'request: ' + u));
+
+  // Saved view options live in storage that every local HTML file can write (Chromium gives all
+  // file:// pages one origin). Plant hostile keys and values the way such a file would, then
+  // open a chat: nothing may run, and the option buttons may only say true or false.
+  const hostileOpts = JSON.stringify({ showTools: `"><img src=x onerror="${X('conv-opts-value')}">`, hideEmpty: 'false',
+    [`"><img src=x onerror="${X('conv-opts-key')}">`]: true, showThinking: { toString: 1 } });
+  await tab.send('Page.removeScriptToEvaluateOnNewDocument', { identifier: beforeLoad });
+  const { identifier: plant } = await tab.send('Page.addScriptToEvaluateOnNewDocument', { source: `(() => {
+    if (window !== window.top) return;
+    window.__xssHits = [];
+    window.__xss = name => { window.__xssHits.push(String(name)); };
+    try { localStorage.setItem('cer-conv-opts', ${JSON.stringify(hostileOpts)}); } catch (e) {}
+  })()` });
+  await tab.send('Page.reload');
+  await tab.waitFor('!!window.ExportReader');
+  await tab.evaluate(`(${pageKit})(${JSON.stringify({ tags: TAGS, attrs: ATTRS, sandbox: FRAME_SANDBOX, appIds: ['main', 'q', 'sr-status', 'shell', 'landing', 'sidebar'] })}); 0`);
+  await tab.evaluate(`__sec.load(${JSON.stringify(files)})`);
+  await tab.evaluate(`__sec.go(${JSON.stringify(`#/c/${ids.conv}`)})`);
+  await sleep(1000);
+  const optHits = await tab.evaluate('window.__xssHits.slice()');
+  const pressed = await tab.evaluate(`Array.from(document.querySelectorAll('#conv-toolbar [aria-pressed]'), b => b.getAttribute('aria-pressed'))`);
+  report('hostile saved view options are ignored', [
+    ...optHits.map(h => 'script ran: ' + h),
+    ...pressed.filter(v => v !== 'true' && v !== 'false').map(v => `aria-pressed="${String(v).slice(0, 60)}"`),
+    ...(pressed.length ? [] : ['no option buttons found on the conversation page']),
+  ]);
+  await tab.send('Page.removeScriptToEvaluateOnNewDocument', { identifier: plant });
 
   // Browser storage, last, because the reload starts the page again. Chromium gives every
   // file:// page one storage origin, so any local HTML file can read what the reader stores:

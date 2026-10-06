@@ -4184,7 +4184,12 @@ function personComments(p) {
 'use strict';
 
 const CONV_OPTS = { hideEmpty: true, showThinking: true, showTools: true, showSystem: false };
-try { Object.assign(CONV_OPTS, JSON.parse(localStorage.getItem('cer-conv-opts') || '{}')); } catch (e) { /* ignore */ }
+// In Chromium every file:// page shares this storage, so any other local HTML file can write
+// the saved options. Take only the known keys, and only true or false.
+try {
+  const saved = JSON.parse(localStorage.getItem('cer-conv-opts') || '{}');
+  for (const k of Object.keys(CONV_OPTS)) if (saved && typeof saved[k] === 'boolean') CONV_OPTS[k] = saved[k];
+} catch (e) { /* ignore */ }
 function saveConvOpts() { try { localStorage.setItem('cer-conv-opts', JSON.stringify(CONV_OPTS)); } catch (e) { /* ignore */ } }
 
 /* ---------- List ---------- */
@@ -4267,7 +4272,7 @@ function viewConversation(id) {
   const offBranch = totalMsgs - path.length;
   const outputs = collectOutputs(conv);
   // A toolbar option: a toggle button (aria-pressed) that redraws the thread.
-  const opt = (key, icon, label, title) => `<button class="chip${CONV_OPTS[key] ? ' on' : ''}" type="button" aria-pressed="${CONV_OPTS[key]}"${title ? ` title="${title}"` : ''} ${on(el => setConvOpt(draw, key, el))}><span aria-hidden="true">${icon}</span> ${label}</button>`;
+  const opt = (key, icon, label, title) => `<button class="chip${CONV_OPTS[key] ? ' on' : ''}" type="button" aria-pressed="${CONV_OPTS[key] ? 'true' : 'false'}"${title ? ` title="${title}"` : ''} ${on(el => setConvOpt(draw, key, el))}><span aria-hidden="true">${icon}</span> ${label}</button>`;
 
   after(() => {
     draw({ target });

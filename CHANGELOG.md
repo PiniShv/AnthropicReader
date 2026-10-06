@@ -59,6 +59,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - In Safari, a quick click on a sortable column header no longer selects its text.
 
 ### Security
+- Saved view settings are treated as untrusted: in Chrome and Edge every page opened from disk shares one storage, so another local HTML file could write a value that the reader then put into the page. Only the known switches, as true or false, are read now.
 
 - In Chrome and Edge, any HTML file you opened from disk, such as a downloaded artifact, could open your export files without asking. Chromium gives every page opened from disk one shared storage, and **Reopen last export** kept handles to your files there, with read permission. The feature is removed, and the reader deletes the handles that older versions saved when it starts. It now stores only the theme and the conversation view options.
 - **Open in new tab** names the new tab "Artifact preview" instead of the artifact's title, so the title does not end up in the browser history.
