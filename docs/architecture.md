@@ -231,6 +231,8 @@ The aim is WCAG 2.2 level AA. The rules the code follows:
 - **Motion.** The system setting for less motion turns off animations and smooth scrolling (`scrollMotion()`).
 - **Scrolling.** Long `<pre>` blocks from `preHtml()` take Tab, so a keyboard can scroll them sideways.
 
+`scripts/a11y.mjs` (`npm run a11y`) checks these rules on the sample data: axe-core on every kind of page in both themes and at phone width, and the focus behaviour with real key presses.
+
 ## Search
 
 `runSearch()` in `src/search.js` matches every search term (words, or phrases in quotes) case-insensitively, in the records of one scope (`scopeOf()`). People are always searched in full.
@@ -259,4 +261,4 @@ The aim is WCAG 2.2 level AA. The rules the code follows:
 
 `app.js` exposes `window.ExportReader = { load(files), DB() }` for scripted use. The tests in `test/` do not use a browser: `test/harness.mjs` runs the same scripts in a Node `vm` context with small stubs, and tests the zip reader, the parser and the import pipeline directly.
 
-The tests cannot check the HTML the views draw. For that, `scripts/snapshot.mjs` opens the built page with the sample data in headless Chrome. It visits every page (also with focus on one person), opens every collapsed block, and saves the HTML of the main area and the sidebar, and the `srcdoc` of every preview frame. Attributes that only carry click data (`data-on` and lazy keys, other `data-*` values) are left out, so a refactor that keeps the pages the same gives the same files. `scripts/lib/chrome.mjs` is the small DevTools-protocol driver it shares with `scripts/screenshots.mjs`.
+The tests cannot check the HTML the views draw. For that, `scripts/snapshot.mjs` opens the built page with the sample data in headless Chrome. It visits every page (also with focus on one person), opens every collapsed block, and saves the HTML of the main area and the sidebar, and the `srcdoc` of every preview frame. Attributes that only carry click data (`data-on` and lazy keys, other `data-*` values) are left out, so a refactor that keeps the pages the same gives the same files. `scripts/lib/chrome.mjs` is the small DevTools-protocol driver it shares with `scripts/screenshots.mjs` and `scripts/a11y.mjs`.

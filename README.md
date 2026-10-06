@@ -83,7 +83,7 @@ You can load any subset. Missing parts show up as empty sections. Keep the tab o
 - **Manifest download links** for parts you have not loaded yet.
 - **Older export formats** work too (`projects.json`, `memories.json`, chats without branches). You can **load several exports together**: when the same item is in two exports, the newer copy wins.
 - **Dark mode** (follows your system; ◐ switches it), **right-to-left** text such as Hebrew and Arabic, and a layout that works on **phones and tablets**.
-- **Keyboard and screen readers.** Everything works with the keyboard alone. A skip link leads to the content, the focus moves to the heading of each new page, and the page follows the system setting for less motion. The aim is WCAG 2.2 level AA: the sample data passes the automated axe-core checks in light and dark mode.
+- **Keyboard and screen readers.** Everything works with the keyboard alone. A skip link leads to the content, the focus moves to the heading of each new page, and the page follows the system setting for less motion. The aim is WCAG 2.2 level AA: the sample data passes the automated axe-core and keyboard checks (`npm run a11y`) in light and dark mode.
 - **Reopen last export** in desktop Chrome and Edge: the page remembers which files you picked (not their content) and can open them again after a reload.
 
 ## Privacy and security
@@ -175,7 +175,7 @@ src/
   demo-artifacts.js  sample artifacts
   app.js             start-up, loading screen, routing, global events
 vendor/              marked and DOMPurify, vendored (see THIRD_PARTY_NOTICES.md)
-scripts/             build script and sample-export script
+scripts/             build, sample export and maintainer checks (snapshot, accessibility, screenshots, vendor)
 test/                tests (node --test)
 dist/                the built single-file reader (committed)
 docs/                export format reference, architecture notes, screenshots

@@ -38,6 +38,7 @@ cd AnthropicReader
 | `npm test` | Runs the tests in `test/` with Node's built-in test runner. |
 | `node scripts/check-vendor.mjs` | Checks that the files in `vendor/` are the official npm builds named in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md), and lists known security advisories and newer releases. Needs the network, so CI does not run it. |
 | `npm run demo` | Writes the made-up sample export (six zip parts and a manifest) to `demo/`, for trying the reader on real files. `npm run demo -- <folder>` writes them somewhere else. |
+| `npm run a11y` | Checks accessibility (WCAG 2.2 AA) with axe-core and a few keyboard checks, on the sample data in headless Chrome. Needs the network the first time. See [Checking accessibility](#checking-accessibility). |
 | `npm run snapshot -- --out <folder>` | Saves the HTML of every page of the sample data, with every block opened, using headless Chrome (Node 22+; set `CHROME=<path>` if Chrome is not found). Run it before a refactor. After it, `npm run snapshot -- --compare <folder>` fails if any page changed. |
 
 To try your change, run `npm run build` and open `dist/claude-export-reader.html` in a browser. Load the sample data, and test with your own export if you have one (keep it on your computer).
@@ -66,6 +67,25 @@ Read [docs/architecture.md](docs/architecture.md) for the full picture. In short
 - Keep big exports fast. Do not read large files up front. Render big blocks lazily (`blk()` with a render function), and cut very long text with `preHtml()`.
 - Use `dir="auto"` on blocks of user text, so right-to-left languages display correctly.
 - Keep it accessible (WCAG 2.2 AA): every control is a real `<button>`, link or form field, so it works from the keyboard. Give icon-only buttons an `aria-label`, take colours from the theme tokens in `styles.css`, and keep the focus in place when you draw a part of the page again. See [Accessibility](docs/architecture.md#accessibility).
+
+## Checking accessibility
+
+The reader aims at WCAG 2.2 level AA. After a UI change, run:
+
+```bash
+npm run build && npm run a11y
+```
+
+`scripts/a11y.mjs` opens the built reader with the sample data in headless Chrome (Node 22+; set `CHROME=<path>` or pass `--chrome <path>` if Chrome is not found). It checks:
+
+- **axe-core** on about 30 pages and states (every kind of page, every person tab, blocks opened, search results, the person picker, the download dialog, full screen, the phone menu), in light and dark mode, at desktop and phone width. The rules are WCAG 2.0, 2.1 and 2.2 A and AA, plus axe's best practices. The content of preview frames is the artifact's own HTML, so it is left out.
+- **The keyboard**: the skip link, the focus after a page change and after a change in place, the person picker, the download dialog and full screen (the focus stays inside and comes back), a focus ring on every Tab stop, and the setting for less motion.
+
+It prints each problem with the element it found and exits with code 1. A clean run takes about a minute and a half.
+
+axe-core is not a dependency and is not in the repository. The first run downloads the pinned version from jsDelivr into your temp folder and checks its SHA-256 before it runs it. Offline, download `axe.min.js` of that version yourself and pass `--axe <file>`. To move to a newer axe-core, change `AXE_VERSION` and `AXE_SHA256` at the top of the script, and fix what the new rules find.
+
+Automated checks find only part of the problems. For a bigger UI change, also try the page with the keyboard alone and with a screen reader (VoiceOver on a Mac, NVDA on Windows).
 
 ## Adding support for a new export field
 
