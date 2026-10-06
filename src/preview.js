@@ -60,7 +60,7 @@ async function encodeFile(node, name, enc) {
   let e = enc.raw.get(node);
   if (!e) {
     const bytes = await node.bytes();
-    e = { url: 'data:' + mimeFor(name) + ';base64,' + b64(bytes), len: bytes.length };
+    e = { url: dataUrl(name, bytes), len: bytes.length };
     enc.raw.set(node, e);
   }
   return e;
@@ -79,7 +79,7 @@ async function encodeCss(node, ref, files, enc) {
       if (files.has(full) && !(isMedia(full) && files.get(full).size > INLINE_MEDIA_CAP)) css = css.split(u).join((await encodeFile(files.get(full), full, enc)).url);
     }
     const bytes = new TextEncoder().encode(css);
-    e = { url: 'data:' + mimeFor(ref) + ';base64,' + b64(bytes), len: bytes.length };
+    e = { url: dataUrl(ref, bytes), len: bytes.length };
     enc.css.set(node, e);
   }
   return e;
@@ -152,8 +152,9 @@ function assetLookupScript(lookup) {
     '.observe(document.documentElement,{subtree:true,childList:true,attributes:true,attributeFilter:["src","href","poster"]});})();<\/script>';
 }
 
-async function dataUrl(node, name) {
-  return 'data:' + mimeFor(name) + ';base64,' + b64(await node.bytes());
+// A file's bytes as a data: URL, with the type from its name.
+function dataUrl(name, bytes) {
+  return 'data:' + mimeFor(name) + ';base64,' + b64(bytes);
 }
 
 function b64(bytes) {

@@ -4,7 +4,7 @@
 function designTable(list, key, showOwner) {
   const columns = [{
     id: 'title', label: 'Design chat', cls: 'title', link: true, asc: true, sortVal: d => d.title.toLowerCase(),
-    html: d => `<div dir="auto">${esc(d.title)}</div><div class="row wrap" style="margin-top:5px;gap:4px"><span class="chip" dir="auto">✎ ${esc(d.project.name || 'design project')}</span>${d.msgCount ? '' : '<span class="chip warn">empty</span>'}${d.authors && d.authors.length > 1 ? `<span class="chip">${d.authors.length} people</span>` : ''}</div>`,
+    html: d => `<div dir="auto">${esc(d.title)}</div><div class="row wrap" style="margin-top:5px;gap:4px"><span class="chip" dir="auto">✎ ${esc(d.project.name || 'design project')}</span>${d.msgCount ? '' : '<span class="chip warn">empty</span>'}${d.authors.length > 1 ? `<span class="chip">${d.authors.length} people</span>` : ''}</div>`,
   }];
   if (showOwner) columns.push(COL.owner);
   columns.push(COL.num('msgs', 'Messages', d => d.msgCount));
@@ -12,7 +12,7 @@ function designTable(list, key, showOwner) {
   return tableHtml({
     key, rows: list, columns, sort: 'last', dir: -1, noun: 'design chat',
     href: d => '#/d/' + encodeURIComponent(d.id),
-    text: d => [d.title, d.project.name, d.firstPrompt, ...(d.authors || []).map(p => p.name + ' ' + p.email)].join(' '),
+    text: d => [d.title, d.project.name, d.firstPrompt, ...d.authors.map(p => p.name + ' ' + p.email)].join(' '),
     placeholder: 'Filter by prompt, design project or person…', empty: 'No design chats.',
   });
 }
@@ -41,10 +41,10 @@ function viewDesignChat(id) {
     <div class="page-head"><div class="grow">
       <h1 dir="auto">${esc(d.title)}</h1>
       <div class="sub"><span class="chip on" dir="auto">✎ ${esc(d.project.name || 'design project')}</span>
-        ${(d.authors || []).map(p => `<span class="row" style="gap:6px">${avatarHtml(p, 'sm')}${personLink(p)}</span>`).join('') || '<span class="faint">No author (empty chat)</span>'}
+        ${d.authors.map(p => `<span class="row" style="gap:6px">${avatarHtml(p, 'sm')}${personLink(p)}</span>`).join('') || '<span class="faint">No author (empty chat)</span>'}
         <span>Started ${esc(fmtDateTime(d.created))}</span><span>Last ${esc(fmtDateTime(d.lastTs))}</span><span>${plural(d.msgCount, 'message')}</span>
         ${tokens ? `<span class="faint" title="Sum of input context over all turns">${fmtNum(Math.round(tokens / 1000))}k context tokens</span>` : ''}</div>
-    </div><div class="row"><button class="btn small" type="button" ${on(() => downloadBlob(new Blob([JSON.stringify(d.raw, null, 2)], { type: 'application/json' }), safeFilename(d.project.name + ' ' + d.id.slice(0, 8), 'design-chat') + '.json'))}>Download .json</button></div></div>
+    </div><div class="row"><button class="btn small" type="button" ${on(() => downloadText(safeFilename(d.project.name + ' ' + d.id.slice(0, 8), 'design-chat') + '.json', jsonPretty(d.raw)))}>Download .json</button></div></div>
     <div class="conv-toolbar"><button class="chip" type="button" ${on(expandAll)}>Expand all</button><button class="chip" type="button" ${on(collapseAll)}>Collapse all</button></div>
     <div class="thread" id="thread">${msgs.length ? msgs.map(m => designMessageHtml(m, d, receipts)).join('') : '<div class="empty">This design chat has no messages in the export.</div>'}</div>
   </div>`;

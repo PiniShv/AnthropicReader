@@ -1032,7 +1032,7 @@ async function parseJsonArrayStream(stream, onItem, onProgress) {
   const reader = stream.getReader();
   const dec = new TextDecoder('utf-8');
   let depth = 0;          // 0 = outside the array, 1 = inside it, 2+ = inside an element
-  let inStr = false, esc = false;
+  let inStr = false, escaped = false;
   let inItem = false, itemIsContainer = false;
   let parts = [];         // byte chunks of the element being collected
   let mode = 'start';     // 'start' | 'array' | 'single' | 'done'
@@ -1070,10 +1070,10 @@ async function parseJsonArrayStream(stream, onItem, onProgress) {
     for (; i < n; i++) {
       const c = chunk[i];
       if (inStr) {
-        if (esc) { esc = false; continue; }
+        if (escaped) { escaped = false; continue; }
         if (nb !== -1 && nb < i) nb = chunk.indexOf(0x5c, i);
         if (nq !== -1 && nq < i) nq = chunk.indexOf(0x22, i);
-        if (nb !== -1 && (nq === -1 || nb < nq)) { i = nb; esc = true; continue; }
+        if (nb !== -1 && (nq === -1 || nb < nq)) { i = nb; escaped = true; continue; }
         if (nq === -1) { i = n; break; }
         i = nq; inStr = false;
         continue;
@@ -2026,7 +2026,7 @@ function isPlumbing(p) { return /^(SKILL\.md$|artifact-type\/)/.test(p); }
 
 // What a version contains and how to show it.
 function versionInfo(a, vid) {
-  const s = a.vfiles && a.vfiles.get(vid);
+  const s = a.vfiles.get(vid);
   if (!s) return { type: a.kind === 'page' ? 'Doc' : 'No files', slot: null };
   if (s.single) return { type: 'HTML', slot: s };
   const f = s.folder;
@@ -2822,7 +2822,7 @@ function convToMarkdown(conv) {
   const path = currentPath(conv);
   for (const m of path) lines.push(messageToMarkdown(conv, m), '');
   const off = conv.msgCount - path.length;
-  if (off > 0) lines.push('---', '', `_${off} message${off === 1 ? '' : 's'} on other branches (edited or regenerated) are not shown here; they are in the .json file._`);
+  if (off > 0) lines.push('---', '', `_${plural(off, 'message')} on other branches (edited or regenerated) are not shown here; they are in the .json file._`);
   return lines.join('\n');
 }
 
@@ -3016,7 +3016,7 @@ async function encodeFile(node, name, enc) {
   let e = enc.raw.get(node);
   if (!e) {
     const bytes = await node.bytes();
-    e = { url: 'data:' + mimeFor(name) + ';base64,' + b64(bytes), len: bytes.length };
+    e = { url: dataUrl(name, bytes), len: bytes.length };
     enc.raw.set(node, e);
   }
   return e;
@@ -3035,7 +3035,7 @@ async function encodeCss(node, ref, files, enc) {
       if (files.has(full) && !(isMedia(full) && files.get(full).size > INLINE_MEDIA_CAP)) css = css.split(u).join((await encodeFile(files.get(full), full, enc)).url);
     }
     const bytes = new TextEncoder().encode(css);
-    e = { url: 'data:' + mimeFor(ref) + ';base64,' + b64(bytes), len: bytes.length };
+    e = { url: dataUrl(ref, bytes), len: bytes.length };
     enc.css.set(node, e);
   }
   return e;
@@ -3108,8 +3108,9 @@ function assetLookupScript(lookup) {
     '.observe(document.documentElement,{subtree:true,childList:true,attributes:true,attributeFilter:["src","href","poster"]});})();<\/script>';
 }
 
-async function dataUrl(node, name) {
-  return 'data:' + mimeFor(name) + ';base64,' + b64(await node.bytes());
+// A file's bytes as a data: URL, with the type from its name.
+function dataUrl(name, bytes) {
+  return 'data:' + mimeFor(name) + ';base64,' + b64(bytes);
 }
 
 function b64(bytes) {
@@ -3746,8 +3747,8 @@ function saveConvOpts() { try { localStorage.setItem('cer-conv-opts', JSON.strin
 function convBadges(c) {
   const b = [];
   if (c.empty) b.push('<span class="chip warn" title="The export has no message content for this chat">no content in export</span>');
-  if (c.forks) b.push(`<span class="chip" title="Edited or regenerated messages">${c.forks} branch point${c.forks === 1 ? '' : 's'}</span>`);
-  if (c.outputCount) b.push(`<span class="chip" title="Files, artifacts or widgets Claude produced">${c.outputCount} output${c.outputCount === 1 ? '' : 's'}</span>`);
+  if (c.forks) b.push(`<span class="chip" title="Edited or regenerated messages">${plural(c.forks, 'branch point')}</span>`);
+  if (c.outputCount) b.push(`<span class="chip" title="Files, artifacts or widgets Claude produced">${plural(c.outputCount, 'output')}</span>`);
   if (c.fileCount) b.push(`<span class="chip" title="Uploaded files">📎 ${c.fileCount}</span>`);
   return b.join(' ');
 }
@@ -3826,8 +3827,8 @@ function viewConversation(id) {
       </div>
       <div class="row wrap">
         <button class="btn small" type="button" ${on(() => copyText(convToMarkdown(conv)))}>Copy as Markdown</button>
-        <button class="btn small" type="button" ${on(() => downloadBlob(new Blob([convToMarkdown(conv)], { type: 'text/markdown' }), safeFilename(conv.title, 'conversation') + '.md'))}>Download .md</button>
-        <button class="btn small" type="button" ${on(() => downloadBlob(new Blob([JSON.stringify(conv.raw, null, 2)], { type: 'application/json' }), safeFilename(conv.title, 'conversation') + '.json'))}>.json</button>
+        <button class="btn small" type="button" ${on(() => downloadText(safeFilename(conv.title, 'conversation') + '.md', convToMarkdown(conv)))}>Download .md</button>
+        <button class="btn small" type="button" ${on(() => downloadText(safeFilename(conv.title, 'conversation') + '.json', jsonPretty(conv.raw)))}>.json</button>
         <button class="btn small ghost" type="button" ${on(() => window.print())} title="Print or save as PDF">⎙</button>
       </div>
     </div>
@@ -3906,7 +3907,7 @@ function drawThread(conv, opts) {
     if (terms.length) {
       const hits = thread.querySelectorAll('mark').length;
       const hc = $('#hit-count');
-      if (hc) hc.textContent = hits ? `${hits} match${hits === 1 ? '' : 'es'} shown` : 'no visible matches (they may be inside collapsed blocks)';
+      if (hc) hc.textContent = hits ? plural(hits, 'match', 'matches') + ' shown' : 'no visible matches (they may be inside collapsed blocks)';
     }
   };
   // Render the rest in small slices so long chats open instantly.
@@ -4423,7 +4424,7 @@ const TYPE_BLURB = /^(Living docs —|Design canvas for websites|Presentation de
 function visChip(a) {
   const v = a.visibility || 'private';
   const sw = a.sharedWith;
-  const extra = sw ? ` · ${sw.viewers || 0} viewer${sw.viewers === 1 ? '' : 's'}${sw.editors ? `, ${sw.editors} editor${sw.editors === 1 ? '' : 's'}` : ''}` : '';
+  const extra = sw ? ` · ${plural(sw.viewers || 0, 'viewer')}${sw.editors ? ', ' + plural(sw.editors, 'editor') : ''}` : '';
   return `<span class="chip${v === 'private' ? '' : ' on'}" title="Visibility">${esc(VIS_LABEL[v] || v)}${esc(extra)}</span>`;
 }
 
@@ -4432,7 +4433,7 @@ function artifactTable(list, key, showOwner, facet) {
     {
       id: 'title', label: 'Title', cls: 'title', link: true, asc: true, sortVal: a => artifactTitle(a).toLowerCase(),
       html: a => `<div dir="auto">${esc(artifactTitle(a))}</div>${a.description && !TYPE_BLURB.test(a.description) && a.description !== artifactTitle(a) ? `<div class="snip" dir="auto">${esc(truncate(a.description, 200))}</div>` : ''}
-        <div class="row wrap" style="margin-top:5px;gap:4px"><span class="chip">${esc(a.contentType)}</span>${visChip(a)}${a.commentCount ? `<span class="chip">🗨 ${a.commentCount}</span>` : ''}${a.mentionedIn && a.mentionedIn.length ? `<span class="chip" title="Linked from conversations">💬 ${a.mentionedIn.length}</span>` : ''}</div>`,
+        <div class="row wrap" style="margin-top:5px;gap:4px"><span class="chip">${esc(a.contentType)}</span>${visChip(a)}${a.commentCount ? `<span class="chip">🗨 ${a.commentCount}</span>` : ''}${a.mentionedIn.length ? `<span class="chip" title="Linked from conversations">💬 ${a.mentionedIn.length}</span>` : ''}</div>`,
     },
   ];
   if (showOwner) columns.push(COL.owner);
@@ -4481,7 +4482,7 @@ function viewArtifact(id, vid) {
   });
 
   const versionList = versions.map(v => {
-    const has = isPage || (a.vfiles && a.vfiles.has(v.id));
+    const has = isPage || a.vfiles.has(v.id);
     const desc = v.description && !TYPE_BLURB.test(v.description) && v.description !== v.title ? decodeEntities(v.description) : '';
     return `<li class="${v.id === selected ? 'sel' : ''}${has ? '' : ' missing'}" ${has && !isPage ? on(() => navigate('#/a/' + encodeURIComponent(a.id) + '/' + encodeURIComponent(v.id), true)) : ''} title="${esc(v.id)}">
       <div class="vt" dir="auto">${esc(v.title || 'Untitled')}${v.id === a.activeVersion ? ' <span class="chip ok" style="font-size:11px">current</span>' : ''}</div>
@@ -4509,7 +4510,7 @@ function viewArtifact(id, vid) {
       <div id="art-main">${isPage ? '' : `<div class="frame-box"><div class="frame-bar"><span class="muted">Loading…</span></div></div>`}</div>
       <aside>
         ${versions.length ? `<div class="card card-pad side-card"><h2 style="margin-bottom:8px">Versions</h2><ul class="version-list">${versionList}</ul>${isPage ? '<p class="faint" style="font-size:12.5px;margin:8px 0 0">Docs keep only the current text in the export; older versions are listed for reference.</p>' : ''}</div>` : ''}
-        ${a.mentionedIn && a.mentionedIn.length ? `<div class="card card-pad side-card"><h2 style="margin-bottom:8px">Mentioned in</h2>${a.mentionedIn.map(c => `<div style="padding:4px 0"><a href="#/c/${encodeURIComponent(c.id)}" dir="auto">${esc(c.title || 'Untitled conversation')}</a> <span class="faint" style="font-size:12.5px">${esc(fmtDate(c.lastTs))}</span></div>`).join('')}</div>` : ''}
+        ${a.mentionedIn.length ? `<div class="card card-pad side-card"><h2 style="margin-bottom:8px">Mentioned in</h2>${a.mentionedIn.map(c => `<div style="padding:4px 0"><a href="#/c/${encodeURIComponent(c.id)}" dir="auto">${esc(c.title || 'Untitled conversation')}</a> <span class="faint" style="font-size:12.5px">${esc(fmtDate(c.lastTs))}</span></div>`).join('')}</div>` : ''}
         ${!isPage && a.threads && a.threads.length ? `<div class="card card-pad side-card"><h2 style="margin-bottom:8px">Comments <span class="badge">${a.commentCount}</span></h2>${threadCommentsHtml(a)}</div>` : ''}
         <div class="card card-pad side-card"><dl class="kv" style="font-size:13px"><dt>Id</dt><dd class="mono">${esc(a.id)}</dd><dt>Kind</dt><dd>${esc(a.kind)}</dd><dt>Files</dt><dd>${fmtNum(a.files.size)}</dd></dl></div>
       </aside>
@@ -4585,7 +4586,7 @@ async function openArtifactFile(path, node) {
   box.innerHTML = '<p class="muted">Opening…</p>';
   const head = `<div class="row" style="margin-bottom:8px"><b class="mono" dir="auto">${esc(path)}</b><span class="grow"></span><button class="btn small" type="button" ${on(() => node.blob(mimeFor(path)).then(b => downloadBlob(b, path.split('/').pop())))}>Download</button></div>`;
   if (/^(png|jpe?g|gif|webp|svg|avif|ico|bmp)$/.test(ext)) {
-    const src = await dataUrl(node, path);
+    const src = dataUrl(path, await node.bytes());
     if (signal.aborted) return;
     box.innerHTML = head + `<img alt="" style="max-width:100%;border:1px solid var(--border);border-radius:6px" src="${src}">`;
   } else if (/^(mp4|webm)$/.test(ext)) {
@@ -4712,7 +4713,7 @@ async function downloadVersion(a, vid) {
 function designTable(list, key, showOwner) {
   const columns = [{
     id: 'title', label: 'Design chat', cls: 'title', link: true, asc: true, sortVal: d => d.title.toLowerCase(),
-    html: d => `<div dir="auto">${esc(d.title)}</div><div class="row wrap" style="margin-top:5px;gap:4px"><span class="chip" dir="auto">✎ ${esc(d.project.name || 'design project')}</span>${d.msgCount ? '' : '<span class="chip warn">empty</span>'}${d.authors && d.authors.length > 1 ? `<span class="chip">${d.authors.length} people</span>` : ''}</div>`,
+    html: d => `<div dir="auto">${esc(d.title)}</div><div class="row wrap" style="margin-top:5px;gap:4px"><span class="chip" dir="auto">✎ ${esc(d.project.name || 'design project')}</span>${d.msgCount ? '' : '<span class="chip warn">empty</span>'}${d.authors.length > 1 ? `<span class="chip">${d.authors.length} people</span>` : ''}</div>`,
   }];
   if (showOwner) columns.push(COL.owner);
   columns.push(COL.num('msgs', 'Messages', d => d.msgCount));
@@ -4720,7 +4721,7 @@ function designTable(list, key, showOwner) {
   return tableHtml({
     key, rows: list, columns, sort: 'last', dir: -1, noun: 'design chat',
     href: d => '#/d/' + encodeURIComponent(d.id),
-    text: d => [d.title, d.project.name, d.firstPrompt, ...(d.authors || []).map(p => p.name + ' ' + p.email)].join(' '),
+    text: d => [d.title, d.project.name, d.firstPrompt, ...d.authors.map(p => p.name + ' ' + p.email)].join(' '),
     placeholder: 'Filter by prompt, design project or person…', empty: 'No design chats.',
   });
 }
@@ -4749,10 +4750,10 @@ function viewDesignChat(id) {
     <div class="page-head"><div class="grow">
       <h1 dir="auto">${esc(d.title)}</h1>
       <div class="sub"><span class="chip on" dir="auto">✎ ${esc(d.project.name || 'design project')}</span>
-        ${(d.authors || []).map(p => `<span class="row" style="gap:6px">${avatarHtml(p, 'sm')}${personLink(p)}</span>`).join('') || '<span class="faint">No author (empty chat)</span>'}
+        ${d.authors.map(p => `<span class="row" style="gap:6px">${avatarHtml(p, 'sm')}${personLink(p)}</span>`).join('') || '<span class="faint">No author (empty chat)</span>'}
         <span>Started ${esc(fmtDateTime(d.created))}</span><span>Last ${esc(fmtDateTime(d.lastTs))}</span><span>${plural(d.msgCount, 'message')}</span>
         ${tokens ? `<span class="faint" title="Sum of input context over all turns">${fmtNum(Math.round(tokens / 1000))}k context tokens</span>` : ''}</div>
-    </div><div class="row"><button class="btn small" type="button" ${on(() => downloadBlob(new Blob([JSON.stringify(d.raw, null, 2)], { type: 'application/json' }), safeFilename(d.project.name + ' ' + d.id.slice(0, 8), 'design-chat') + '.json'))}>Download .json</button></div></div>
+    </div><div class="row"><button class="btn small" type="button" ${on(() => downloadText(safeFilename(d.project.name + ' ' + d.id.slice(0, 8), 'design-chat') + '.json', jsonPretty(d.raw)))}>Download .json</button></div></div>
     <div class="conv-toolbar"><button class="chip" type="button" ${on(expandAll)}>Expand all</button><button class="chip" type="button" ${on(collapseAll)}>Collapse all</button></div>
     <div class="thread" id="thread">${msgs.length ? msgs.map(m => designMessageHtml(m, d, receipts)).join('') : '<div class="empty">This design chat has no messages in the export.</div>'}</div>
   </div>`;
@@ -7516,7 +7517,7 @@ async function setupLanding() {
     const btn = $('#reopen');
     const names = last.handles.map(h => h.name);
     btn.hidden = false;
-    btn.textContent = `Reopen last export (${names.length} item${names.length === 1 ? '' : 's'})`;
+    btn.textContent = `Reopen last export (${plural(names.length, 'item')})`;
     btn.title = names.join('\n');
     btn.addEventListener('click', async () => {
       try {

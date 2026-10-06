@@ -147,7 +147,7 @@ async function parseJsonArrayStream(stream, onItem, onProgress) {
   const reader = stream.getReader();
   const dec = new TextDecoder('utf-8');
   let depth = 0;          // 0 = outside the array, 1 = inside it, 2+ = inside an element
-  let inStr = false, esc = false;
+  let inStr = false, escaped = false;
   let inItem = false, itemIsContainer = false;
   let parts = [];         // byte chunks of the element being collected
   let mode = 'start';     // 'start' | 'array' | 'single' | 'done'
@@ -185,10 +185,10 @@ async function parseJsonArrayStream(stream, onItem, onProgress) {
     for (; i < n; i++) {
       const c = chunk[i];
       if (inStr) {
-        if (esc) { esc = false; continue; }
+        if (escaped) { escaped = false; continue; }
         if (nb !== -1 && nb < i) nb = chunk.indexOf(0x5c, i);
         if (nq !== -1 && nq < i) nq = chunk.indexOf(0x22, i);
-        if (nb !== -1 && (nq === -1 || nb < nq)) { i = nb; esc = true; continue; }
+        if (nb !== -1 && (nq === -1 || nb < nq)) { i = nb; escaped = true; continue; }
         if (nq === -1) { i = n; break; }
         i = nq; inStr = false;
         continue;

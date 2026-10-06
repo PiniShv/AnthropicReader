@@ -10,8 +10,8 @@ function saveConvOpts() { try { localStorage.setItem('cer-conv-opts', JSON.strin
 function convBadges(c) {
   const b = [];
   if (c.empty) b.push('<span class="chip warn" title="The export has no message content for this chat">no content in export</span>');
-  if (c.forks) b.push(`<span class="chip" title="Edited or regenerated messages">${c.forks} branch point${c.forks === 1 ? '' : 's'}</span>`);
-  if (c.outputCount) b.push(`<span class="chip" title="Files, artifacts or widgets Claude produced">${c.outputCount} output${c.outputCount === 1 ? '' : 's'}</span>`);
+  if (c.forks) b.push(`<span class="chip" title="Edited or regenerated messages">${plural(c.forks, 'branch point')}</span>`);
+  if (c.outputCount) b.push(`<span class="chip" title="Files, artifacts or widgets Claude produced">${plural(c.outputCount, 'output')}</span>`);
   if (c.fileCount) b.push(`<span class="chip" title="Uploaded files">📎 ${c.fileCount}</span>`);
   return b.join(' ');
 }
@@ -90,8 +90,8 @@ function viewConversation(id) {
       </div>
       <div class="row wrap">
         <button class="btn small" type="button" ${on(() => copyText(convToMarkdown(conv)))}>Copy as Markdown</button>
-        <button class="btn small" type="button" ${on(() => downloadBlob(new Blob([convToMarkdown(conv)], { type: 'text/markdown' }), safeFilename(conv.title, 'conversation') + '.md'))}>Download .md</button>
-        <button class="btn small" type="button" ${on(() => downloadBlob(new Blob([JSON.stringify(conv.raw, null, 2)], { type: 'application/json' }), safeFilename(conv.title, 'conversation') + '.json'))}>.json</button>
+        <button class="btn small" type="button" ${on(() => downloadText(safeFilename(conv.title, 'conversation') + '.md', convToMarkdown(conv)))}>Download .md</button>
+        <button class="btn small" type="button" ${on(() => downloadText(safeFilename(conv.title, 'conversation') + '.json', jsonPretty(conv.raw)))}>.json</button>
         <button class="btn small ghost" type="button" ${on(() => window.print())} title="Print or save as PDF">⎙</button>
       </div>
     </div>
@@ -170,7 +170,7 @@ function drawThread(conv, opts) {
     if (terms.length) {
       const hits = thread.querySelectorAll('mark').length;
       const hc = $('#hit-count');
-      if (hc) hc.textContent = hits ? `${hits} match${hits === 1 ? '' : 'es'} shown` : 'no visible matches (they may be inside collapsed blocks)';
+      if (hc) hc.textContent = hits ? plural(hits, 'match', 'matches') + ' shown' : 'no visible matches (they may be inside collapsed blocks)';
     }
   };
   // Render the rest in small slices so long chats open instantly.

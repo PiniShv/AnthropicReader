@@ -459,7 +459,7 @@ function isPlumbing(p) { return /^(SKILL\.md$|artifact-type\/)/.test(p); }
 
 // What a version contains and how to show it.
 function versionInfo(a, vid) {
-  const s = a.vfiles && a.vfiles.get(vid);
+  const s = a.vfiles.get(vid);
   if (!s) return { type: a.kind === 'page' ? 'Doc' : 'No files', slot: null };
   if (s.single) return { type: 'HTML', slot: s };
   const f = s.folder;

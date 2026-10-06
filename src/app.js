@@ -165,7 +165,7 @@ async function setupLanding() {
     const btn = $('#reopen');
     const names = last.handles.map(h => h.name);
     btn.hidden = false;
-    btn.textContent = `Reopen last export (${names.length} item${names.length === 1 ? '' : 's'})`;
+    btn.textContent = `Reopen last export (${plural(names.length, 'item')})`;
     btn.title = names.join('\n');
     btn.addEventListener('click', async () => {
       try {

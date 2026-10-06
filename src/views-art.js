@@ -8,7 +8,7 @@ const TYPE_BLURB = /^(Living docs —|Design canvas for websites|Presentation de
 function visChip(a) {
   const v = a.visibility || 'private';
   const sw = a.sharedWith;
-  const extra = sw ? ` · ${sw.viewers || 0} viewer${sw.viewers === 1 ? '' : 's'}${sw.editors ? `, ${sw.editors} editor${sw.editors === 1 ? '' : 's'}` : ''}` : '';
+  const extra = sw ? ` · ${plural(sw.viewers || 0, 'viewer')}${sw.editors ? ', ' + plural(sw.editors, 'editor') : ''}` : '';
   return `<span class="chip${v === 'private' ? '' : ' on'}" title="Visibility">${esc(VIS_LABEL[v] || v)}${esc(extra)}</span>`;
 }
 
@@ -17,7 +17,7 @@ function artifactTable(list, key, showOwner, facet) {
     {
       id: 'title', label: 'Title', cls: 'title', link: true, asc: true, sortVal: a => artifactTitle(a).toLowerCase(),
       html: a => `<div dir="auto">${esc(artifactTitle(a))}</div>${a.description && !TYPE_BLURB.test(a.description) && a.description !== artifactTitle(a) ? `<div class="snip" dir="auto">${esc(truncate(a.description, 200))}</div>` : ''}
-        <div class="row wrap" style="margin-top:5px;gap:4px"><span class="chip">${esc(a.contentType)}</span>${visChip(a)}${a.commentCount ? `<span class="chip">🗨 ${a.commentCount}</span>` : ''}${a.mentionedIn && a.mentionedIn.length ? `<span class="chip" title="Linked from conversations">💬 ${a.mentionedIn.length}</span>` : ''}</div>`,
+        <div class="row wrap" style="margin-top:5px;gap:4px"><span class="chip">${esc(a.contentType)}</span>${visChip(a)}${a.commentCount ? `<span class="chip">🗨 ${a.commentCount}</span>` : ''}${a.mentionedIn.length ? `<span class="chip" title="Linked from conversations">💬 ${a.mentionedIn.length}</span>` : ''}</div>`,
     },
   ];
   if (showOwner) columns.push(COL.owner);
@@ -66,7 +66,7 @@ function viewArtifact(id, vid) {
   });
 
   const versionList = versions.map(v => {
-    const has = isPage || (a.vfiles && a.vfiles.has(v.id));
+    const has = isPage || a.vfiles.has(v.id);
     const desc = v.description && !TYPE_BLURB.test(v.description) && v.description !== v.title ? decodeEntities(v.description) : '';
     return `<li class="${v.id === selected ? 'sel' : ''}${has ? '' : ' missing'}" ${has && !isPage ? on(() => navigate('#/a/' + encodeURIComponent(a.id) + '/' + encodeURIComponent(v.id), true)) : ''} title="${esc(v.id)}">
       <div class="vt" dir="auto">${esc(v.title || 'Untitled')}${v.id === a.activeVersion ? ' <span class="chip ok" style="font-size:11px">current</span>' : ''}</div>
@@ -94,7 +94,7 @@ function viewArtifact(id, vid) {
       <div id="art-main">${isPage ? '' : `<div class="frame-box"><div class="frame-bar"><span class="muted">Loading…</span></div></div>`}</div>
       <aside>
         ${versions.length ? `<div class="card card-pad side-card"><h2 style="margin-bottom:8px">Versions</h2><ul class="version-list">${versionList}</ul>${isPage ? '<p class="faint" style="font-size:12.5px;margin:8px 0 0">Docs keep only the current text in the export; older versions are listed for reference.</p>' : ''}</div>` : ''}
-        ${a.mentionedIn && a.mentionedIn.length ? `<div class="card card-pad side-card"><h2 style="margin-bottom:8px">Mentioned in</h2>${a.mentionedIn.map(c => `<div style="padding:4px 0"><a href="#/c/${encodeURIComponent(c.id)}" dir="auto">${esc(c.title || 'Untitled conversation')}</a> <span class="faint" style="font-size:12.5px">${esc(fmtDate(c.lastTs))}</span></div>`).join('')}</div>` : ''}
+        ${a.mentionedIn.length ? `<div class="card card-pad side-card"><h2 style="margin-bottom:8px">Mentioned in</h2>${a.mentionedIn.map(c => `<div style="padding:4px 0"><a href="#/c/${encodeURIComponent(c.id)}" dir="auto">${esc(c.title || 'Untitled conversation')}</a> <span class="faint" style="font-size:12.5px">${esc(fmtDate(c.lastTs))}</span></div>`).join('')}</div>` : ''}
         ${!isPage && a.threads && a.threads.length ? `<div class="card card-pad side-card"><h2 style="margin-bottom:8px">Comments <span class="badge">${a.commentCount}</span></h2>${threadCommentsHtml(a)}</div>` : ''}
         <div class="card card-pad side-card"><dl class="kv" style="font-size:13px"><dt>Id</dt><dd class="mono">${esc(a.id)}</dd><dt>Kind</dt><dd>${esc(a.kind)}</dd><dt>Files</dt><dd>${fmtNum(a.files.size)}</dd></dl></div>
       </aside>
@@ -170,7 +170,7 @@ async function openArtifactFile(path, node) {
   box.innerHTML = '<p class="muted">Opening…</p>';
   const head = `<div class="row" style="margin-bottom:8px"><b class="mono" dir="auto">${esc(path)}</b><span class="grow"></span><button class="btn small" type="button" ${on(() => node.blob(mimeFor(path)).then(b => downloadBlob(b, path.split('/').pop())))}>Download</button></div>`;
   if (/^(png|jpe?g|gif|webp|svg|avif|ico|bmp)$/.test(ext)) {
-    const src = await dataUrl(node, path);
+    const src = dataUrl(path, await node.bytes());
     if (signal.aborted) return;
     box.innerHTML = head + `<img alt="" style="max-width:100%;border:1px solid var(--border);border-radius:6px" src="${src}">`;
   } else if (/^(mp4|webm)$/.test(ext)) {

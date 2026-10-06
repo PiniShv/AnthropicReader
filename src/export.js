@@ -17,7 +17,7 @@ function convToMarkdown(conv) {
   const path = currentPath(conv);
   for (const m of path) lines.push(messageToMarkdown(conv, m), '');
   const off = conv.msgCount - path.length;
-  if (off > 0) lines.push('---', '', `_${off} message${off === 1 ? '' : 's'} on other branches (edited or regenerated) are not shown here; they are in the .json file._`);
+  if (off > 0) lines.push('---', '', `_${plural(off, 'message')} on other branches (edited or regenerated) are not shown here; they are in the .json file._`);
   return lines.join('\n');
 }
 
