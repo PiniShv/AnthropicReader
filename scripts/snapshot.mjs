@@ -42,7 +42,8 @@ function parseArgs(argv) {
   const opts = { chrome: DEFAULT_CHROME };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
-    if (a === '--out' || a === '--compare' || a === '--chrome') {
+    if (a === '--keep') opts.keep = true;
+    else if (a === '--out' || a === '--compare' || a === '--chrome') {
       if (!argv[i + 1]) usage('Missing value for ' + a);
       opts[a.slice(2)] = argv[++i];
     } else usage('Unknown argument: ' + a);
@@ -52,7 +53,7 @@ function parseArgs(argv) {
 }
 
 function usage(msg) {
-  console.error(msg + '\nUsage: node scripts/snapshot.mjs (--out <dir> | --compare <dir>) [--chrome <path>]');
+  console.error(msg + '\nUsage: node scripts/snapshot.mjs (--out <dir> | --compare <dir>) [--keep] [--chrome <path>]');
   process.exit(2);
 }
 
@@ -494,6 +495,8 @@ if (opts.out) {
   const bad = r.diffs.length + r.missing.length + r.added.length;
   console.log(`\n${bad ? 'DIFFERENT' : 'IDENTICAL'}: ${r.same} of ${r.total} pages identical, ${r.diffs.length} changed, ` +
     `${r.missing.length} missing, ${r.added.length} new (${Math.round((Date.now() - t0) / 1000)} s). ` +
-    `This run: ${curDir}${r.diffs.length ? ' (full diff in snapshot.diff)' : ''}`);
+    (bad || opts.keep ? `This run: ${curDir}${r.diffs.length ? ' (full diff in snapshot.diff)' : ''}` : 'The run folder was deleted (--keep keeps it).'));
+  // A run is about 5 MB of pages: keep it only when it is needed to read a difference.
+  if (!bad && !opts.keep) rmSync(curDir, { recursive: true, force: true });
   process.exit(bad ? 1 : 0);
 }
