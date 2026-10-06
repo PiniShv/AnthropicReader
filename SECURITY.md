@@ -18,7 +18,7 @@ This is a project maintained in free time. The maintainer aims to answer within 
 
 ## Supported versions
 
-Only the latest release, and the current `main` branch, get security fixes. The reader is a single file, so updating means downloading the new `dist/claude-export-reader.html`.
+Only the latest release, and the current `main` branch, get security fixes. The reader is a single file, so updating means downloading the new `claude-export-reader.html` from the [latest release](https://github.com/PiniShv/AnthropicReader/releases/latest).
 
 ## Privacy model
 
