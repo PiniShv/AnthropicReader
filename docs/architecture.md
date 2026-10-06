@@ -148,7 +148,7 @@ Rules that keep this safe:
 - **Every value** from the export goes through `esc()` before it enters a template.
 - **Markdown** goes through `mdToHtml()`:
   1. marked (GitHub-flavoured) turns it into HTML
-  2. DOMPurify cleans it. On top of the defaults, it forbids `style`, `form`, `input`, `button`, `textarea` and `select` tags, the `style` attribute and `data-` attributes.
+  2. DOMPurify cleans it. On top of the defaults, it forbids the tags `style`, `form`, `input`, `button`, `textarea`, `select`, `video`, `audio`, `source`, `track`, `picture`, `image`, `object`, `embed`, `iframe`, `link` and `meta`, the attributes `style`, `srcset` and `ping`, and all `data-` attributes. A hook (`uponSanitizeAttribute`) also drops every attribute that would load a URL as soon as the element exists (`src`, `poster`, `background`, `action`, `href` on anything but a link, …), unless the URL is `data:`, `blob:` or `#…`. Only an `<img>` keeps its `src`, for the next step.
   3. `finishMarkdown()` makes external links open in a new tab with `noopener noreferrer`, turns remote `<img>` tags into plain links, adds `dir="auto"` to text blocks (for right-to-left languages) and adds copy buttons to code blocks.
 - **Human messages** are shown as escaped plain text with clickable `http(s)` links (`plainTextHtml()`), not as Markdown, like on claude.ai.
 - **Links** from export data are only clickable for `http:`, `https:` and `mailto:` (`safeUrl()`).
@@ -161,7 +161,7 @@ Size limits keep the tab responsive:
 
 ## Lazy rendering
 
-- **Collapsed blocks** (tool calls, thinking, attachments, docs, memory files) are made with `blk({ summary }, render)`. The block starts with an empty body, and `render` is kept in the current view under a key (`data-lazy`). A capturing `toggle` listener draws the body the first time the block is opened. A block that starts open (`open: true`) draws its body right away.
+- **Collapsed blocks** (tool calls, thinking, attachments, docs, memory files) are made with `blk({ summary }, render)`. The block starts with only its `body` (usually empty), and `render` is kept in the current view under a key (`data-lazy`). A capturing `toggle` listener draws the body the first time the block is opened. A block that starts open (`open: true`) draws its body right away.
 - **Long conversations** are drawn in batches: the first 30 messages (or enough to reach a linked message) at once, then 25 more every few milliseconds. A sequence number (`threadSeq`) stops an old batch run when the thread is redrawn (for example after a branch switch).
 - **Tables** show 200 rows at a time with a **Show more** button.
 - **Artifact metadata** is read at load time, but version files are read only when a version is opened.
