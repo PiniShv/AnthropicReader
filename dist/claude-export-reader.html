@@ -1601,14 +1601,29 @@ function dropKeys(root) {
 const on = fn => `data-on="${viewKey(fn)}"`;
 on.change = fn => `data-on-change="${viewKey(fn)}"`;
 
+/* Draws one part of a page (a message, a block, a tool call) from export data. Data of a shape
+ * the drawing code did not expect makes only that part a notice, followed by the part's data
+ * from the export when raw is given, so the rest of the page still shows. id: the part is a
+ * message, so its notice keeps the message's <article> and id (links and the thread use it). */
+function drawPart(what, raw, draw, id) {
+  try { return draw(); }
+  catch (err) {
+    const html = `<div class="notice warn">This ${what} could not be shown: ${esc(err && err.message ? err.message : err)}</div>` +
+      (raw === undefined ? '' : sourceBlk(jsonPretty(raw), { label: 'Its data in the export', gap: 6 }));
+    return id == null ? html : `<article class="msg" id="m-${esc(id)}"><div class="msg-body">${html}</div></article>`;
+  }
+}
+
 /* A collapsible block. summary and body are HTML; id is escaped here; style is CSS from the
  * code, never from the export. render() draws the rest of the body after `body`: the first time
  * the block opens (the toggle listener in app.js), or right away when it starts open. Big
- * content stays out of the page until someone asks for it. */
+ * content stays out of the page until someone asks for it. A body that cannot be drawn becomes
+ * a notice (drawPart). */
 function blk({ cls = '', id = '', style = '', open = false, summary, body = '' }, render) {
-  const lazy = render && !open ? ` data-lazy="${viewKey(render)}"` : '';
+  const draw = render && (() => drawPart('part', undefined, render));
+  const lazy = draw && !open ? ` data-lazy="${viewKey(draw)}"` : '';
   return `<details class="blk${cls ? ' ' + cls : ''}"${id ? ` id="${esc(id)}"` : ''}${style ? ` style="${style}"` : ''}${open ? ' open' : ''}${lazy}>` +
-    `<summary>${summary}</summary><div class="blk-body">${body}${render && open ? render() : ''}</div></details>`;
+    `<summary>${summary}</summary><div class="blk-body">${body}${draw && open ? draw() : ''}</div></details>`;
 }
 
 const PRE_LIMIT = 60000;
@@ -1666,10 +1681,19 @@ function isolate(el) {
 // Smooth scrolling, unless the system asks for less motion.
 const scrollMotion = () => (matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth');
 
+/* Runs the view's after() hooks. A hook that fails, now or later (an async one), puts a notice
+ * at the top of its page, unless the page has changed since: a failure is never only in the
+ * console. */
 function mountView(v) {
+  const failed = err => {
+    console.error(err);
+    if (v !== VIEW) return;
+    const page = $('#main > .page') || $('#main');
+    page.insertAdjacentHTML('afterbegin', `<div class="notice warn" role="alert">Part of this page could not be drawn: ${esc(err && err.message ? err.message : err)}</div>`);
+  };
   while (v.mounts.length) {
     const fn = v.mounts.shift();
-    try { const r = fn(); if (r && r.catch) r.catch(e => console.error(e)); } catch (e) { console.error(e); }
+    try { const r = fn(); if (r && r.catch) r.catch(failed); } catch (e) { failed(e); }
   }
 }
 
@@ -2817,7 +2841,7 @@ const TOOLS = new Map([
   ['ask_user_input_v0', {
     shown: true,
     markdown: i => (!Array.isArray(i.questions) ? [] : [
-      ...i.questions.map(q => `- **${q.question || ''}** ${(Array.isArray(q.options) ? q.options : []).map(o => '`' + (typeof o === 'string' ? o : JSON.stringify(o)) + '`').join(' · ')}`), '',
+      ...objects(i.questions).map(q => `- **${q.question || ''}** ${(Array.isArray(q.options) ? q.options : []).map(o => '`' + (typeof o === 'string' ? o : JSON.stringify(o)) + '`').join(' · ')}`), '',
     ]),
   }],
   ['chart_display_v0', { shown: true }],
@@ -2924,7 +2948,7 @@ function msgProse(m) {
 function msgDeep(m) {
   let s = '';
   for (const b of m.content) {
-    if (b.type === 'thinking') { s += (b.thinking || '') + '\n'; for (const x of (b.summaries || [])) s += (x && x.summary || '') + '\n'; }
+    if (b.type === 'thinking') { s += (b.thinking || '') + '\n'; for (const x of objects(b.summaries)) s += (x.summary || '') + '\n'; }
     else if (b.type === 'tool_use') { try { s += JSON.stringify(b.input || {}) + '\n'; } catch (e) { /* ignore */ } }
     else if (b.type === 'tool_result') {
       for (const it of (Array.isArray(b.content) ? b.content : [])) if (it) s += (it.text || '') + ' ' + (it.title || '') + '\n';
@@ -4306,7 +4330,7 @@ function drawThread(conv, terms, opts) {
   const firstBatch = Math.max(30, targetIdx + 20);
   const renderBatch = (n) => {
     const frag = document.createElement('div');
-    frag.innerHTML = path.slice(i, i + n).map(m => messageHtml(m, ctx)).join('');
+    frag.innerHTML = path.slice(i, i + n).map(m => drawPart('message', m, () => messageHtml(m, ctx), m.uuid)).join('');
     if (terms.length) highlightIn(frag, terms);
     while (frag.firstChild) thread.appendChild(frag.firstChild);
     i += n;
@@ -4365,7 +4389,7 @@ function messageHtml(m, ctx) {
   const firstStart = m.content.reduce((min, b) => { const t = parseTime(b.start_timestamp); return t && (!min || t < min) ? t : min; }, 0);
   const created = parseTime(m.created_at);
   const dur = !human && firstStart && created > firstStart ? fmtDuration(created - firstStart) : '';
-  const body = human ? humanBody(m, ctx) : assistantBody(m, ctx);
+  const body = drawPart('message', m, () => (human ? humanBody(m, ctx) : assistantBody(m, ctx)));
   return `<article class="msg ${human ? 'human' : 'assistant'}" id="m-${esc(m.uuid)}">
     <div class="msg-head">
       ${human ? avatarHtml(who, 'sm') : '<span class="avatar sm" style="--h:20" aria-hidden="true">C</span>'}
@@ -4486,21 +4510,21 @@ function assistantBody(m, ctx) {
       const res = results.get(b.id);
       if (res) usedResults.add(res);
       const t = TOOLS.get(b.name);
-      group.push({ use: b, special: !!(t && t.shown), error: res && res.is_error, html: toolCallHtml(b, res, ctx) });
+      group.push({ use: b, special: !!(t && t.shown), error: res && res.is_error, html: drawPart('tool call', { use: b, result: res }, () => toolCallHtml(b, res, ctx)) });
       continue;
     }
     if (b.type === 'tool_result') {
       if (usedResults.has(b)) continue;
-      group.push({ use: { name: b.name || 'tool' }, html: toolCallHtml({ name: b.name, input: {} }, b, ctx) });
+      group.push({ use: { name: b.name || 'tool' }, html: drawPart('tool result', b, () => toolCallHtml({ name: b.name, input: {} }, b, ctx)) });
       continue;
     }
     flush();
     if (b.type === 'text') {
       if (!hasText(b.text)) continue;
-      out.push(textBlockHtml(b, knowledge));
+      out.push(drawPart('block', b, () => textBlockHtml(b, knowledge)));
     } else if (b.type === 'thinking') {
       if (!CONV_OPTS.showThinking) continue;
-      out.push(thinkingHtml(b));
+      out.push(drawPart('block', b, () => thinkingHtml(b)));
     } else if (b.type === 'token_budget') {
       continue;
     } else if (b.type !== 'injected_prompt_block') {
@@ -4515,7 +4539,7 @@ function assistantBody(m, ctx) {
 
 function textBlockHtml(b, knowledge) {
   let text = b.text;
-  const cites = Array.isArray(b.citations) ? b.citations.filter(c => c && c.details && c.details.url) : [];
+  const cites = Array.isArray(b.citations) ? b.citations.filter(c => c && c.details && typeof c.details.url === 'string' && c.details.url) : [];
   if (!cites.length) return `<div class="md">${mdToHtml(text)}</div>`;
   // Number sources by first appearance; insert [n] markers at each citation's end offset.
   const nums = new Map();
@@ -4565,7 +4589,7 @@ function toolGroupHtml(htmls, names, failed) {
 }
 
 function toolCallHtml(use, res, ctx) {
-  const name = use.name || (res && res.name) || 'tool';
+  const name = String(use.name || (res && res.name) || 'tool');
   const input = use.input && typeof use.input === 'object' ? use.input : {};
   const error = res && res.is_error;
   const integ = use.integration_name || (name.includes(':') ? name.split(':')[0] : '');
@@ -4583,7 +4607,7 @@ function toolCallHtml(use, res, ctx) {
     cls: 'tool' + (error ? ' result error' : ''), id: 't-' + (use.id || ''),
     summary: `<span class="lbl">${esc(toolLabel(name))}</span>${integ ? `<span class="faint" style="flex:none">${esc(integ)}</span>` : ''}<span class="desc" dir="auto">${esc(truncate(oneLine(desc), 160))}</span>
       <span class="meta">${error ? `<b style="color:var(--err)">failed${errType ? ' · ' + esc(errType) : ''}</b> ` : ''}${!res ? 'no result ' : ''}${dur}</span>`,
-  }, () => toolBodyHtml(use, res, ctx));
+  }, () => drawPart('tool call', { use, result: res }, () => toolBodyHtml(use, res, ctx)));
 }
 
 function toolBodyHtml(use, res, ctx) {
@@ -4634,7 +4658,7 @@ function toolResultHtml(res, ctx) {
   const dc = res.display_content;
   const tool = TOOLS.get(res.name);
   const out = [];
-  const stub = items.length === 1 && items[0].type === 'text' && /^Tool result too large for context/.test(items[0].text || '');
+  const stub = items.length === 1 && isObj(items[0]) && items[0].type === 'text' && /^Tool result too large for context/.test(items[0].text || '');
   for (const it of items) {
     if (!it) continue;
     if (it.type === 'text') {
@@ -4654,7 +4678,7 @@ function toolResultHtml(res, ctx) {
       const created = ctx.created.get(it.file_path);
       out.push(`<span class="file-chip">📄 <span dir="auto">${esc(it.name || it.file_path)}</span> <span class="sz">${esc(it.mime_type || '')}</span>${created ? ` <button class="btn small" type="button" ${on(() => revealBlock('t-' + (created.id || '')))}>show content</button>` : ' <span class="sz">bytes not in export</span>'}</span>`);
     } else if (it.type === 'image_gallery') {
-      const imgs = Array.isArray(it.images) ? it.images : [];
+      const imgs = objects(it.images);
       out.push(imgs.length ? `<div class="files-row">${imgs.map(g => `<a class="file-chip" href="${esc(safeUrl(g.page_url || g.url))}" target="_blank" rel="noopener noreferrer">🖼 ${esc(g.title || 'image')}</a>`).join('')}</div>` : '<p class="faint">Image results expired.</p>');
     } else {
       out.push(preHtml(jsonPretty(it)));
@@ -4663,7 +4687,7 @@ function toolResultHtml(res, ctx) {
   if (dc && typeof dc === 'object') {
     if (dc.type === 'rich_link' && dc.link) out.push(`<p><a href="${esc(safeUrl(dc.link.url))}" target="_blank" rel="noopener noreferrer">${esc(dc.link.title || dc.link.url)}</a></p>`);
     if (dc.type === 'rich_content' && Array.isArray(dc.content)) {
-      out.push(`<ul>${dc.content.map(x => `<li>${chatHref(x.url) ? `<a href="${chatHref(x.url)}">${esc(x.title || x.url)}</a>` : esc(x.title || '')}${Array.isArray(x.subtitles) && x.subtitles.length ? ` <span class="faint">${esc(x.subtitles.join(' · '))}</span>` : ''}</li>`).join('')}</ul>`);
+      out.push(`<ul>${objects(dc.content).map(x => `<li>${chatHref(x.url) ? `<a href="${chatHref(x.url)}">${esc(x.title || x.url)}</a>` : esc(x.title || '')}${Array.isArray(x.subtitles) && x.subtitles.length ? ` <span class="faint">${esc(x.subtitles.join(' · '))}</span>` : ''}</li>`).join('')}</ul>`);
     }
     if (dc.type === 'file' && dc.published_artifact_id) out.push(artifactLinkHtml(dc.published_artifact_id, dc.title, dc.published_action));
   }
@@ -4719,7 +4743,7 @@ for (const [name, view] of Object.entries({
   artifacts: {
     card: (input, res, tid) => {
       if (!input.content && !input.command) return '';
-      const type = input.type || '';
+      const type = String(input.type || '');
       const content = input.content || '';
       // Starts open, so its body is drawn right away.
       return blk({ cls: 'artifact', id: tid, open: true, summary: `<span class="lbl">◧ Artifact</span><span class="desc" dir="auto">${esc(input.title || input.id || 'Artifact')}</span><span class="meta">${esc(input.command || '')} · ${esc(type.replace('application/vnd.ant.', ''))}</span>` }, () => {
@@ -4732,7 +4756,7 @@ for (const [name, view] of Object.entries({
   create_file: {
     card: (input, res, tid) => {
       if (input.file_text == null) return '';
-      const path = input.path || '';
+      const path = String(input.path || '');
       const ext = fileExt(path);
       return blk({ cls: 'artifact', id: tid, summary: `<span class="lbl">📄 Created file</span><span class="desc mono" dir="auto">${esc(path.split('/').pop())}</span><span class="meta">${fmtBytes(input.file_text.length)}</span>` }, () => {
         const dl = `<div class="row" style="margin-bottom:8px"><span class="muted" style="font-size:12.5px">${esc(path)}</span><button class="btn small" type="button" ${on(() => downloadText(path.split('/').pop(), input.file_text))}>Download</button></div>`;
@@ -4752,7 +4776,7 @@ for (const [name, view] of Object.entries({
   },
   ask_user_input_v0: {
     card: (input, res, tid) => (!Array.isArray(input.questions) ? '' : `<div class="card card-pad" id="${esc(tid)}"><div class="row" style="margin-bottom:6px"><span class="chip on">? Questions for the person</span></div>
-      ${input.questions.map(q => `<div style="margin-top:6px"><div dir="auto"><b>${esc(q.question || '')}</b> ${q.type ? `<span class="faint">${esc(q.type)}</span>` : ''}</div><div class="files-row" style="margin-top:4px">${(Array.isArray(q.options) ? q.options : []).map(o => `<span class="chip" dir="auto">${esc(typeof o === 'string' ? o : JSON.stringify(o))}</span>`).join('')}</div></div>`).join('')}
+      ${objects(input.questions).map(q => `<div style="margin-top:6px"><div dir="auto"><b>${esc(q.question || '')}</b> ${q.type ? `<span class="faint">${esc(q.type)}</span>` : ''}</div><div class="files-row" style="margin-top:4px">${(Array.isArray(q.options) ? q.options : []).map(o => `<span class="chip" dir="auto">${esc(typeof o === 'string' ? o : JSON.stringify(o))}</span>`).join('')}</div></div>`).join('')}
       <p class="faint" style="font-size:13px;margin:8px 0 0">The answer is in the next message.</p></div>`),
   },
   chart_display_v0: {
@@ -4762,7 +4786,7 @@ for (const [name, view] of Object.entries({
     card: (input, res, tid) => {
       if (!Array.isArray(input.days) && !Array.isArray(input.locations)) return '';
       // Most calls put `locations` at the top level instead of inside `days`.
-      const days = Array.isArray(input.days) ? input.days : [{ locations: input.locations }];
+      const days = Array.isArray(input.days) ? objects(input.days) : [{ locations: input.locations }];
       return `<div class="card card-pad" id="${esc(tid)}"><div class="row" style="margin-bottom:6px"><span class="chip on">🗺 ${Array.isArray(input.days) ? 'Itinerary' : 'Places'}</span><b dir="auto">${esc(input.title || '')}</b></div>
       ${input.narrative ? `<p dir="auto">${esc(input.narrative)}</p>` : ''}
       ${days.map(d => `${d.day_number || d.title ? `<div class="blk-sub">Day ${esc(d.day_number || '')} · ${esc(d.title || '')}</div>` : ''}<ul>${(Array.isArray(d.locations) ? d.locations : []).map(l => `<li dir="auto"><b>${esc((l && l.name) || '')}</b>${l && l.arrival_time ? ' · ' + esc(l.arrival_time) : ''}${l && l.notes ? ' — ' + esc(l.notes) : ''}</li>`).join('')}</ul>`).join('')}</div>`;
@@ -4824,8 +4848,8 @@ svg text{fill:var(--color-text-primary);font-family:var(--font-sans);font-size:1
 `;
 
 function simpleBarTable(input) {
-  const xs = (input.xAxis && input.xAxis.data) || [];
-  const series = input.series || [];
+  const xs = input.xAxis && Array.isArray(input.xAxis.data) ? input.xAxis.data : [];
+  const series = objects(input.series);
   return `<div class="md"><table><thead><tr><th></th>${series.map(s => `<th>${esc(s.name || '')}</th>`).join('')}</tr></thead><tbody>${xs.map((x, i) => `<tr><td>${esc(x)}</td>${series.map(s => `<td>${esc((s.values || [])[i])}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`;
 }
 
@@ -5254,7 +5278,7 @@ function viewDesignChat(id) {
   const msgs = d.messages;
   const receipts = new Map();
   for (const m of msgs) { const c = m.content || {}; if (c.questionReceipt && c.questionReceipt.questionId) receipts.set(c.questionReceipt.questionId, c.questionReceipt); }
-  const tokens = msgs.reduce((a, m) => a + ((m.content && m.content.turnInputTokens) || 0), 0);
+  const tokens = msgs.reduce((a, m) => a + (Number(m.content && m.content.turnInputTokens) || 0), 0);
   // Opened from a search: mark the words, in the thread now and in blocks opened later.
   VIEW.terms = searchTerms(App.route.query.q);
   if (VIEW.terms.length) after(() => highlightIn($('#thread'), VIEW.terms));
@@ -5268,7 +5292,7 @@ function viewDesignChat(id) {
         ${tokens ? `<span class="faint" title="Sum of input context over all turns">${fmtNum(Math.round(tokens / 1000))}k context tokens</span>` : ''}</div>
     </div><div class="row"><button class="btn small" type="button" ${on(() => downloadText(d.project.name + ' ' + d.id.slice(0, 8) + '.json', jsonPretty(d.raw)))}>Download .json</button></div></div>
     <div class="conv-toolbar"><button class="chip" type="button" ${on(expandAll)}>Expand all</button><button class="chip" type="button" ${on(collapseAll)}>Collapse all</button></div>
-    <div class="thread" id="thread">${msgs.length ? msgs.map(m => designMessageHtml(m, d, receipts)).join('') : '<div class="empty">This design chat has no messages in the export.</div>'}</div>
+    <div class="thread" id="thread">${msgs.length ? msgs.map(m => drawPart('message', m, () => designMessageHtml(m, d, receipts), m.uuid)).join('') : '<div class="empty">This design chat has no messages in the export.</div>'}</div>
   </div>`;
 }
 
@@ -5313,13 +5337,13 @@ function designAttachments(atts, showHidden) {
 }
 
 function designQuestionCard(spec, receipt) {
-  const qs = spec && Array.isArray(spec.questions) ? spec.questions : [];
+  const qs = objects(spec && spec.questions);
   const ans = receipt && receipt.payload ? receipt.payload : null;
   const fmtAns = v => {
     if (!v) return '<span class="faint">skipped</span>';
     const x = v.choice != null ? v.choice : v.choices || v.selected || v.text || v.file || v.localFolders;
     if (x == null || (Array.isArray(x) && !x.length) || x === '') return '<span class="faint">skipped</span>';
-    if (Array.isArray(x)) return x.map(y => `<span class="chip on" dir="auto">${esc(typeof y === 'string' ? y : (y.name || JSON.stringify(y)))}</span>`).join(' ');
+    if (Array.isArray(x)) return x.map(y => `<span class="chip on" dir="auto">${esc(typeof y === 'string' ? y : ((isObj(y) && y.name) || JSON.stringify(y)))}</span>`).join(' ');
     return `<span class="chip on" dir="auto">${esc(x)}</span>`;
   };
   return `<div class="card card-pad"><div class="row wrap" style="margin-bottom:6px"><span class="chip on">? Questions</span><b dir="auto">${esc((spec && spec.title) || '')}</b></div>
@@ -5360,23 +5384,14 @@ function designMessageHtml(m, d, receipts) {
     let group = [];
     const flush = () => {
       if (!group.length) return;
-      const items = group.map(designToolHtml);
+      const items = group.map(t => drawPart('tool call', t, () => designToolHtml(t)));
       out.push(group.length > 2 ? toolGroupHtml(items, group.map(g => g.name), 0) : items.join(''));
       group = [];
     };
     for (const b of blocks) {
       if (b.type === 'tool_call' && b.toolCall) { group.push(b.toolCall); continue; }
       flush();
-      if (b.type === 'text') { const t = String(b.text || '').trim(); if (t && !DESIGN_NOISE.test(t)) out.push(`<div class="md" dir="auto">${mdToHtml(t)}</div>`); }
-      else if (b.type === 'error') out.push(`<div class="notice warn" style="color:var(--err)">Error: ${esc(typeof b.message === 'string' ? b.message : JSON.stringify(b.message))}</div>`);
-      else if (b.type === 'user_interjection' && b.message && b.message.pill === true) {
-        // An automation notice that arrived mid-turn, not something the person typed.
-        out.push(blk({ summary: `<span class="lbl">⚑ ${esc(oneLine(b.message.content || 'Notice'))}</span><span class="meta">${esc(fmtDateTime(b.message.timestamp))}</span>`, body: designAttachments(b.message.attachments, true) || '<p class="faint">No details.</p>' }));
-      } else if (b.type === 'user_interjection' && b.message) {
-        const who = DB.people.get(d.ownerId);
-        out.push(`<div class="msg human" style="margin-left:24px"><div class="msg-head">${avatarHtml(who, 'sm')}<span class="who">${who ? esc(who.name) : 'User'}</span><span class="faint">added while Claude was working · ${esc(fmtDateTime(b.message.timestamp))}</span></div><div class="msg-body">${designUserContent(b.message.content)}${designAttachments(b.message.attachments, false)}</div></div>`);
-      }
-      // thinking blocks are always empty in the export
+      out.push(drawPart('block', b, () => designBlockHtml(b, d)));
     }
     flush();
   }
@@ -5391,6 +5406,20 @@ function designMessageHtml(m, d, receipts) {
     <div class="msg-body">${out.join('') || '<span class="faint">(no text)</span>'}</div></article>`;
 }
 
+// One content block of an assistant row, other than a tool call. Thinking blocks are always
+// empty in the export.
+function designBlockHtml(b, d) {
+  if (b.type === 'text') { const t = String(b.text || '').trim(); return t && !DESIGN_NOISE.test(t) ? `<div class="md" dir="auto">${mdToHtml(t)}</div>` : ''; }
+  if (b.type === 'error') return `<div class="notice warn" style="color:var(--err)">Error: ${esc(typeof b.message === 'string' ? b.message : JSON.stringify(b.message))}</div>`;
+  if (b.type !== 'user_interjection' || !b.message) return '';
+  if (b.message.pill === true) {
+    // An automation notice that arrived mid-turn, not something the person typed.
+    return blk({ summary: `<span class="lbl">⚑ ${esc(oneLine(b.message.content || 'Notice'))}</span><span class="meta">${esc(fmtDateTime(b.message.timestamp))}</span>`, body: designAttachments(b.message.attachments, true) || '<p class="faint">No details.</p>' });
+  }
+  const who = DB.people.get(d.ownerId);
+  return `<div class="msg human" style="margin-left:24px"><div class="msg-head">${avatarHtml(who, 'sm')}<span class="who">${who ? esc(who.name) : 'User'}</span><span class="faint">added while Claude was working · ${esc(fmtDateTime(b.message.timestamp))}</span></div><div class="msg-body">${designUserContent(b.message.content)}${designAttachments(b.message.attachments, false)}</div></div>`;
+}
+
 function designToolHtml(t) {
   const i = t.input && typeof t.input === 'object' ? t.input : {};
   const desc = i.path || i.a_filename || i.query || i.purpose || i.title || i.pattern || i.label || i.filename || (i.from_id ? i.from_id + '→' + i.to_id : '') || '';
@@ -5402,7 +5431,7 @@ function designToolHtml(t) {
     } else if (i.content != null && typeof i.content === 'string') h += (i.path ? `<p class="mono faint" style="margin:0 0 6px">${esc(i.path)}</p>` : '') + preHtml(i.content);
     else if (i.b_dc_html) h += preHtml(i.b_dc_html) + (i.c_dc_js ? `<div class="blk-sub">Logic</div>${preHtml(i.c_dc_js)}` : '');
     else if (i.old_string != null || i.c_find != null) h += diffHtml(i.old_string != null ? i.old_string : i.c_find, i.new_string != null ? i.new_string : i.d_replace);
-    else if (Array.isArray(i.edits)) h += i.edits.map(e => diffHtml(e.old_string, e.new_string)).join('<hr>');
+    else if (Array.isArray(i.edits)) h += objects(i.edits).map(e => diffHtml(e.old_string, e.new_string)).join('<hr>');
     else if (i.code) h += preHtml(i.code);
     else h += Object.keys(i).length ? kvOrJson(i) : '<p class="faint">(no input)</p>';
     h += '<div class="blk-sub">Output</div>';
@@ -5639,9 +5668,14 @@ function viewSearch(q, t) {
     if (!q.trim()) { box.innerHTML = '<div class="empty">Type in the search box above. Use quotes for exact phrases, e.g. <code>"design system"</code>.</div>'; return; }
     box.innerHTML = '<div class="empty" id="search-progress">Searching…</div>';
     const onProgress = msg => { const p = $('#search-progress'); if (p) p.textContent = msg; };
-    const res = await runSearch(q, { deep, scope: s, signal: VIEW.ac.signal, onProgress, shown: searchLimit(t) });
-    if (!res) return;
-    drawSearchResults(res, q, t, deep);
+    try {
+      const res = await runSearch(q, { deep, scope: s, signal: VIEW.ac.signal, onProgress, shown: searchLimit(t) });
+      if (res) drawSearchResults(res, q, t, deep);
+    } catch (err) {
+      // Never leave "Searching…" behind; mountView() puts the reason at the top of the page.
+      box.innerHTML = '<div class="card empty">The search stopped because of an error.</div>';
+      throw err;
+    }
   });
   return `<div class="page narrow">
     <div class="page-head"><div class="grow"><h1>Search</h1>

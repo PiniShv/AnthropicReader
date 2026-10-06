@@ -149,7 +149,7 @@ const TOOLS = new Map([
   ['ask_user_input_v0', {
     shown: true,
     markdown: i => (!Array.isArray(i.questions) ? [] : [
-      ...i.questions.map(q => `- **${q.question || ''}** ${(Array.isArray(q.options) ? q.options : []).map(o => '`' + (typeof o === 'string' ? o : JSON.stringify(o)) + '`').join(' · ')}`), '',
+      ...objects(i.questions).map(q => `- **${q.question || ''}** ${(Array.isArray(q.options) ? q.options : []).map(o => '`' + (typeof o === 'string' ? o : JSON.stringify(o)) + '`').join(' · ')}`), '',
     ]),
   }],
   ['chart_display_v0', { shown: true }],

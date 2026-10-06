@@ -28,7 +28,7 @@ function msgProse(m) {
 function msgDeep(m) {
   let s = '';
   for (const b of m.content) {
-    if (b.type === 'thinking') { s += (b.thinking || '') + '\n'; for (const x of (b.summaries || [])) s += (x && x.summary || '') + '\n'; }
+    if (b.type === 'thinking') { s += (b.thinking || '') + '\n'; for (const x of objects(b.summaries)) s += (x.summary || '') + '\n'; }
     else if (b.type === 'tool_use') { try { s += JSON.stringify(b.input || {}) + '\n'; } catch (e) { /* ignore */ } }
     else if (b.type === 'tool_result') {
       for (const it of (Array.isArray(b.content) ? b.content : [])) if (it) s += (it.text || '') + ' ' + (it.title || '') + '\n';

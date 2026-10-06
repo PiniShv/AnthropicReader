@@ -177,7 +177,7 @@ function drawThread(conv, terms, opts) {
   const firstBatch = Math.max(30, targetIdx + 20);
   const renderBatch = (n) => {
     const frag = document.createElement('div');
-    frag.innerHTML = path.slice(i, i + n).map(m => messageHtml(m, ctx)).join('');
+    frag.innerHTML = path.slice(i, i + n).map(m => drawPart('message', m, () => messageHtml(m, ctx), m.uuid)).join('');
     if (terms.length) highlightIn(frag, terms);
     while (frag.firstChild) thread.appendChild(frag.firstChild);
     i += n;
@@ -236,7 +236,7 @@ function messageHtml(m, ctx) {
   const firstStart = m.content.reduce((min, b) => { const t = parseTime(b.start_timestamp); return t && (!min || t < min) ? t : min; }, 0);
   const created = parseTime(m.created_at);
   const dur = !human && firstStart && created > firstStart ? fmtDuration(created - firstStart) : '';
-  const body = human ? humanBody(m, ctx) : assistantBody(m, ctx);
+  const body = drawPart('message', m, () => (human ? humanBody(m, ctx) : assistantBody(m, ctx)));
   return `<article class="msg ${human ? 'human' : 'assistant'}" id="m-${esc(m.uuid)}">
     <div class="msg-head">
       ${human ? avatarHtml(who, 'sm') : '<span class="avatar sm" style="--h:20" aria-hidden="true">C</span>'}
@@ -357,21 +357,21 @@ function assistantBody(m, ctx) {
       const res = results.get(b.id);
       if (res) usedResults.add(res);
       const t = TOOLS.get(b.name);
-      group.push({ use: b, special: !!(t && t.shown), error: res && res.is_error, html: toolCallHtml(b, res, ctx) });
+      group.push({ use: b, special: !!(t && t.shown), error: res && res.is_error, html: drawPart('tool call', { use: b, result: res }, () => toolCallHtml(b, res, ctx)) });
       continue;
     }
     if (b.type === 'tool_result') {
       if (usedResults.has(b)) continue;
-      group.push({ use: { name: b.name || 'tool' }, html: toolCallHtml({ name: b.name, input: {} }, b, ctx) });
+      group.push({ use: { name: b.name || 'tool' }, html: drawPart('tool result', b, () => toolCallHtml({ name: b.name, input: {} }, b, ctx)) });
       continue;
     }
     flush();
     if (b.type === 'text') {
       if (!hasText(b.text)) continue;
-      out.push(textBlockHtml(b, knowledge));
+      out.push(drawPart('block', b, () => textBlockHtml(b, knowledge)));
     } else if (b.type === 'thinking') {
       if (!CONV_OPTS.showThinking) continue;
-      out.push(thinkingHtml(b));
+      out.push(drawPart('block', b, () => thinkingHtml(b)));
     } else if (b.type === 'token_budget') {
       continue;
     } else if (b.type !== 'injected_prompt_block') {
@@ -386,7 +386,7 @@ function assistantBody(m, ctx) {
 
 function textBlockHtml(b, knowledge) {
   let text = b.text;
-  const cites = Array.isArray(b.citations) ? b.citations.filter(c => c && c.details && c.details.url) : [];
+  const cites = Array.isArray(b.citations) ? b.citations.filter(c => c && c.details && typeof c.details.url === 'string' && c.details.url) : [];
   if (!cites.length) return `<div class="md">${mdToHtml(text)}</div>`;
   // Number sources by first appearance; insert [n] markers at each citation's end offset.
   const nums = new Map();
@@ -436,7 +436,7 @@ function toolGroupHtml(htmls, names, failed) {
 }
 
 function toolCallHtml(use, res, ctx) {
-  const name = use.name || (res && res.name) || 'tool';
+  const name = String(use.name || (res && res.name) || 'tool');
   const input = use.input && typeof use.input === 'object' ? use.input : {};
   const error = res && res.is_error;
   const integ = use.integration_name || (name.includes(':') ? name.split(':')[0] : '');
@@ -454,7 +454,7 @@ function toolCallHtml(use, res, ctx) {
     cls: 'tool' + (error ? ' result error' : ''), id: 't-' + (use.id || ''),
     summary: `<span class="lbl">${esc(toolLabel(name))}</span>${integ ? `<span class="faint" style="flex:none">${esc(integ)}</span>` : ''}<span class="desc" dir="auto">${esc(truncate(oneLine(desc), 160))}</span>
       <span class="meta">${error ? `<b style="color:var(--err)">failed${errType ? ' · ' + esc(errType) : ''}</b> ` : ''}${!res ? 'no result ' : ''}${dur}</span>`,
-  }, () => toolBodyHtml(use, res, ctx));
+  }, () => drawPart('tool call', { use, result: res }, () => toolBodyHtml(use, res, ctx)));
 }
 
 function toolBodyHtml(use, res, ctx) {
@@ -505,7 +505,7 @@ function toolResultHtml(res, ctx) {
   const dc = res.display_content;
   const tool = TOOLS.get(res.name);
   const out = [];
-  const stub = items.length === 1 && items[0].type === 'text' && /^Tool result too large for context/.test(items[0].text || '');
+  const stub = items.length === 1 && isObj(items[0]) && items[0].type === 'text' && /^Tool result too large for context/.test(items[0].text || '');
   for (const it of items) {
     if (!it) continue;
     if (it.type === 'text') {
@@ -525,7 +525,7 @@ function toolResultHtml(res, ctx) {
       const created = ctx.created.get(it.file_path);
       out.push(`<span class="file-chip">📄 <span dir="auto">${esc(it.name || it.file_path)}</span> <span class="sz">${esc(it.mime_type || '')}</span>${created ? ` <button class="btn small" type="button" ${on(() => revealBlock('t-' + (created.id || '')))}>show content</button>` : ' <span class="sz">bytes not in export</span>'}</span>`);
     } else if (it.type === 'image_gallery') {
-      const imgs = Array.isArray(it.images) ? it.images : [];
+      const imgs = objects(it.images);
       out.push(imgs.length ? `<div class="files-row">${imgs.map(g => `<a class="file-chip" href="${esc(safeUrl(g.page_url || g.url))}" target="_blank" rel="noopener noreferrer">🖼 ${esc(g.title || 'image')}</a>`).join('')}</div>` : '<p class="faint">Image results expired.</p>');
     } else {
       out.push(preHtml(jsonPretty(it)));
@@ -534,7 +534,7 @@ function toolResultHtml(res, ctx) {
   if (dc && typeof dc === 'object') {
     if (dc.type === 'rich_link' && dc.link) out.push(`<p><a href="${esc(safeUrl(dc.link.url))}" target="_blank" rel="noopener noreferrer">${esc(dc.link.title || dc.link.url)}</a></p>`);
     if (dc.type === 'rich_content' && Array.isArray(dc.content)) {
-      out.push(`<ul>${dc.content.map(x => `<li>${chatHref(x.url) ? `<a href="${chatHref(x.url)}">${esc(x.title || x.url)}</a>` : esc(x.title || '')}${Array.isArray(x.subtitles) && x.subtitles.length ? ` <span class="faint">${esc(x.subtitles.join(' · '))}</span>` : ''}</li>`).join('')}</ul>`);
+      out.push(`<ul>${objects(dc.content).map(x => `<li>${chatHref(x.url) ? `<a href="${chatHref(x.url)}">${esc(x.title || x.url)}</a>` : esc(x.title || '')}${Array.isArray(x.subtitles) && x.subtitles.length ? ` <span class="faint">${esc(x.subtitles.join(' · '))}</span>` : ''}</li>`).join('')}</ul>`);
     }
     if (dc.type === 'file' && dc.published_artifact_id) out.push(artifactLinkHtml(dc.published_artifact_id, dc.title, dc.published_action));
   }
@@ -590,7 +590,7 @@ for (const [name, view] of Object.entries({
   artifacts: {
     card: (input, res, tid) => {
       if (!input.content && !input.command) return '';
-      const type = input.type || '';
+      const type = String(input.type || '');
       const content = input.content || '';
       // Starts open, so its body is drawn right away.
       return blk({ cls: 'artifact', id: tid, open: true, summary: `<span class="lbl">◧ Artifact</span><span class="desc" dir="auto">${esc(input.title || input.id || 'Artifact')}</span><span class="meta">${esc(input.command || '')} · ${esc(type.replace('application/vnd.ant.', ''))}</span>` }, () => {
@@ -603,7 +603,7 @@ for (const [name, view] of Object.entries({
   create_file: {
     card: (input, res, tid) => {
       if (input.file_text == null) return '';
-      const path = input.path || '';
+      const path = String(input.path || '');
       const ext = fileExt(path);
       return blk({ cls: 'artifact', id: tid, summary: `<span class="lbl">📄 Created file</span><span class="desc mono" dir="auto">${esc(path.split('/').pop())}</span><span class="meta">${fmtBytes(input.file_text.length)}</span>` }, () => {
         const dl = `<div class="row" style="margin-bottom:8px"><span class="muted" style="font-size:12.5px">${esc(path)}</span><button class="btn small" type="button" ${on(() => downloadText(path.split('/').pop(), input.file_text))}>Download</button></div>`;
@@ -623,7 +623,7 @@ for (const [name, view] of Object.entries({
   },
   ask_user_input_v0: {
     card: (input, res, tid) => (!Array.isArray(input.questions) ? '' : `<div class="card card-pad" id="${esc(tid)}"><div class="row" style="margin-bottom:6px"><span class="chip on">? Questions for the person</span></div>
-      ${input.questions.map(q => `<div style="margin-top:6px"><div dir="auto"><b>${esc(q.question || '')}</b> ${q.type ? `<span class="faint">${esc(q.type)}</span>` : ''}</div><div class="files-row" style="margin-top:4px">${(Array.isArray(q.options) ? q.options : []).map(o => `<span class="chip" dir="auto">${esc(typeof o === 'string' ? o : JSON.stringify(o))}</span>`).join('')}</div></div>`).join('')}
+      ${objects(input.questions).map(q => `<div style="margin-top:6px"><div dir="auto"><b>${esc(q.question || '')}</b> ${q.type ? `<span class="faint">${esc(q.type)}</span>` : ''}</div><div class="files-row" style="margin-top:4px">${(Array.isArray(q.options) ? q.options : []).map(o => `<span class="chip" dir="auto">${esc(typeof o === 'string' ? o : JSON.stringify(o))}</span>`).join('')}</div></div>`).join('')}
       <p class="faint" style="font-size:13px;margin:8px 0 0">The answer is in the next message.</p></div>`),
   },
   chart_display_v0: {
@@ -633,7 +633,7 @@ for (const [name, view] of Object.entries({
     card: (input, res, tid) => {
       if (!Array.isArray(input.days) && !Array.isArray(input.locations)) return '';
       // Most calls put `locations` at the top level instead of inside `days`.
-      const days = Array.isArray(input.days) ? input.days : [{ locations: input.locations }];
+      const days = Array.isArray(input.days) ? objects(input.days) : [{ locations: input.locations }];
       return `<div class="card card-pad" id="${esc(tid)}"><div class="row" style="margin-bottom:6px"><span class="chip on">🗺 ${Array.isArray(input.days) ? 'Itinerary' : 'Places'}</span><b dir="auto">${esc(input.title || '')}</b></div>
       ${input.narrative ? `<p dir="auto">${esc(input.narrative)}</p>` : ''}
       ${days.map(d => `${d.day_number || d.title ? `<div class="blk-sub">Day ${esc(d.day_number || '')} · ${esc(d.title || '')}</div>` : ''}<ul>${(Array.isArray(d.locations) ? d.locations : []).map(l => `<li dir="auto"><b>${esc((l && l.name) || '')}</b>${l && l.arrival_time ? ' · ' + esc(l.arrival_time) : ''}${l && l.notes ? ' — ' + esc(l.notes) : ''}</li>`).join('')}</ul>`).join('')}</div>`;
@@ -695,8 +695,8 @@ svg text{fill:var(--color-text-primary);font-family:var(--font-sans);font-size:1
 `;
 
 function simpleBarTable(input) {
-  const xs = (input.xAxis && input.xAxis.data) || [];
-  const series = input.series || [];
+  const xs = input.xAxis && Array.isArray(input.xAxis.data) ? input.xAxis.data : [];
+  const series = objects(input.series);
   return `<div class="md"><table><thead><tr><th></th>${series.map(s => `<th>${esc(s.name || '')}</th>`).join('')}</tr></thead><tbody>${xs.map((x, i) => `<tr><td>${esc(x)}</td>${series.map(s => `<td>${esc((s.values || [])[i])}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`;
 }
 

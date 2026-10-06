@@ -8,6 +8,8 @@
 //   - any iframe without a sandbox, or with a token that is not on the list (never
 //     allow-same-origin)
 //   - anything in browser storage beyond the reader's two settings
+//   - a record of the wrong shape that hides a message or stops a page, and a part that fails
+//     without a notice in the page
 // Part 1 calls the renderers directly (mdToHtml, mdBlock, plainTextHtml, snippetHtml,
 // memoryText). Part 2 loads a hostile export built here and visits every kind of page with
 // every block opened. Exit code 1 on any problem. Node 22+ and Chrome; no dependencies.
@@ -145,7 +147,7 @@ const T = '2026-09-20T10:00:00.000Z';
 const VID = '1790000000-a1b2';
 
 function hostileExport() {
-  const ids = { person: uuid(1), conv: uuid(2), project: uuid(3), design: uuid(4), doc: uuid(5), art: uuid(6) };
+  const ids = { person: uuid(1), conv: uuid(2), project: uuid(3), design: uuid(4), doc: uuid(5), art: uuid(6), odd: uuid(7), oddDesign: uuid(8) };
   const files = {};
   files['light_metadata/users.json'] = [{ uuid: ids.person, full_name: `Tester <img src=x onerror="${X('user-name')}">`, email_address: 'tester@example.invalid' }];
 
@@ -219,7 +221,42 @@ function hostileExport() {
     comments: CORPUS.map(t => ({ author_index: 1, author_role: '', author_is_artifact_owner: true, text: t, created_at: T })) }] };
   files[`frames/artifacts/${ids.art}/artifact.json`] = meta(ids.art, 'artifact');
   files[`frames/artifacts/${ids.art}/versions/${VID}.html`] = FRAME_PROBE;
+  Object.assign(files, malformed(ids));
   return { files, ids };
+}
+
+/* Records of the wrong shape, as models and older product versions write them (made up). Each
+ * one used to hide its whole chat or stop a page; every message must still be drawn. */
+function malformed(ids) {
+  const msgs = [];
+  const msg = (sender, content, extra) => msgs.push({ uuid: uuid(4000 + msgs.length), sender, text: '', content, created_at: T,
+    parent_message_uuid: msgs.length ? msgs[msgs.length - 1].uuid : null, ...extra });
+  const tool = (name, input, result) => [{ type: 'tool_use', id: 'toolu_' + name, name, input },
+    ...(result ? [{ type: 'tool_result', tool_use_id: 'toolu_' + name, name, ...result }] : [])];
+  msg('human', [{ type: 'text', text: 'odd shapes' }], { attachments: {}, files: 5 });
+  msg('assistant', [
+    { type: 'thinking', thinking: 'odd', summaries: {} },
+    { type: 'text', text: 'cited', citations: [{ end_index: 2, details: { url: 7 } }] },
+    ...tool('chart_display_v0', { series: [null, { name: 'a', values: [1] }], xAxis: { data: 'Jan' } }),
+    ...tool('ask_user_input_v0', { questions: [null] }),
+    ...tool('places_map_display_v0', { days: [null, { day_number: 1, locations: [null] }] }),
+    ...tool('artifacts', { command: 'create', type: 5, content: 'x' }),
+    ...tool('create_file', { path: 7, file_text: 'x' }),
+    ...tool('web_search', { query: 'x' }, { content: [null] }),
+    ...tool('image_search', { query: 'x' }, { content: [{ type: 'image_gallery', images: [null] }] }),
+    ...tool('conversation_search', { query: 'x' }, { content: [], display_content: { type: 'rich_content', content: [null] } }),
+    { type: 'tool_use', id: 'toolu_num', name: 5, input: 'not an object' },
+  ]);
+  const files = {};
+  files['conversations/odd.json'] = [{ uuid: ids.odd, name: 'Odd shapes', created_at: T, updated_at: T, account: { uuid: ids.person }, chat_messages: msgs }];
+  const call = (name, input) => ({ type: 'tool_call', toolCall: { id: name, name, input, output: 'ok' } });
+  files[`design_chats/${ids.oddDesign}.json`] = { uuid: ids.oddDesign, title: 'Odd design', project: { uuid: uuid(9), name: 'Odd' }, created_at: T, updated_at: T, messages: [
+    { uuid: uuid(5000), role: 'user', created_at: T, content: { content: 'start', authorAccountUuid: ids.person, attachments: {} } },
+    { uuid: uuid(5001), role: 'assistant', created_at: T, content: { contentBlocks: [call('questions_v2', { questions: [null] }), call('str_replace_edit', { edits: [null] }), null] } },
+    { uuid: uuid(5002), role: 'assistant', created_at: T, content: { kind: 'question-record', questionRecord: { questionId: 'q', spec: { questions: [null, { id: 'goal', title: 'Goal?' }] } } } },
+    { uuid: uuid(5003), role: 'user', created_at: T, content: { kind: 'question-receipt', questionReceipt: { questionId: 'q', payload: { goal: { choices: [null, 'A'] } } } } },
+  ] };
+  return files;
 }
 
 function routes(ids) {
@@ -229,7 +266,7 @@ function routes(ids) {
     '#/conversations', `#/c/${ids.conv}`, '#/artifacts', `#/a/${ids.doc}`, `#/a/${ids.doc}?tab=Two`,
     `#/a/${ids.art}`, `#/a/${ids.art}?view=source`, `#/a/${ids.art}?view=files`,
     '#/projects', `#/p/${ids.project}`, '#/design', `#/d/${ids.design}`, '#/memories', `#/memory/${p}`,
-    '#/search?q=leak', '#/search?q=xss&deep=1', '#/about',
+    '#/search?q=leak', '#/search?q=xss&deep=1', '#/about', `#/c/${ids.odd}`, `#/d/${ids.oddDesign}`, '#/search?q=odd&deep=1',
   ];
 }
 
@@ -367,7 +404,18 @@ function pageKit(cfg) {
     return { shown: !document.getElementById('shell').hidden, warnings: ExportReader.DB().warnings.slice() };
   }
 
-  window.__sec = { renderAll, scanPage, go, settle, load };
+  // The messages with these ids are all in the page, and nothing in it failed (drawPart() and
+  // mountView() notices, or a page that could not be drawn).
+  function drawn(ids, where) {
+    const out = ids.filter(id => !document.getElementById('m-' + id)).map(id => `${where}: message ${id} is not drawn`);
+    for (const el of document.querySelectorAll('#main .notice')) {
+      if (/could not be (shown|drawn)|went wrong/.test(el.textContent)) out.push(`${where}: ${el.textContent.trim().slice(0, 120)}`);
+    }
+    if (/Searching…/.test(document.getElementById('main').textContent)) out.push(`${where}: still "Searching…"`);
+    return out;
+  }
+
+  window.__sec = { renderAll, scanPage, go, settle, load, drawn };
 }
 
 // Runs in every frame before its own scripts: the hit counter (top window only) and the
@@ -473,6 +521,30 @@ try {
     await tab.evaluate(`__sec.go(${JSON.stringify(route)})`);
     report('page ' + route, await tab.evaluate(`__sec.scanPage(${JSON.stringify(route)})`));
   }
+
+  // Records of the wrong shape: every message is drawn, and nothing fails.
+  const odd = [];
+  for (const [route, list] of [[`#/c/${ids.odd}`, files['conversations/odd.json'][0].chat_messages],
+    [`#/d/${ids.oddDesign}`, files[`design_chats/${ids.oddDesign}.json`].messages.filter(m => m.content.kind !== 'question-receipt')],
+    ['#/search?q=odd&deep=1', []]]) {
+    await tab.evaluate(`__sec.go(${JSON.stringify(route)})`);
+    odd.push(...await tab.evaluate(`__sec.drawn(${JSON.stringify(list.map(m => m.uuid))}, ${JSON.stringify(route)})`));
+  }
+  report('records of the wrong shape draw every message, and nothing fails', odd);
+
+  // The safety nets: a part that throws becomes a notice and its message stays, and a failed
+  // after() hook (here the search) says so in the page instead of hanging.
+  const nets = [];
+  await tab.evaluate(`window.__real = [thinkingHtml, runSearch]; thinkingHtml = () => { throw new Error('probe') }; runSearch = async () => { throw new Error('probe') }; 0`);
+  await tab.evaluate(`__sec.go(${JSON.stringify(`#/c/${ids.odd}`)})`);
+  const part = await tab.evaluate(`(() => { const m = document.getElementById(${JSON.stringify('m-' + uuid(4001))});
+    return !!m && /This block could not be shown: probe/.test(m.textContent) && !!m.querySelector('details pre'); })()`);
+  if (!part) nets.push('a block that throws does not become a notice with its data inside its message');
+  await tab.evaluate(`__sec.go('#/search?q=probe')`);
+  const hook = await tab.evaluate(`(() => { const t = document.getElementById('main').textContent; return /could not be drawn: probe/.test(t) && !/Searching…/.test(t); })()`);
+  if (!hook) nets.push('a failed search is not shown in the page, or "Searching…" stays');
+  await tab.evaluate(`[thinkingHtml, runSearch] = window.__real; 0`);
+  report('a part that fails shows a notice, and the rest of the page still draws', nets);
 
   // "Open in new tab" puts the preview into a new window: its frame needs the sandbox too.
   await tab.evaluate(`__sec.go(${JSON.stringify(`#/a/${ids.art}`)})`);

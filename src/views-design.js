@@ -40,7 +40,7 @@ function viewDesignChat(id) {
   const msgs = d.messages;
   const receipts = new Map();
   for (const m of msgs) { const c = m.content || {}; if (c.questionReceipt && c.questionReceipt.questionId) receipts.set(c.questionReceipt.questionId, c.questionReceipt); }
-  const tokens = msgs.reduce((a, m) => a + ((m.content && m.content.turnInputTokens) || 0), 0);
+  const tokens = msgs.reduce((a, m) => a + (Number(m.content && m.content.turnInputTokens) || 0), 0);
   // Opened from a search: mark the words, in the thread now and in blocks opened later.
   VIEW.terms = searchTerms(App.route.query.q);
   if (VIEW.terms.length) after(() => highlightIn($('#thread'), VIEW.terms));
@@ -54,7 +54,7 @@ function viewDesignChat(id) {
         ${tokens ? `<span class="faint" title="Sum of input context over all turns">${fmtNum(Math.round(tokens / 1000))}k context tokens</span>` : ''}</div>
     </div><div class="row"><button class="btn small" type="button" ${on(() => downloadText(d.project.name + ' ' + d.id.slice(0, 8) + '.json', jsonPretty(d.raw)))}>Download .json</button></div></div>
     <div class="conv-toolbar"><button class="chip" type="button" ${on(expandAll)}>Expand all</button><button class="chip" type="button" ${on(collapseAll)}>Collapse all</button></div>
-    <div class="thread" id="thread">${msgs.length ? msgs.map(m => designMessageHtml(m, d, receipts)).join('') : '<div class="empty">This design chat has no messages in the export.</div>'}</div>
+    <div class="thread" id="thread">${msgs.length ? msgs.map(m => drawPart('message', m, () => designMessageHtml(m, d, receipts), m.uuid)).join('') : '<div class="empty">This design chat has no messages in the export.</div>'}</div>
   </div>`;
 }
 
@@ -99,13 +99,13 @@ function designAttachments(atts, showHidden) {
 }
 
 function designQuestionCard(spec, receipt) {
-  const qs = spec && Array.isArray(spec.questions) ? spec.questions : [];
+  const qs = objects(spec && spec.questions);
   const ans = receipt && receipt.payload ? receipt.payload : null;
   const fmtAns = v => {
     if (!v) return '<span class="faint">skipped</span>';
     const x = v.choice != null ? v.choice : v.choices || v.selected || v.text || v.file || v.localFolders;
     if (x == null || (Array.isArray(x) && !x.length) || x === '') return '<span class="faint">skipped</span>';
-    if (Array.isArray(x)) return x.map(y => `<span class="chip on" dir="auto">${esc(typeof y === 'string' ? y : (y.name || JSON.stringify(y)))}</span>`).join(' ');
+    if (Array.isArray(x)) return x.map(y => `<span class="chip on" dir="auto">${esc(typeof y === 'string' ? y : ((isObj(y) && y.name) || JSON.stringify(y)))}</span>`).join(' ');
     return `<span class="chip on" dir="auto">${esc(x)}</span>`;
   };
   return `<div class="card card-pad"><div class="row wrap" style="margin-bottom:6px"><span class="chip on">? Questions</span><b dir="auto">${esc((spec && spec.title) || '')}</b></div>
@@ -146,23 +146,14 @@ function designMessageHtml(m, d, receipts) {
     let group = [];
     const flush = () => {
       if (!group.length) return;
-      const items = group.map(designToolHtml);
+      const items = group.map(t => drawPart('tool call', t, () => designToolHtml(t)));
       out.push(group.length > 2 ? toolGroupHtml(items, group.map(g => g.name), 0) : items.join(''));
       group = [];
     };
     for (const b of blocks) {
       if (b.type === 'tool_call' && b.toolCall) { group.push(b.toolCall); continue; }
       flush();
-      if (b.type === 'text') { const t = String(b.text || '').trim(); if (t && !DESIGN_NOISE.test(t)) out.push(`<div class="md" dir="auto">${mdToHtml(t)}</div>`); }
-      else if (b.type === 'error') out.push(`<div class="notice warn" style="color:var(--err)">Error: ${esc(typeof b.message === 'string' ? b.message : JSON.stringify(b.message))}</div>`);
-      else if (b.type === 'user_interjection' && b.message && b.message.pill === true) {
-        // An automation notice that arrived mid-turn, not something the person typed.
-        out.push(blk({ summary: `<span class="lbl">⚑ ${esc(oneLine(b.message.content || 'Notice'))}</span><span class="meta">${esc(fmtDateTime(b.message.timestamp))}</span>`, body: designAttachments(b.message.attachments, true) || '<p class="faint">No details.</p>' }));
-      } else if (b.type === 'user_interjection' && b.message) {
-        const who = DB.people.get(d.ownerId);
-        out.push(`<div class="msg human" style="margin-left:24px"><div class="msg-head">${avatarHtml(who, 'sm')}<span class="who">${who ? esc(who.name) : 'User'}</span><span class="faint">added while Claude was working · ${esc(fmtDateTime(b.message.timestamp))}</span></div><div class="msg-body">${designUserContent(b.message.content)}${designAttachments(b.message.attachments, false)}</div></div>`);
-      }
-      // thinking blocks are always empty in the export
+      out.push(drawPart('block', b, () => designBlockHtml(b, d)));
     }
     flush();
   }
@@ -177,6 +168,20 @@ function designMessageHtml(m, d, receipts) {
     <div class="msg-body">${out.join('') || '<span class="faint">(no text)</span>'}</div></article>`;
 }
 
+// One content block of an assistant row, other than a tool call. Thinking blocks are always
+// empty in the export.
+function designBlockHtml(b, d) {
+  if (b.type === 'text') { const t = String(b.text || '').trim(); return t && !DESIGN_NOISE.test(t) ? `<div class="md" dir="auto">${mdToHtml(t)}</div>` : ''; }
+  if (b.type === 'error') return `<div class="notice warn" style="color:var(--err)">Error: ${esc(typeof b.message === 'string' ? b.message : JSON.stringify(b.message))}</div>`;
+  if (b.type !== 'user_interjection' || !b.message) return '';
+  if (b.message.pill === true) {
+    // An automation notice that arrived mid-turn, not something the person typed.
+    return blk({ summary: `<span class="lbl">⚑ ${esc(oneLine(b.message.content || 'Notice'))}</span><span class="meta">${esc(fmtDateTime(b.message.timestamp))}</span>`, body: designAttachments(b.message.attachments, true) || '<p class="faint">No details.</p>' });
+  }
+  const who = DB.people.get(d.ownerId);
+  return `<div class="msg human" style="margin-left:24px"><div class="msg-head">${avatarHtml(who, 'sm')}<span class="who">${who ? esc(who.name) : 'User'}</span><span class="faint">added while Claude was working · ${esc(fmtDateTime(b.message.timestamp))}</span></div><div class="msg-body">${designUserContent(b.message.content)}${designAttachments(b.message.attachments, false)}</div></div>`;
+}
+
 function designToolHtml(t) {
   const i = t.input && typeof t.input === 'object' ? t.input : {};
   const desc = i.path || i.a_filename || i.query || i.purpose || i.title || i.pattern || i.label || i.filename || (i.from_id ? i.from_id + '→' + i.to_id : '') || '';
@@ -188,7 +193,7 @@ function designToolHtml(t) {
     } else if (i.content != null && typeof i.content === 'string') h += (i.path ? `<p class="mono faint" style="margin:0 0 6px">${esc(i.path)}</p>` : '') + preHtml(i.content);
     else if (i.b_dc_html) h += preHtml(i.b_dc_html) + (i.c_dc_js ? `<div class="blk-sub">Logic</div>${preHtml(i.c_dc_js)}` : '');
     else if (i.old_string != null || i.c_find != null) h += diffHtml(i.old_string != null ? i.old_string : i.c_find, i.new_string != null ? i.new_string : i.d_replace);
-    else if (Array.isArray(i.edits)) h += i.edits.map(e => diffHtml(e.old_string, e.new_string)).join('<hr>');
+    else if (Array.isArray(i.edits)) h += objects(i.edits).map(e => diffHtml(e.old_string, e.new_string)).join('<hr>');
     else if (i.code) h += preHtml(i.code);
     else h += Object.keys(i).length ? kvOrJson(i) : '<p class="faint">(no input)</p>';
     h += '<div class="blk-sub">Output</div>';

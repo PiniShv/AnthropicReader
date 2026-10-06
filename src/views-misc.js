@@ -222,9 +222,14 @@ function viewSearch(q, t) {
     if (!q.trim()) { box.innerHTML = '<div class="empty">Type in the search box above. Use quotes for exact phrases, e.g. <code>"design system"</code>.</div>'; return; }
     box.innerHTML = '<div class="empty" id="search-progress">Searching…</div>';
     const onProgress = msg => { const p = $('#search-progress'); if (p) p.textContent = msg; };
-    const res = await runSearch(q, { deep, scope: s, signal: VIEW.ac.signal, onProgress, shown: searchLimit(t) });
-    if (!res) return;
-    drawSearchResults(res, q, t, deep);
+    try {
+      const res = await runSearch(q, { deep, scope: s, signal: VIEW.ac.signal, onProgress, shown: searchLimit(t) });
+      if (res) drawSearchResults(res, q, t, deep);
+    } catch (err) {
+      // Never leave "Searching…" behind; mountView() puts the reason at the top of the page.
+      box.innerHTML = '<div class="card empty">The search stopped because of an error.</div>';
+      throw err;
+    }
   });
   return `<div class="page narrow">
     <div class="page-head"><div class="grow"><h1>Search</h1>

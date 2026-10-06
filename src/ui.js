@@ -51,14 +51,29 @@ function dropKeys(root) {
 const on = fn => `data-on="${viewKey(fn)}"`;
 on.change = fn => `data-on-change="${viewKey(fn)}"`;
 
+/* Draws one part of a page (a message, a block, a tool call) from export data. Data of a shape
+ * the drawing code did not expect makes only that part a notice, followed by the part's data
+ * from the export when raw is given, so the rest of the page still shows. id: the part is a
+ * message, so its notice keeps the message's <article> and id (links and the thread use it). */
+function drawPart(what, raw, draw, id) {
+  try { return draw(); }
+  catch (err) {
+    const html = `<div class="notice warn">This ${what} could not be shown: ${esc(err && err.message ? err.message : err)}</div>` +
+      (raw === undefined ? '' : sourceBlk(jsonPretty(raw), { label: 'Its data in the export', gap: 6 }));
+    return id == null ? html : `<article class="msg" id="m-${esc(id)}"><div class="msg-body">${html}</div></article>`;
+  }
+}
+
 /* A collapsible block. summary and body are HTML; id is escaped here; style is CSS from the
  * code, never from the export. render() draws the rest of the body after `body`: the first time
  * the block opens (the toggle listener in app.js), or right away when it starts open. Big
- * content stays out of the page until someone asks for it. */
+ * content stays out of the page until someone asks for it. A body that cannot be drawn becomes
+ * a notice (drawPart). */
 function blk({ cls = '', id = '', style = '', open = false, summary, body = '' }, render) {
-  const lazy = render && !open ? ` data-lazy="${viewKey(render)}"` : '';
+  const draw = render && (() => drawPart('part', undefined, render));
+  const lazy = draw && !open ? ` data-lazy="${viewKey(draw)}"` : '';
   return `<details class="blk${cls ? ' ' + cls : ''}"${id ? ` id="${esc(id)}"` : ''}${style ? ` style="${style}"` : ''}${open ? ' open' : ''}${lazy}>` +
-    `<summary>${summary}</summary><div class="blk-body">${body}${render && open ? render() : ''}</div></details>`;
+    `<summary>${summary}</summary><div class="blk-body">${body}${draw && open ? draw() : ''}</div></details>`;
 }
 
 const PRE_LIMIT = 60000;
@@ -116,9 +131,18 @@ function isolate(el) {
 // Smooth scrolling, unless the system asks for less motion.
 const scrollMotion = () => (matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth');
 
+/* Runs the view's after() hooks. A hook that fails, now or later (an async one), puts a notice
+ * at the top of its page, unless the page has changed since: a failure is never only in the
+ * console. */
 function mountView(v) {
+  const failed = err => {
+    console.error(err);
+    if (v !== VIEW) return;
+    const page = $('#main > .page') || $('#main');
+    page.insertAdjacentHTML('afterbegin', `<div class="notice warn" role="alert">Part of this page could not be drawn: ${esc(err && err.message ? err.message : err)}</div>`);
+  };
   while (v.mounts.length) {
     const fn = v.mounts.shift();
-    try { const r = fn(); if (r && r.catch) r.catch(e => console.error(e)); } catch (e) { console.error(e); }
+    try { const r = fn(); if (r && r.catch) r.catch(failed); } catch (e) { failed(e); }
   }
 }
