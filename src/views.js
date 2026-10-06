@@ -130,16 +130,14 @@ const TABLE_STATE = new Map();
 function tableHtml(spec) {
   const st = TABLE_STATE.get(spec.key) || { sort: spec.sort, dir: spec.dir || -1, filter: '', facet: '', limit: spec.page || 200 };
   TABLE_STATE.set(spec.key, st);
-  const id = 'tbl' + ++KEY_SEQ;
-  const chips = spec.facet ? facetChipsHtml(spec, st) : '';
+  // Each part gets a generated id, so it is found by id once it is in the page.
+  const [id, barId, chipsId] = ['tbl' + ++KEY_SEQ, 'tbl' + ++KEY_SEQ, 'tbl' + ++KEY_SEQ];
+  const chips = spec.facet ? facetChipsHtml(spec, st, chipsId) : '';
   after(() => {
-    // No wrapper element (it would change the page): the toolbar sits right before the rows.
-    const wrap = document.getElementById(id);
-    const bar = wrap.previousElementSibling;
     // Filter text per row, made again on each page draw, so names changed by a later import match.
-    mountTable({ spec, st, wrap, bar, chips: chips ? bar.previousElementSibling : null, ft: new WeakMap() });
+    mountTable({ spec, st, wrap: document.getElementById(id), bar: document.getElementById(barId), chips: document.getElementById(chipsId), ft: new WeakMap() });
   });
-  return `${chips}<div class="toolbar">
+  return `${chips}<div class="toolbar" id="${barId}">
       <input class="input filter" type="search" placeholder="${esc(spec.placeholder || 'Filter…')}" value="${esc(st.filter)}" aria-label="Filter">
       ${spec.extraToolbar || ''}
       <span class="count-note"></span>
@@ -148,11 +146,11 @@ function tableHtml(spec) {
 }
 
 // One chip per facet value with its count, most common first.
-function facetChipsHtml(spec, st) {
+function facetChipsHtml(spec, st, id) {
   const counts = new Map();
   for (const r of spec.rows) { const v = spec.facet.of(r); counts.set(v, (counts.get(v) || 0) + 1); }
   if (!counts.size) return '';
-  return `<div class="search-tabs">${Array.from(counts).sort((a, b) => b[1] - a[1])
+  return `<div class="search-tabs" id="${id}">${Array.from(counts).sort((a, b) => b[1] - a[1])
     .map(([v, n]) => `<button class="chip${st.facet === v ? ' on' : ''}" type="button" data-facet="${esc(v)}" title="Show only this type (click again for all)">${esc(v)} <b>${n}</b></button>`).join(' ')}</div>`;
 }
 
