@@ -12,6 +12,12 @@ const ZIP_SIG_LOC = 0x04034b50;
 
 const utf8 = new TextDecoder('utf-8');
 
+// A path as the import reads it: forward slashes and no leading slash. Zips made on Windows
+// can have backslashes in their names. load.js uses it for loose files too.
+function normPath(p) {
+  return String(p || '').replace(/\\/g, '/').replace(/^\/+/, '');
+}
+
 /* Unpacking DEFLATE needs DecompressionStream('deflate-raw'): Chrome and Edge 103, Firefox
  * 113, Safari 16.4. Older browsers have no DecompressionStream, or one without 'deflate-raw'
  * (Chrome 80-102), so a zip that needs it fails at once with this message, not later with an
@@ -42,7 +48,7 @@ class ZipEntry {
   }
 
   // An entry is also a file node for the import (like FileNode in load.js).
-  get path() { return this.name; }
+  get path() { return normPath(this.name); }
   get container() { return this.zip.file.name; }   // the zip the person picked
 
   async _dataStart() {

@@ -2,7 +2,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { deflateRawSync } from 'node:zlib';
-import { loadApp } from './harness.mjs';
+import { loadApp, quietUi } from './harness.mjs';
 
 const { api } = loadApp({ files: ['src/zip.js'] });
 const { ZipArchive, ZipWriter } = api;
@@ -203,6 +203,25 @@ test('reads DEFLATE entries from a hand-built archive', async () => {
   assert.equal(dec.decode(new Uint8Array(await new Response(await big.stream()).arrayBuffer())), text);
   assert.equal(await zip.entries[2].text(), 'kept as is');
   assert.deepEqual(Array.from(await zip.entries[3].bytes()), Array.from(binary));
+});
+
+test('entry paths use forward slashes, also in a zip made on Windows', async () => {
+  const zip = await open(buildZip([{ name: 'export\\users.json', data: '[]' }, { name: '/conversations.json', data: '[]' }]));
+  assert.deepEqual(names(zip), ['export\\users.json', '/conversations.json']);
+  assert.deepEqual(Array.from(zip.entries, e => e.path), ['export/users.json', 'conversations.json']);
+});
+
+test('the import finds artifacts in a zip made on Windows', async () => {
+  const id = 'e0000000-0000-4000-8000-000000000001';
+  const file = new File([buildZip([
+    { name: `frames\\artifacts\\${id}\\artifact.json`, data: JSON.stringify({ versions: [{ id: 'v1', title: 'Chart' }] }) },
+    { name: `frames\\artifacts\\${id}\\versions\\v1.html`, data: '<p>chart</p>' },
+  ])], 'frames-000.zip');
+  const { api: app } = loadApp();
+  await app.importExport([file], quietUi);
+  const a = app.DB.artifactById.get(id);
+  assert.equal(a && a.title, 'Chart');
+  assert.deepEqual(Array.from(a.files.keys()), ['artifact.json', 'versions/v1.html']);
 });
 
 test('reads entries written with a data descriptor (sizes after the data)', async () => {

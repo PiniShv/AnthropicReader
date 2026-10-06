@@ -27,10 +27,6 @@ class FileNode {
   async blob(type) { return type ? new Blob([this.file], { type }) : this.file; }
 }
 
-function normPath(p) {
-  return String(p || '').replace(/\\/g, '/').replace(/^\/+/, '');
-}
-
 /* ---------- Gathering inputs ---------- */
 
 // Turn picked File objects (plain or with webkitRelativePath) plus zips into nodes.

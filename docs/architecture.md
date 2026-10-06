@@ -121,7 +121,7 @@ These values change only when files are loaded, so the views read them instead o
 
 1. Read the last 64 KB of the file and search backwards for the end-of-central-directory record.
 2. If a ZIP64 locator sits in front of it, read the ZIP64 record for the real counts and offsets.
-3. Read the central directory in one slice and create a `ZipEntry` (name, method, sizes, offset) per file. ZIP64 extra fields are honoured. Directory entries are skipped.
+3. Read the central directory in one slice and create a `ZipEntry` (name, method, sizes, offset) per file. ZIP64 extra fields are honoured. Directory entries are skipped. An entry's `path` has forward slashes and no leading slash (`normPath()`, also used for loose files), because zips made on Windows can use backslashes.
 4. Nothing else is read. When an entry is needed, `ZipEntry` reads its 30-byte local header to find where the data starts, slices exactly the compressed bytes with `Blob.slice()`, and, for DEFLATE, pipes them through the browser's native `DecompressionStream('deflate-raw')`.
 
 A browser without `'deflate-raw'` (before Chrome and Edge 103, Firefox 113 and Safari 16.4) cannot open a zip with DEFLATE entries: `ZipArchive.open()` then fails at once with a message that names the browsers and suggests the unzipped folder (`canInflate()`). STORED zips, such as the sample data, still open.
