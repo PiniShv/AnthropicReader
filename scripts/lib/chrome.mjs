@@ -79,9 +79,18 @@ export async function launchChrome(path = DEFAULT_CHROME, { args = [] } = {}) {
     const page = {
       send: (method, params) => send(method, params, sessionId),
       on(fn) { listeners.add(msg => { if (msg.sessionId === sessionId) fn(msg); }); },
-      // Runs an expression in the page (awaiting promises) and returns its JSON value.
-      async evaluate(expr) {
-        const r = await page.send('Runtime.evaluate', { expression: expr, awaitPromise: true, returnByValue: true });
+      // Runs an expression in the page (awaiting promises) and returns its JSON value. Given a
+      // function, it calls it in the page with args, which go as JSON values, not as code.
+      async evaluate(expr, ...args) {
+        let r;
+        if (typeof expr === 'function') {
+          // The call needs an object in the page to run on: its global object.
+          const { result } = await page.send('Runtime.evaluate', { expression: 'globalThis' });
+          r = await page.send('Runtime.callFunctionOn', { objectId: result.objectId, functionDeclaration: String(expr),
+            arguments: args.map(value => ({ value })), awaitPromise: true, returnByValue: true });
+        } else {
+          r = await page.send('Runtime.evaluate', { expression: expr, awaitPromise: true, returnByValue: true });
+        }
         if (r.exceptionDetails) {
           const ex = r.exceptionDetails.exception;
           throw new Error('Page script failed: ' + ((ex && ex.description) || r.exceptionDetails.text));

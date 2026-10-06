@@ -196,7 +196,8 @@ function composeVariants(input) {
     try { const v = JSON.parse(raw); if (Array.isArray(v)) return v.filter(x => x && typeof x === 'object'); } catch (e) { /* not JSON */ }
   }
   if (typeof input.body === 'string' && input.body.trim()) {
-    const label = oneLine(raw.replace(/<[^>]*>/g, ''));
+    // Drop the tags, and a tag cut off at the end, so no "<" is left.
+    const label = oneLine(raw.replace(/<[^>]*(?:>|$)/g, ''));
     return [{ label: label && label !== 'label' && label.length < 60 ? label : '', subject: input.subject, body: input.body }];
   }
   return raw ? [{ body: raw }] : [];

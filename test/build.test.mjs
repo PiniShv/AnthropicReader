@@ -11,8 +11,9 @@ const pkg = JSON.parse(readFileSync(join(ROOT, 'package.json'), 'utf8'));
 const html = build();
 
 // Every <script> block in the page, with its opening tag. Inlined code never contains a
-// raw "</script", so a lazy match ends each block at its real end.
-const scripts = Array.from(html.matchAll(/<script\b([^>]*)>([\s\S]*?)<\/script>/gi), m => ({ attrs: m[1], code: m[2] }));
+// raw "</script", so a lazy match ends each block at its real end. Like a browser, it also
+// ends a block at "</script >" or "</script foo>", but not at "</script-x>".
+const scripts = Array.from(html.matchAll(/<script\b([^>]*)>([\s\S]*?)<\/script(?:[\t\n\f\r /][^>]*)?>/gi), m => ({ attrs: m[1], code: m[2] }));
 
 test('the page inlines every src file, in build order', () => {
   let last = -1;

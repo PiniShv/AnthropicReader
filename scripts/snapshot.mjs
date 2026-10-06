@@ -481,7 +481,7 @@ if (opts.out) {
   const report = [];
   for (const d of r.diffs) {
     report.push(...d.lines);
-    console.log(`\n${d.key.replace('\t', ' ')}: ${d.lines.slice(2).filter(l => /^[-+]/.test(l)).length} changed lines`);
+    console.log(`\n${d.key.replaceAll('\t', ' ')}: ${d.lines.slice(2).filter(l => /^[-+]/.test(l)).length} changed lines`);
     console.log(d.lines.slice(0, MAX).join('\n') + (d.lines.length > MAX ? `\n… ${d.lines.length - MAX} more lines in the full diff` : ''));
     // A changed frame shows only as a new hash: say where both versions of the srcdoc are.
     for (const l of d.lines.slice(2)) {
@@ -489,8 +489,8 @@ if (opts.out) {
       if (m) console.log(`  srcdoc ${m[1] === '-' ? 'before' : 'after '}: ${join(m[1] === '-' ? baseDir : curDir, 'srcdoc', m[2] + '.html')}`);
     }
   }
-  for (const k of r.missing) console.log('\nmissing now: ' + k.replace('\t', ' '));
-  for (const k of r.added) console.log('\nnew page: ' + k.replace('\t', ' '));
+  for (const k of r.missing) console.log('\nmissing now: ' + k.replaceAll('\t', ' '));
+  for (const k of r.added) console.log('\nnew page: ' + k.replaceAll('\t', ' '));
   writeFileSync(join(curDir, 'snapshot.diff'), report.join('\n') + '\n');
   const bad = r.diffs.length + r.missing.length + r.added.length;
   console.log(`\n${bad ? 'DIFFERENT' : 'IDENTICAL'}: ${r.same} of ${r.total} pages identical, ${r.diffs.length} changed, ` +

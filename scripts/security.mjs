@@ -539,8 +539,8 @@ try {
   const nets = [];
   await tab.evaluate(`window.__real = [thinkingHtml, runSearch]; thinkingHtml = () => { throw new Error('probe') }; runSearch = async () => { throw new Error('probe') }; 0`);
   await tab.evaluate(`__sec.go(${JSON.stringify(`#/c/${ids.odd}`)})`);
-  const part = await tab.evaluate(`(() => { const m = document.getElementById(${JSON.stringify('m-' + uuid(4001))});
-    return !!m && /This block could not be shown: probe/.test(m.textContent) && !!m.querySelector('details pre'); })()`);
+  const part = await tab.evaluate(id => { const m = document.getElementById(id);
+    return !!m && /This block could not be shown: probe/.test(m.textContent) && !!m.querySelector('details pre'); }, 'm-' + uuid(4001));
   if (!part) nets.push('a block that throws does not become a notice with its data inside its message');
   await tab.evaluate(`__sec.go('#/search?q=probe')`);
   const hook = await tab.evaluate(`(() => { const t = document.getElementById('main').textContent; return /could not be drawn: probe/.test(t) && !/Searching…/.test(t); })()`);

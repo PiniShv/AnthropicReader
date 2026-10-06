@@ -231,12 +231,14 @@ function addMemory(m) {
 
 // Strip platform-injected context blocks from a design-chat prompt.
 function cleanDesignPrompt(s) {
-  return String(s || '')
+  let t = String(s || '')
     .replace(/<system-info[\s\S]*?<\/system-info>/g, '')
     .replace(/<attached_files>[\s\S]*?<\/attached_files>/g, '')
-    .replace(/<attached[^>]*>[\s\S]*?<\/attached[^>]*>/g, '')
-    .replace(/<!--[\s\S]*?-->/g, '')
-    .trim();
+    .replace(/<attached[^>]*>[\s\S]*?<\/attached[^>]*>/g, '');
+  // Remove comments until nothing changes: removing one can join the text around it into a new one.
+  let prev;
+  do { prev = t; t = t.replace(/<!--[\s\S]*?-->/g, ''); } while (t !== prev);
+  return t.trim();
 }
 
 /* A design chat's rows as the views read them: a row's attachments, and its content blocks, are

@@ -202,7 +202,8 @@ test('withFrameShim puts the helper right after <head>', () => {
   const shimAt = out.indexOf('<script>/* Claude Export Reader: in-page links */');
   assert.equal(shimAt, doc.indexOf('<head>') + '<head>'.length);
   assert.ok(out.startsWith('<!doctype html>'));
-  assert.equal(out.replace(/<script>[\s\S]*?<\/script>/, ''), doc, 'nothing else changes');
+  const shimEnd = out.indexOf('</script>', shimAt) + '</script>'.length;
+  assert.equal(out.slice(0, shimAt) + out.slice(shimEnd), doc, 'nothing else changes');
 });
 
 test('withFrameShim: attributes on <head>, extra scripts', () => {
@@ -243,6 +244,25 @@ test('composeVariants: broken string with the text in input.body', () => {
     [{ label: '', body: 'Text' }], 'a long string is not a label');
   assert.deepEqual(plain(composeVariants({ variants: 'Just the draft text' })), [{ body: 'Just the draft text' }]);
   assert.deepEqual(plain(composeVariants({})), []);
+});
+
+test('composeVariants: no "<" is left in the label', () => {
+  const label = variants => composeVariants({ variants, body: 'Text' })[0].label;
+  assert.equal(label('<parameter name="label">Warm</parameter'), 'Warm', 'a closing tag cut off at the end');
+  assert.equal(label('Warm <parameter name="lab'), 'Warm', 'an opening tag cut off at the end');
+  assert.equal(label('<<a>script>Warm'), 'script>Warm', 'nested tags');
+  assert.equal(label('<scr<script>ipt>Warm'), 'ipt>Warm');
+  assert.equal(label('Warm <script'), 'Warm');
+});
+
+test('cleanDesignPrompt removes the context the app adds', () => {
+  const { cleanDesignPrompt } = api;
+  assert.equal(cleanDesignPrompt('<system-info comment="x">\nProject: P\n</system-info>\n<attached_files>\na.txt\n</attached_files>\nMake a page <!-- note -->'), 'Make a page');
+  assert.equal(cleanDesignPrompt('<!<!-- a -->-- b -->Hello'), 'Hello', 'a comment that removing another one makes');
+  assert.equal(cleanDesignPrompt('<!<!---->-- x -->Hi'), 'Hi');
+  assert.equal(cleanDesignPrompt('<!<!<!-- a -->-- b -->-- c -->Hello'), 'Hello', 'three levels: it repeats until nothing changes');
+  assert.equal(cleanDesignPrompt('Keep <!-- this, it has no end'), 'Keep <!-- this, it has no end', 'text after an open comment stays');
+  assert.equal(cleanDesignPrompt(null), '');
 });
 
 test('cpToUnits converts code points to UTF-16 offsets', () => {

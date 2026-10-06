@@ -77,7 +77,7 @@ async function check(f) {
   console.log(`\n${f.file}  from  ${f.pkg}@${f.pkgVersion}/${f.pkgPath}`);
 
   // The abbreviated metadata has every version's tarball, integrity and deprecation.
-  const meta = await (await request(`${REGISTRY}/${f.pkg.replace('/', '%2f')}`, {
+  const meta = await (await request(`${REGISTRY}/${f.pkg.replaceAll('/', '%2f')}`, {
     headers: { accept: 'application/vnd.npm.install-v1+json' },
   })).json();
   const release = meta.versions && meta.versions[f.pkgVersion];
