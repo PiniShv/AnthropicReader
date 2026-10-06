@@ -34,6 +34,15 @@ test('records that are not objects are skipped with one warning each, and the re
   assert.deepEqual(plain(api.DB.warnings), [2, 3, 4].map(n => `x/conversations.json: record ${n} was skipped: it is not an object`));
 });
 
+test('a record with a JSON syntax error is skipped with a warning, and the rest of the file loads', async () => {
+  const P2 = U(101), P3 = U(102);
+  const text = `[{"uuid":"${PERSON}","full_name":"Ada"},{"uuid":"${P2}","x":NaN},{"uuid":"${P3}","full_name":"After the broken one"}]`;
+  const { api } = await importFiles([looseFile('x/users.json', text)]);
+  assert.deepEqual(plain([...api.DB.people.keys()].sort()), [PERSON, P3]);
+  assert.equal(api.DB.warnings.length, 1);
+  assert.match(api.DB.warnings[0], /^x\/users\.json: record 2 was skipped: it is not valid JSON \(/);
+});
+
 test('after five skipped records of a file, one warning counts the rest', async () => {
   const { api } = await importFiles([users(), looseFile('x/conversations.json', [null, null, null, null, null, null, null, conversation(1, 'ok', [])])]);
   assert.equal(api.DB.conversations.length, 1);

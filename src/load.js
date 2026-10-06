@@ -99,6 +99,8 @@ function concatBytes(parts) {
 /* Calls onItem(value, text) for every element of the top-level array without ever building
  * one giant string (V8 caps strings near 512 MB). Works on raw UTF-8 bytes: every JSON
  * structural character is ASCII, so multi-byte characters can never be mistaken for one.
+ * An element that is not valid JSON (such as NaN) costs only itself: the scan already knows
+ * where it ends, so onItem(undefined, text, error) reports it and the next one is read.
  * If the document is not an array, the whole value is passed to onItem once. */
 async function parseJsonArrayStream(stream, onItem, onProgress) {
   const reader = stream.getReader();
@@ -116,7 +118,10 @@ async function parseJsonArrayStream(stream, onItem, onProgress) {
     const buf = concatBytes(parts);
     parts = [];
     const text = dec.decode(buf).trim();
-    if (text) onItem(JSON.parse(text), text);
+    if (!text) return;
+    let value;
+    try { value = JSON.parse(text); } catch (e) { onItem(undefined, text, e); return; }
+    onItem(value, text);
   };
 
   for (;;) {

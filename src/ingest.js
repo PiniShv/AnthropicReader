@@ -387,16 +387,17 @@ const SKIP_WARNINGS = 5;
 
 /* Calls add(record, text) for each record of a file that holds one record or a list of them.
  * A list is streamed, one record at a time: conversations.json, or an old-format projects.json,
- * can be bigger than the longest string Chrome allows (about 512 MB). A record that is not an
- * object, or that add() cannot read, is skipped with a warning: it never costs the rest of
- * the file. */
+ * can be bigger than the longest string Chrome allows (about 512 MB). A record that is not
+ * valid JSON, not an object, or that add() cannot read, is skipped with a warning: it never
+ * costs the rest of the file. */
 async function readEach(node, add, onProgress) {
   let n = 0, skipped = 0;
   const skip = why => { if (++skipped <= SKIP_WARNINGS) DB.warnings.push(`${node.path}: record ${n} was skipped: ${why}`); };
   try {
-    await parseJsonArrayStream(await node.stream(), (v, text) => {
+    await parseJsonArrayStream(await node.stream(), (v, text, bad) => {
       n++;
-      if (!isObj(v)) skip('it is not an object');
+      if (bad) skip('it is not valid JSON (' + bad.message + ')');
+      else if (!isObj(v)) skip('it is not an object');
       else try { add(v, text); } catch (e) { skip(e.message); }
     }, onProgress);
   } finally {

@@ -91,6 +91,15 @@ test('truncated input throws a clear error', async () => {
   await assert.rejects(parse('{"a":'), { name: 'SyntaxError' });
 });
 
+test('an element that is not valid JSON is reported, and the elements after it still come', async () => {
+  const doc = '[{"a":1}, {"x":NaN}, NaN, {"b":"]"}, {"c":[1,]}, 2]';
+  for (const size of [1 << 16, 3, 1]) {
+    const seen = [];
+    await parseJsonArrayStream(chunkedStream(enc.encode(doc), () => size), (v, text, bad) => seen.push(bad ? 'bad: ' + text : JSON.stringify(v)));
+    assert.deepEqual(seen, ['{"a":1}', 'bad: {"x":NaN}', 'bad: NaN', '{"b":"]"}', 'bad: {"c":[1,]}', '2'], 'chunks of ' + size);
+  }
+});
+
 test('progress reports the bytes read so far', async () => {
   const doc = JSON.stringify([{ a: 'x'.repeat(50) }, 2, 3]);
   const { progress } = await parse(doc, 10);
