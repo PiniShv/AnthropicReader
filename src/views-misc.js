@@ -173,13 +173,34 @@ function memoryFileCard(f, mem, i) {
 
 const SOURCE_HELP = { backfill: 'Seeded from older chat history', chat: 'Learned in a claude.ai chat', cowork: 'Learned in Cowork' };
 
-// Memory markdown: "[stated]" becomes a small tag, [[slug]] becomes a link to that memory file.
+/* Memory markdown: "[stated]" at the start of a list item becomes a small tag, [[slug]] becomes
+ * a link to that memory file. The sanitizer removes every class, so a tag goes through it as
+ * text between two private-use characters (taken out of the text first, so only the reader
+ * can write them), and becomes its element in the text nodes afterwards (markTags). */
+const MTAG = /\uE000([a-z]+)\uE001/gi;
+
 function memoryText(text, mem) {
-  let t = String(text || '');
-  t = t.replace(/^(\s*[-*]\s+)\[(stated|inferred|observed|[a-z]+)\]\s*/gim, (all, lead, tag) => `${lead}<span class="mtag">${tag}</span> `);
+  let t = String(text || '').replace(/[\uE000\uE001]/g, '');
+  t = t.replace(/^(\s*[-*]\s+)\[(stated|inferred|observed|[a-z]+)\]\s*/gim, (all, lead, tag) => `${lead}\uE000${tag}\uE001 `);
   // Plain in-app links: the sanitizer keeps href, and the memory page opens the file named in ?f=.
   t = t.replace(/\[\[([^\]\n]+)\]\]/g, (all, slug) => `[${slug.trim().replace(/[[\]]/g, '')}](#/memory/${encodeURIComponent(mem.id)}?f=${encodeURIComponent(slug.trim())})`);
-  return `<div class="md">${mdToHtml(t)}</div>`;
+  return `<div class="md">${mdToHtml(t, { finish: markTags })}</div>`;
+}
+
+function markTags(root) {
+  const nodes = [];
+  const walk = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+  while (walk.nextNode()) if (walk.currentNode.nodeValue.includes('\uE000')) nodes.push(walk.currentNode);
+  for (const n of nodes) {
+    const parts = n.nodeValue.split(MTAG);   // text, tag, text, tag, …, text
+    n.replaceWith(...parts.map((p, i) => {
+      if (i % 2 === 0) return p;
+      const tag = document.createElement('span');
+      tag.className = 'mtag';
+      tag.textContent = p;
+      return tag;
+    }));
+  }
 }
 
 /* ======================= Search page ======================= */

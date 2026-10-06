@@ -402,7 +402,6 @@ pre.code.wrap { white-space: pre-wrap; overflow-wrap: anywhere; }
 .md th { background: var(--surface-2); }
 .md img { max-width: 100%; }
 .md hr { border: 0; border-top: 1px solid var(--border); margin: 1.2em 0; }
-.md input[type=checkbox] { margin-right: 6px; }
 .copy-code { position: absolute; top: 6px; right: 6px; opacity: 0; transition: opacity .12s; }
 pre:hover > .copy-code, .copy-code:focus-visible { opacity: 1; }
 .frontmatter { font-family: var(--mono); font-size: 12px; color: var(--muted); background: var(--surface-2); border-radius: var(--radius-sm); padding: 8px 11px; white-space: pre-wrap; margin-bottom: 10px; }

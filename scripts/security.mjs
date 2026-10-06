@@ -98,6 +98,12 @@ const CORPUS = [
   // The reader's own hooks: forged click keys and element ids
   '<a data-on="FORGED-1" data-href="#/FORGED" data-lazy="FORGED-2" data-pick="FORGED" href="#/about">forged data-on</a>',
   '<div id="main" name="q">forged id</div><a id="sr-status" name="shell" href="#">x</a><details data-lazy="FORGED-3"><summary>lazy</summary></details>',
+  // The reader's own look: a fake dialog over the page, a toast, full screen, ARIA
+  '<div class="modal-back"><div class="modal" role="dialog" aria-modal="true"><h2>Your session expired</h2><p><a href="https://example.invalid/login">Sign in to claude.ai</a></p></div></div>',
+  '<div class="toast">Copied</div><div class="frame-box full">full screen</div><span class="mtag">tag</span><a href="#/about" class="btn primary">a button</a>',
+  '<dialog open>Fake dialog</dialog><p aria-hidden="true" aria-label="forged" role="alert" tabindex="0">aria</p>',
+  `<map name="m"><area shape="rect" coords="0,0,99,99" href="//leak.invalid/share"></map><img src="data:image/gif;base64,R0lGODlhAQABAAAAACw=" usemap="#m">`,
+  '<font color="red" face="x">font</font><span src="https://leak.invalid/span.png" lowsrc="https://leak.invalid/low.png">src on a span</span>',
   // Plain script and templates
   `<script>${X('script')}</script><template><img src=x onerror=${X('template')}></template>`,
   '<a href="https://example.invalid/" target="_self">target self</a> <a href="https://example.invalid/" rel="opener">opener</a>',
@@ -115,18 +121,19 @@ const FRAME_PROBE = '<!doctype html><html><head><title>Frame probe</title></head
 
 /* ---------- The allow-list for what renderers return ---------- */
 
-const TAGS = ['a', 'abbr', 'b', 'bdi', 'bdo', 'blockquote', 'br', 'caption', 'cite', 'code', 'col', 'colgroup', 'dd', 'del',
-  'details', 'dfn', 'div', 'dl', 'dt', 'em', 'figcaption', 'figure', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'hr', 'i', 'img',
-  'ins', 'kbd', 'li', 'mark', 'ol', 'option', 'p', 'pre', 'q', 'rp', 'rt', 'ruby', 's', 'samp', 'small', 'span', 'strong',
-  'sub', 'summary', 'sup', 'table', 'tbody', 'td', 'tfoot', 'th', 'thead', 'time', 'tr', 'u', 'ul', 'var', 'wbr',
-  'button', 'marquee'];
+// The tags Markdown output needs, and the Copy button of a code block. No class anywhere: only
+// the reader's own elements have one (see READER_CLASSES in pageKit).
+const TAGS = ['p', 'br', 'hr', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'strong', 'em', 'b', 'i', 'u', 's', 'del', 'ins',
+  'code', 'pre', 'blockquote', 'ul', 'ol', 'li', 'table', 'thead', 'tbody', 'tfoot', 'tr', 'th', 'td', 'caption', 'a',
+  'img', 'sup', 'sub', 'span', 'div', 'details', 'summary', 'kbd', 'mark', 'abbr', 'dl', 'dt', 'dd', 'small', 'cite', 'q',
+  'button'];
 const ATTRS = {
-  '*': ['class', 'dir', 'lang', 'title'],
+  '*': ['dir', 'title'],
   a: ['href', 'target', 'rel'],
-  img: ['src', 'alt', 'width', 'height'],
+  img: ['src', 'alt'],
   ol: ['start'],
-  td: ['colspan', 'rowspan', 'align'],
-  th: ['colspan', 'rowspan', 'align'],
+  td: ['colspan', 'rowspan'],
+  th: ['colspan', 'rowspan'],
   details: ['open'],
   button: ['type', 'aria-label'],
 };
@@ -234,7 +241,14 @@ function pageKit(cfg) {
   const initial = new WeakSet(document.body.querySelectorAll('*'));
   const HTML_NS = 'http://www.w3.org/1999/xhtml';
   const BAD_TAGS = new Set(['svg', 'math', 'script', 'style', 'link', 'meta', 'base', 'object', 'embed', 'form', 'picture',
-    'frame', 'frameset', 'applet', 'noscript', 'template', 'portal', 'fencedframe', 'image']);
+    'frame', 'frameset', 'applet', 'noscript', 'template', 'portal', 'fencedframe', 'image', 'dialog', 'map', 'area',
+    'marquee', 'font']);
+  // The classes the reader puts on what a renderer returns: the copy button of a code block,
+  // and the wrappers of mdBlock() and memoryText() with its tags. Each renderer names its own.
+  const READER_CLASSES = { button: ['btn small copy-code'] };
+  // Classes that make a box float over the page. Only the reader's dialog and toasts, outside
+  // #main, have them; inside #main they can only come from the export.
+  const OVERLAY = '#main .modal-back, #main .modal, #main .toast, #main .full';
   const BAD_ATTRS = new Set(['srcset', 'background', 'poster', 'action', 'formaction', 'xlink:href', 'ping', 'attributionsrc']);
   const show = el => '<' + el.localName + (el.id ? '#' + el.id : '') + '>';
 
@@ -246,8 +260,9 @@ function pageKit(cfg) {
     }
   }
 
-  // The strict check of one renderer's output, parsed where nothing can load or run.
-  function checkOutput(html, where, roundTrip) {
+  // The strict check of one renderer's output, parsed where nothing can load or run. classes:
+  // the class values this renderer itself writes (its wrapper), on top of READER_CLASSES.
+  function checkOutput(html, where, roundTrip, classes) {
     const out = [];
     const tpl = document.createElement('template');
     tpl.innerHTML = html;
@@ -257,7 +272,8 @@ function pageKit(cfg) {
       if (el.namespaceURI !== HTML_NS || !allowTags.has(tag)) { out.push(`${where}: <${tag}> is not on the allow-list`); continue; }
       for (const { name, value } of Array.from(el.attributes)) {
         const v = value.trim();
-        if (!cfg.attrs['*'].includes(name) && !(cfg.attrs[tag] || []).includes(name)) out.push(`${where}: <${tag} ${name}="${v.slice(0, 60)}"> is not on the allow-list`);
+        if (name === 'class') { if (!classes.includes(v) && !(READER_CLASSES[tag] || []).includes(v)) out.push(`${where}: <${tag} class="${v.slice(0, 60)}"> uses a class`); }
+        else if (!cfg.attrs['*'].includes(name) && !(cfg.attrs[tag] || []).includes(name)) out.push(`${where}: <${tag} ${name}="${v.slice(0, 60)}"> is not on the allow-list`);
         else if (name === 'href' && !/^(https?:\/\/|mailto:|#)/i.test(v)) out.push(`${where}: <a href="${v.slice(0, 60)}"> is not a web, mail or in-app link`);
         else if (name === 'src' && !/^(data:|blob:)/i.test(v)) out.push(`${where}: <img src="${v.slice(0, 60)}"> would load`);
         else if (name === 'target' && v !== '_blank') out.push(`${where}: target="${v}"`);
@@ -273,21 +289,21 @@ function pageKit(cfg) {
     const out = [];
     const mem = { id: '5ec00000-0000-4000-8000-000000000001' };
     const renderers = [
-      ['mdToHtml', t => mdToHtml(t), true],
-      ['mdToHtml breaks', t => mdToHtml(t, { breaks: true }), true],
-      ['mdBlock', t => mdBlock('---\nname: ' + t.replace(/\n/g, ' ') + '\n---\n' + t, { frontmatter: true }), false],
-      ['plainTextHtml', t => plainTextHtml(t), false],
-      ['snippetHtml', t => snippetHtml(t, ['xss', 'leak', 'a']), false],
-      ['memoryText', t => memoryText('- [stated] ' + t + ' [[item-1]]', mem), false],
+      ['mdToHtml', t => mdToHtml(t), true, []],
+      ['mdToHtml breaks', t => mdToHtml(t, { breaks: true }), true, []],
+      ['mdBlock', t => mdBlock('---\nname: ' + t.replace(/\n/g, ' ') + '\n---\n' + t, { frontmatter: true }), false, ['frontmatter', 'md']],
+      ['plainTextHtml', t => plainTextHtml(t), false, []],
+      ['snippetHtml', t => snippetHtml(t, ['xss', 'leak', 'a']), false, []],
+      ['memoryText', t => memoryText('- [stated] ' + t + ' [[item-1]]', mem), false, ['md', 'mtag']],
     ];
     const live = document.createElement('div');
     live.id = 'security-live';
     document.body.appendChild(live);
     corpus.forEach((t, i) => {
-      for (const [name, fn, roundTrip] of renderers) {
+      for (const [name, fn, roundTrip, classes] of renderers) {
         let html;
         try { html = fn(t); } catch (e) { out.push(`${name} #${i}: threw ${e.message}`); continue; }
-        out.push(...checkOutput(html, `${name} #${i}`, roundTrip));
+        out.push(...checkOutput(html, `${name} #${i}`, roundTrip, classes));
         // Into the live page too, so anything that would load or run gets its chance.
         live.insertAdjacentHTML('beforeend', html);
       }
@@ -314,6 +330,7 @@ function pageKit(cfg) {
       }
       if (tag === 'iframe') sandbox(el, where, out);
     }
+    for (const el of document.querySelectorAll(OVERLAY)) out.push(`${where}: ${show(el)} with the reader's class "${el.className}" in #main`);
     for (const id of cfg.appIds) {
       const n = document.querySelectorAll(`[id="${id}"]`).length + document.getElementsByName(id).length;
       if (n > 1) out.push(`${where}: ${n} elements use the reader's id or name "${id}"`);

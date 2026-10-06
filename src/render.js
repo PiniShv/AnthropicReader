@@ -87,17 +87,20 @@ function splitFrontmatter(text) {
   return { front: m[1], body: text.slice(m[0].length) };
 }
 
-/* What Markdown from the export may hold: an allow-list of HTML only. SVG and MathML are left
- * out because their attributes load files (mask="url(…)", fill, filter, marker-end), and CSS
- * escapes and image-set() get past any check of the value. On top of that, everything that
- * loads, runs or posts on its own is forbidden. id and name could take over the reader's own
- * element ids, and tabindex its Tab order. <img> keeps its src for one step: finishMarkdown()
- * turns a remote one into a link. */
+/* What Markdown from the export may hold: the tags and attributes Markdown output needs, and
+ * nothing else. No class, id, style, name, tabindex, aria- or data- attributes: export text
+ * must not use the reader's own classes (a fake dialog over the page), take over its element
+ * ids or change its Tab order. Nothing that loads, runs or posts on its own. SVG and MathML are
+ * left out because their attributes load files (mask="url(…)", fill, filter, marker-end); the
+ * hook below keeps their text. <img> keeps its src for one step: finishMarkdown() turns a
+ * remote one into a link, and gives web links their target and rel. */
 const PURIFY_CONFIG = {
-  USE_PROFILES: { html: true },
-  FORBID_TAGS: ['style', 'form', 'input', 'button', 'textarea', 'select', 'video', 'audio', 'source', 'track', 'picture', 'image', 'object', 'embed', 'iframe', 'link', 'meta', 'template'],
-  FORBID_ATTR: ['style', 'srcset', 'ping', 'background', 'id', 'name', 'tabindex'],
+  ALLOWED_TAGS: ['p', 'br', 'hr', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'strong', 'em', 'b', 'i', 'u', 's', 'del', 'ins',
+    'code', 'pre', 'blockquote', 'ul', 'ol', 'li', 'table', 'thead', 'tbody', 'tfoot', 'tr', 'th', 'td', 'caption', 'a',
+    'img', 'sup', 'sub', 'span', 'div', 'details', 'summary', 'kbd', 'mark', 'abbr', 'dl', 'dt', 'dd', 'small', 'cite', 'q'],
+  ALLOWED_ATTR: ['href', 'title', 'alt', 'src', 'colspan', 'rowspan', 'start', 'dir', 'open'],
   ALLOW_DATA_ATTR: false,
+  ALLOW_ARIA_ATTR: false,
 };
 
 // The words inside an <svg> or <math>, without its styles and scripts.
@@ -128,32 +131,36 @@ function safeUrl(u) {
   return /^(https?:\/\/|mailto:)/i.test(String(u || '').trim()) ? String(u).trim() : '#';
 }
 
-// Post-process sanitized markdown HTML: links open in new tabs, blocks get dir=auto
-// (Hebrew/Arabic paragraphs render right-to-left), code blocks get a Copy button. The click
-// listener in app.js handles every .copy-code button, so the HTML holds no per-page key.
-function finishMarkdown(html) {
+/* Post-process sanitized markdown HTML: links open in new tabs, blocks get dir=auto
+ * (Hebrew/Arabic paragraphs render right-to-left), code blocks get a Copy button. The click
+ * listener in app.js handles every .copy-code button, so the HTML holds no per-page key.
+ * finish(root), if given, changes the sanitized content before it becomes HTML again. */
+function finishMarkdown(html, finish) {
   const tpl = document.createElement('template');
   tpl.innerHTML = html;
   const root = tpl.content;
-  // The reader works offline and must not call home: remote images become plain links.
-  root.querySelectorAll('img').forEach(img => {
-    const src = img.getAttribute('src') || '';
+  // The reader works offline and must not call home: remote images become plain links. Only
+  // an <img> may keep a src.
+  root.querySelectorAll('[src]').forEach(el => {
+    const src = el.getAttribute('src');
+    if (el.tagName !== 'IMG') { el.removeAttribute('src'); return; }
     if (/^(data:|blob:)/i.test(src)) return;
     const a = document.createElement('a');
     a.setAttribute('href', src);
-    a.textContent = '🖼 ' + (img.getAttribute('alt') || 'image') + ' (online image, not loaded)';
-    img.replaceWith(a);
+    a.textContent = '🖼 ' + (el.getAttribute('alt') || 'image') + ' (online image, not loaded)';
+    el.replaceWith(a);
   });
   // In-app links (#/…) stay in this tab, and web and mail links open a new one. Any other link
   // (relative, "//host", tel:) is not clickable: from a file:// page it opens a path on the
-  // computer, or on Windows a network share.
-  root.querySelectorAll('a[href]').forEach(a => {
+  // computer, or on Windows a network share. Every href is checked, whatever its element.
+  root.querySelectorAll('[href]').forEach(a => {
     const href = a.getAttribute('href');
-    if (href.trim().startsWith('#')) { a.removeAttribute('target'); return; }
-    if (safeUrl(href) === '#') { a.removeAttribute('href'); a.removeAttribute('target'); return; }
+    if (href.trim().startsWith('#')) return;
+    if (safeUrl(href) === '#') { a.removeAttribute('href'); return; }
     a.setAttribute('target', '_blank');
     a.setAttribute('rel', 'noopener noreferrer');
   });
+  if (finish) finish(root);
   root.querySelectorAll('p,li,h1,h2,h3,h4,h5,h6,blockquote,td,th').forEach(el => el.setAttribute('dir', 'auto'));
   root.querySelectorAll('pre').forEach(pre => {
     const b = document.createElement('button');
@@ -177,6 +184,7 @@ function copyPre(el) {
 
 const MD_LIMIT = 400000;
 
+// opts: breaks (a newline is a line break), finish (see finishMarkdown()).
 function mdToHtml(text, opts) {
   text = String(text == null ? '' : text);
   if (!text.trim()) return '';
@@ -190,7 +198,7 @@ function mdToHtml(text, opts) {
   } catch (e) {
     return `<pre class="code wrap">${esc(text)}</pre>`;
   }
-  return finishMarkdown(sanitize(html));
+  return finishMarkdown(sanitize(html), opts && opts.finish);
 }
 
 function mdBlock(text, opts) {
