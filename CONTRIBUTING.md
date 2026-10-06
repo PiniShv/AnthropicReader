@@ -63,7 +63,7 @@ Read [docs/architecture.md](docs/architecture.md) for the full picture. In short
 - Treat everything in an export as untrusted:
   - put text into HTML only through `esc()`
   - render Markdown only through `mdToHtml()` / `mdBlock()`, which sanitize with DOMPurify
-  - show HTML from the export only in a sandboxed iframe (`sandboxFrame()`), never with `allow-same-origin`
+  - show HTML from the export only in a sandboxed iframe (`sandboxFrame()`, or a frame with the `FRAME_SANDBOX` tokens), never with `allow-same-origin`
   - make links from export data clickable only through `safeUrl()`
 - Keep big exports fast. Do not read large files up front. Render big blocks lazily (`blk()` with a render function), and cut very long text with `preHtml()`.
 - Use `dir="auto"` on blocks of user text, so right-to-left languages display correctly.

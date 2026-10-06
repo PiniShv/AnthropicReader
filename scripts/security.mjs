@@ -363,16 +363,21 @@ const BEFORE_LOAD = `(() => {
 
 /* ---------- Static check: every iframe in the source has a sandbox from the list ---------- */
 
+// The frames write their sandbox as "${FRAME_SANDBOX}…", so the constant's value (render.js) is
+// put in before the tokens are read.
 function sourceFrames() {
   const out = [];
   const dir = join(ROOT, 'src');
+  const shared = /\nconst FRAME_SANDBOX = '([^']*)';/.exec(readFileSync(join(dir, 'render.js'), 'utf8'));
+  if (!shared) out.push('src/render.js: no FRAME_SANDBOX constant');
   for (const f of readdirSync(dir).filter(n => n.endsWith('.js') && !n.startsWith('demo'))) {
     const code = readFileSync(join(dir, f), 'utf8');
     if (/createElement\(\s*['"]iframe/.test(code)) out.push(`src/${f}: makes an iframe with createElement; use markup with a sandbox`);
     for (const m of code.matchAll(/<iframe\b[^>]*>/g)) {
       const s = /\bsandbox="([^"]*)"/.exec(m[0]);
       if (!s) { out.push(`src/${f}: ${m[0].slice(0, 80)} has no sandbox`); continue; }
-      for (const t of s[1].split(/\s+/).filter(Boolean)) if (!FRAME_SANDBOX.includes(t)) out.push(`src/${f}: iframe sandbox has "${t}"`);
+      const tokens = s[1].replaceAll('${FRAME_SANDBOX}', shared ? shared[1] : '');
+      for (const t of tokens.split(/\s+/).filter(Boolean)) if (!FRAME_SANDBOX.includes(t)) out.push(`src/${f}: iframe sandbox has "${t}"`);
     }
   }
   return out;

@@ -157,7 +157,7 @@ async function drawVersion(a, vid, view, board, pickBoard) {
       box.querySelector('.frame-bar > .grow').insertAdjacentHTML('afterend', `<select class="input" id="art-board" style="padding:3px 8px;font-size:13px" ${on.change(el => pickBoard(el.value))} aria-label="Board">${built.boards.list.map(b => `<option value="${esc(b.file)}"${b.file === built.boards.current ? ' selected' : ''}>${esc(b.title)}</option>`).join('')}</select>`);
       refocus();
     }
-    body.innerHTML = `${notes}<iframe class="preview" id="art-frame" sandbox="allow-scripts allow-popups allow-forms allow-modals allow-downloads" referrerpolicy="no-referrer" title="${esc(artifactTitle(a))}"></iframe>`;
+    body.innerHTML = `${notes}<iframe class="preview" id="art-frame" sandbox="${FRAME_SANDBOX} allow-downloads" referrerpolicy="no-referrer" title="${esc(artifactTitle(a))}"></iframe>`;
     body.querySelector('iframe').srcdoc = built.html;
   } catch (err) {
     console.error(err);
@@ -321,7 +321,7 @@ async function openPreviewTab(a, vid, board) {
   try {
     const built = await getBuilt(a, vid, versionInfo(a, vid), board);
     if (built.html == null) { w.document.body.innerHTML = '<p style="padding:20px">Nothing to preview for this version.</p>'; return; }
-    w.document.body.innerHTML = '<iframe sandbox="allow-scripts allow-popups allow-forms allow-modals allow-downloads" referrerpolicy="no-referrer" title="Preview"></iframe>';
+    w.document.body.innerHTML = `<iframe sandbox="${FRAME_SANDBOX} allow-downloads" referrerpolicy="no-referrer" title="Preview"></iframe>`;
     w.document.querySelector('iframe').srcdoc = built.html;
   } catch (err) {
     w.document.body.textContent = 'Could not open: ' + (err.message || err);

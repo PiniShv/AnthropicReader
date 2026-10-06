@@ -310,11 +310,15 @@ function withFrameShim(html, extra) {
   return shim + s;
 }
 
-// HTML from the export in a sandboxed frame, never with allow-same-origin. The HTML goes into
-// the srcdoc attribute, escaped, and the browser decodes it back. The frame loads when its
-// block is put into the page.
+// The sandbox of every frame that shows export content (the artifact viewer adds
+// allow-downloads). Never allow-same-origin: the frame runs in an opaque origin, so it cannot
+// reach the reader.
+const FRAME_SANDBOX = 'allow-scripts allow-popups allow-forms allow-modals';
+
+// HTML from the export in a sandboxed frame. The HTML goes into the srcdoc attribute, escaped,
+// and the browser decodes it back. The frame loads when its block is put into the page.
 function sandboxFrame(html, height) {
-  return `<iframe class="preview" sandbox="allow-scripts allow-popups allow-forms allow-modals" referrerpolicy="no-referrer" style="height:${height || 420}px" title="Sandboxed preview" srcdoc="${esc(withFrameShim(html))}"></iframe>`;
+  return `<iframe class="preview" sandbox="${FRAME_SANDBOX}" referrerpolicy="no-referrer" style="height:${height || 420}px" title="Sandboxed preview" srcdoc="${esc(withFrameShim(html))}"></iframe>`;
 }
 
 /* ---------- Misc ---------- */
