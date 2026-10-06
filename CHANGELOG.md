@@ -29,6 +29,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Fixed
 
+- Downloaded files get names that also work on Windows: no dot or space at the end, and no name that Windows keeps for a device (`CON`, `NUL`, `COM1`, …). In the per-person zip, the paths of artifact files are now cleaned like the other paths.
 - Zip files made on Windows, with backslashes in the file names inside, now load fully. Before, their artifacts and other files in folders were not found.
 - Files dropped while an export is still loading no longer start a second load into the same data, with mixed results and warnings. The page asks you to wait until the first load is done.
 - One broken record, such as `null` where a chat, a message or a comment should be, no longer stops the rest of its file from loading, or the whole load. It is skipped and named in a warning. When a load fails anyway, the export that was open stays as it was, and **Back to the open export** returns to it.

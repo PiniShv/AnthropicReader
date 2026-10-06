@@ -246,7 +246,7 @@ The aim is WCAG 2.2 level AA. The rules the code follows:
 
 ## Per-person download
 
-`buildPersonZip()` (in `src/export.js`) writes one zip with a README, `person.json`, every conversation as Markdown and JSON, projects with their docs, design chats, memory, comments, and artifact files (only the current version unless you tick "every version"). Folder and file names are `<date> <title> (<short id>)`, cleaned so they work on every file system. Paths of project docs and memory files are cleaned too, so they cannot escape their folder. Artifact files keep their path from the export (`versions/<vid>/…`).
+`buildPersonZip()` (in `src/export.js`) writes one zip with a README, `person.json`, every conversation as Markdown and JSON, projects with their docs, design chats, memory, comments, and artifact files (only the current version unless you tick "every version"). Folder and file names are `<date> <title> (<short id>)`, cleaned so they work on every file system. Paths of project docs, memory files and artifact files are cleaned too, part by part (`safeFilename()`), so they cannot escape their folder and work on Windows. Artifact files keep the shape of their path from the export (`versions/<vid>/…`).
 
 ## Performance choices, in short
 

@@ -126,6 +126,16 @@ test('snippetHtml cuts long text around the first match', () => {
 
 /* ---------- Links and previews ---------- */
 
+test('safeFilename makes names that work on every system', () => {
+  const { safeFilename } = api;
+  assert.equal(safeFilename('Q3: plan / draft?'), 'Q3 plan draft');
+  assert.equal(safeFilename('notes. . '), 'notes', 'Windows drops dots and spaces at the end');
+  for (const n of ['CON', 'nul', 'Com1', 'LPT9', 'aux.txt', 'con.tar.gz', 'COM¹']) assert.equal(safeFilename(n), '_' + n, n);
+  for (const n of ['console', 'NULL', 'com10', 'lpt', 'prn-notes']) assert.equal(safeFilename(n), n, n);
+  assert.equal(safeFilename('..'), 'untitled');
+  assert.equal(safeFilename('...', 'file'), 'file');
+});
+
 test('safeUrl allows only web and mail links', () => {
   assert.equal(safeUrl('https://example.com/a?b=1'), 'https://example.com/a?b=1');
   assert.equal(safeUrl('  http://example.com  '), 'http://example.com');

@@ -373,8 +373,12 @@ function downloadText(name, text) {
   downloadBlob(new Blob([text], { type: mimeFor(name) }), name || 'file.txt');
 }
 
+/* A file name that works on every system: none of the characters Windows, macOS or Linux
+ * reject, no dot or space at the end (Windows drops them), and not a name Windows keeps for a
+ * device (CON, NUL, COM1, LPT1, …, also with an extension such as "con.txt"). */
 function safeFilename(s, fallback) {
-  const v = String(s || '').replace(/[\\/:*?"<>|\x00-\x1f]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 90);
+  let v = String(s || '').replace(/[\\/:*?"<>|\x00-\x1f]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 90).replace(/[. ]+$/, '');
+  if (/^(con|prn|aux|nul|com[0-9¹²³]|lpt[0-9¹²³])(\.|$)/i.test(v)) v = '_' + v;
   return v || fallback || 'untitled';
 }
 

@@ -139,7 +139,7 @@ async function buildPersonZip(p, opts, progress, isCancelled) {
       if (v && v.part === 'folder' && isPlumbing(v.sub)) continue;   // the app's runtime, like the Files tab
       // Only the current version's files, unless every version was asked for.
       if (!opts.allVersions && rel.startsWith('versions/') && !(v && v.vid === a.activeVersion)) continue;
-      z.add(base + rel, await node.bytes());
+      z.add(base + cleanPath(rel), await node.bytes());
     }
     progress(`Artifacts ${++i} / ${p.artifacts.length}`);
   }
