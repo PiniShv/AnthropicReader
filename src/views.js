@@ -280,9 +280,12 @@ function viewHome() {
   const convs = KIND.conversations.allCount(), emptyConvs = DB.conversations.length - convs;
   const manifest = latestManifest();
   const missing = manifest ? missingFiles(manifest) : [];
-  const dates = DB.conversations.map(c => c.created).filter(Boolean);
-  const first = dates.length ? Math.min(...dates) : 0;
-  const last = DB.conversations.length ? Math.max(...DB.conversations.map(c => c.lastTs || 0)) : 0;
+  // One loop, not Math.min(...list): Chrome allows only about 120,000 arguments in one call.
+  let first = 0, last = 0;
+  for (const c of DB.conversations) {
+    if (c.created && (!first || c.created < first)) first = c.created;
+    if (c.lastTs > last) last = c.lastTs;
+  }
   after(() => {
     const inp = $('#home-person-q');
     const draw = () => {

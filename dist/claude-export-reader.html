@@ -210,7 +210,9 @@ button.linklike:hover { text-decoration: underline; }
 .lp-row.error { color: var(--err); }
 
 /* ---------- App shell ---------- */
-.shell { display: grid; grid-template-columns: 232px 1fr; grid-template-rows: 54px 1fr; height: 100vh; }
+/* dvh: on phones 100vh is the height without the browser bars, so the end of the page would
+ * sit under them. Browsers without dvh keep 100vh. */
+.shell { display: grid; grid-template-columns: 232px 1fr; grid-template-rows: 54px 1fr; height: 100vh; height: 100dvh; }
 .topbar {
   grid-column: 1 / -1; display: flex; align-items: center; gap: 12px;
   padding: 0 16px; background: var(--surface); border-bottom: 1px solid var(--border);
@@ -282,7 +284,7 @@ table.list { width: 100%; border-collapse: collapse; font-size: 14px; }
 table.list th {
   text-align: left; font-weight: 600; font-size: 12.5px; color: var(--muted);
   padding: 9px 12px; border-bottom: 1px solid var(--border); background: var(--surface-2);
-  position: sticky; top: 0; white-space: nowrap; user-select: none;
+  position: sticky; top: 0; white-space: nowrap; -webkit-user-select: none; user-select: none;
 }
 /* A sortable column's header is a button, so it works from the keyboard. */
 table.list th .th-sort { border: 0; background: none; padding: 0; color: inherit; font-weight: inherit; cursor: pointer; white-space: nowrap; }
@@ -677,6 +679,15 @@ const ZIP_SIG_LOC = 0x04034b50;
 
 const utf8 = new TextDecoder('utf-8');
 
+/* Unpacking DEFLATE needs DecompressionStream('deflate-raw'): Chrome and Edge 103, Firefox
+ * 113, Safari 16.4. Older browsers have no DecompressionStream, or one without 'deflate-raw'
+ * (Chrome 80-102), so a zip that needs it fails at once with this message, not later with an
+ * engine error per file. STORED zips (the sample data) and unzipped folders still work. */
+const NO_INFLATE = 'This browser cannot unpack zip files. Use Chrome or Edge 103, Firefox 113 or Safari 16.4 or newer, or unzip the files first and choose the folder.';
+function canInflate() {
+  try { new DecompressionStream('deflate-raw'); return true; } catch (e) { return false; }
+}
+
 async function readSlice(blob, start, end) {
   return new Uint8Array(await blob.slice(start, end).arrayBuffer());
 }
@@ -831,6 +842,7 @@ class ZipArchive {
   static async open(file) {
     const zip = new ZipArchive(file);
     await zip._readDirectory();
+    if (zip.entries.some(e => e.method === 8) && !canInflate()) throw new Error(NO_INFLATE);
     return zip;
   }
 
@@ -1030,6 +1042,7 @@ const HandleStore = {
       req.onerror = () => reject(req.error);
     });
   },
+  // Resolves to true when the handles were saved.
   async save(handles) {
     try {
       const db = await this._db();
@@ -1038,7 +1051,8 @@ const HandleStore = {
         tx.objectStore('kv').put({ handles, savedAt: new Date().toISOString() }, 'last');
         tx.oncomplete = res; tx.onerror = () => rej(tx.error);
       });
-    } catch (e) { /* storage unavailable: nothing to remember */ }
+      return true;
+    } catch (e) { return false; /* storage unavailable: nothing to remember */ }
   },
   async load() {
     try {
@@ -1494,13 +1508,25 @@ function toast(msg) {
   announce(msg);
 }
 
+/* Callers copy inside the click: Safari allows clipboard writes only there. The fallback
+ * reports what execCommand says (it returns false when blocked; it does not throw), and puts
+ * the focus back where it was. */
 async function copyText(text) {
   try { await navigator.clipboard.writeText(text); toast('Copied'); }
   catch (e) {
+    const back = document.activeElement;
     const ta = document.createElement('textarea');
-    ta.value = text; document.body.appendChild(ta); ta.select();
-    try { document.execCommand('copy'); toast('Copied'); } catch (e2) { toast('Copy failed'); }
+    ta.value = text;
+    ta.setAttribute('readonly', '');
+    ta.style.cssText = 'position:fixed;top:0;left:0;opacity:0';
+    document.body.appendChild(ta);
+    ta.select();
+    ta.setSelectionRange(0, text.length);
+    let ok = false;
+    try { ok = document.execCommand('copy'); } catch (e2) { ok = false; }
     ta.remove();
+    if (back && back.focus) back.focus();
+    toast(ok ? 'Copied' : 'Copy failed');
   }
 }
 
@@ -1548,6 +1574,7 @@ const App = {
   focus: null,          // Person id that scopes every list, or null
   route: { path: [], query: {} },
   lastHash: '',
+  canReopen: false,     // a load in this tab saved file handles for "Reopen last export"
 };
 
 const $ = (sel, root) => (root || document).querySelector(sel);
@@ -2400,8 +2427,13 @@ const SMALL_INGEST = new Map([
 ]);
 
 // Calls fn for the record, or for each record when v is a list.
-function each(v, fn) {
-  for (const x of Array.isArray(v) ? v : [v]) fn(x);
+/* Calls fn for each record of a file that holds one record or a list of them. A list is
+ * streamed, one record at a time: an old-format projects.json or memories.json can be bigger
+ * than the longest string Chrome allows (about 512 MB; Firefox and Safari allow more). */
+async function readEach(node, fn) {
+  let any = false;
+  await parseJsonArrayStream(await node.stream(), v => { any = true; fn(v); });
+  if (!any && !node.size) throw new Error('The file is empty.');
 }
 
 async function importExport(files, ui) {
@@ -2431,7 +2463,7 @@ async function importExport(files, ui) {
 
   // 1. People. Only finalize() has to come last: no add…() function reads another kind.
   for (const n of groups.users) {
-    try { each(await readJson(n), addUser); } catch (e) { DB.warnings.push(n.path + ': ' + e.message); }
+    try { await readEach(n, addUser); } catch (e) { DB.warnings.push(n.path + ': ' + e.message); }
   }
   ui.set('users', 'People', 1, plural(DB.people.size, 'person', 'people'), 'done');
 
@@ -2463,7 +2495,7 @@ async function importExport(files, ui) {
   const small = [...SMALL_INGEST.keys()].flatMap(kind => groups[kind].map(n => [kind, n]));
   let smallDone = 0;
   await mapLimit(small, 8, async ([kind, n]) => {
-    try { each(await readJson(n), x => SMALL_INGEST.get(kind)(x, n.container)); }
+    try { await readEach(n, x => SMALL_INGEST.get(kind)(x, n.container)); }
     catch (e) { DB.warnings.push(n.path + ': ' + e.message); }
     smallDone++;
     if (smallDone % 10 === 0 || smallDone === small.length) {
@@ -2517,8 +2549,12 @@ async function importExport(files, ui) {
   if (!hasRecords() && !DB.manifests.length) {
     // Records are never removed, so nothing was loaded before this attempt either. Start
     // clean, so the failed attempt leaves no sources, warnings or ignored files behind.
+    // When files failed, say why: the reason may be the browser, not the files.
+    const failed = DB.warnings.slice();
     Object.assign(DB, emptyDB());
-    throw new Error('No Claude export data found in what you picked. Choose the .zip files from the export, or the folder they were unpacked into.');
+    throw new Error(failed.length
+      ? `Nothing could be read from what you picked. ${failed[0]}${failed.length > 1 ? ` (${plural(failed.length - 1, 'more problem')})` : ''}`
+      : 'No Claude export data found in what you picked. Choose the .zip files from the export, or the folder they were unpacked into.');
   }
 }
 
@@ -3628,9 +3664,12 @@ function viewHome() {
   const convs = KIND.conversations.allCount(), emptyConvs = DB.conversations.length - convs;
   const manifest = latestManifest();
   const missing = manifest ? missingFiles(manifest) : [];
-  const dates = DB.conversations.map(c => c.created).filter(Boolean);
-  const first = dates.length ? Math.min(...dates) : 0;
-  const last = DB.conversations.length ? Math.max(...DB.conversations.map(c => c.lastTs || 0)) : 0;
+  // One loop, not Math.min(...list): Chrome allows only about 120,000 arguments in one call.
+  let first = 0, last = 0;
+  for (const c of DB.conversations) {
+    if (c.created && (!first || c.created < first)) first = c.created;
+    if (c.lastTs > last) last = c.lastTs;
+  }
   after(() => {
     const inp = $('#home-person-q');
     const draw = () => {
@@ -4834,14 +4873,21 @@ async function openArtifactFile(path, node) {
   const ext = fileExt(path);
   box.innerHTML = '<p class="muted">Opening…</p>';
   const head = `<div class="row" style="margin-bottom:8px"><b class="mono" dir="auto">${esc(path)}</b><span class="grow"></span><button class="btn small" type="button" ${on(() => node.blob(mimeFor(path)).then(b => downloadBlob(b, path.split('/').pop())))}>Download</button></div>`;
+  // Images and video get an object URL, not a data: URL: no base64 copy, and no size limit
+  // (Firefox caps data: URLs). It is freed when the page goes.
+  const objectUrl = async () => {
+    const url = URL.createObjectURL(await node.blob(mimeFor(path)));
+    signal.addEventListener('abort', () => URL.revokeObjectURL(url), { once: true });
+    return url;
+  };
   if (/^(png|jpe?g|gif|webp|svg|avif|ico|bmp)$/.test(ext)) {
-    const src = dataUrl(path, await node.bytes());
+    const src = await objectUrl();
     if (signal.aborted) return;
     box.innerHTML = head + `<img alt="${esc(path.split('/').pop())}" style="max-width:100%;border:1px solid var(--border);border-radius:6px" src="${src}">`;
   } else if (/^(mp4|webm)$/.test(ext)) {
-    const blob = await node.blob(mimeFor(path));
+    const src = await objectUrl();
     if (signal.aborted) return;
-    box.innerHTML = head + `<video controls style="max-width:100%" src="${URL.createObjectURL(blob)}"></video>`;
+    box.innerHTML = head + `<video controls style="max-width:100%" src="${src}"></video>`;
   } else if (isTextExt(ext) || node.size < 2e6) {
     const t = await node.text();
     if (signal.aborted) return;
@@ -4879,7 +4925,7 @@ async function drawPage(a, want) {
     <div class="card-pad" id="page-body">${mdBlock(body)}</div>
     <div class="frame-bar" style="border-top:1px solid var(--border);border-bottom:0">
       <button class="btn small" type="button" ${on(() => a.pageNode.blob('text/markdown').then(b => downloadBlob(b, safeFilename(artifactTitle(a), 'page') + '.md')))}>Download page.md</button>
-      <button class="btn small" type="button" ${on(() => a.pageNode.text().then(copyText))}>Copy Markdown</button>
+      <button class="btn small" type="button" ${on(() => copyText(md))}>Copy Markdown</button>
     </div>
   </div>
   ${(a.comments || []).length ? `<h2 class="section-title">Comments${tabs.length > 1 ? ' on this tab' : ''} <span class="badge">${threads.reduce((n, t) => n + (t.comments || []).length, 0)}</span></h2><div class="card card-pad">${threads.length ? pageCommentsHtml(a, threads) : '<p class="faint">No comments on this tab.</p>'}</div>` : ''}`;
@@ -5440,7 +5486,7 @@ function viewAbout() {
       <li>The export contains text only. Uploaded images, PDFs and screenshots appear as names, not files.</li>
       <li>Conversations are not linked to projects in the export, so a project page cannot list its chats.</li>
       <li>Artifacts may keep only their latest 20 versions. Some artifacts use claude.ai features (shared data, hosted images) that do not work offline.</li>
-      <li>Everything stays in this tab. Reloading the page forgets the data${window.showOpenFilePicker ? '; use “Reopen last export” on the start screen to load it again quickly' : ', so you pick the files again'}.</li>
+      <li>Everything stays in this tab. Reloading the page forgets the data${App.canReopen ? '; use “Reopen last export” on the start screen to load it again quickly' : ', so you pick the files again'}.</li>
     </ul></div>
   </div>`;
 }
@@ -7666,7 +7712,7 @@ async function startLoad(files, handles) {
   try {
     const before = DB.warnings.length;
     await importExport(files, Loader);
-    if (handles && handles.length) HandleStore.save(handles);
+    if (handles && handles.length) HandleStore.save(handles).then(ok => { if (ok) App.canReopen = true; });
     const problems = DB.warnings.slice(before);
     if (problems.length) {
       // Do not hide failures behind the app: say what is missing and let the person decide.

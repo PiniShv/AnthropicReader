@@ -122,6 +122,7 @@ const HandleStore = {
       req.onerror = () => reject(req.error);
     });
   },
+  // Resolves to true when the handles were saved.
   async save(handles) {
     try {
       const db = await this._db();
@@ -130,7 +131,8 @@ const HandleStore = {
         tx.objectStore('kv').put({ handles, savedAt: new Date().toISOString() }, 'last');
         tx.oncomplete = res; tx.onerror = () => rej(tx.error);
       });
-    } catch (e) { /* storage unavailable: nothing to remember */ }
+      return true;
+    } catch (e) { return false; /* storage unavailable: nothing to remember */ }
   },
   async load() {
     try {

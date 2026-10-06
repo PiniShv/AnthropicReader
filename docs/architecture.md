@@ -94,7 +94,7 @@ A few small pieces carry most of the app. When you add something, reach for thes
 
 ### Loading screen
 
-`importExport()` reports progress through a small `ui.set(key, label, fraction, value, state)` interface (the `Loader` in `app.js`). Files that cannot be read become warnings. If there are warnings, the loading screen lists them and offers **Continue anyway** instead of hiding the problem. If only a manifest was loaded, the page shows its download links and waits for the zips. If nothing in the files is export data, the load fails with a clear message and leaves `DB` empty, so a failed attempt never shows up on the About page.
+`importExport()` reports progress through a small `ui.set(key, label, fraction, value, state)` interface (the `Loader` in `app.js`). Files that cannot be read become warnings. If there are warnings, the loading screen lists them and offers **Continue anyway** instead of hiding the problem. If only a manifest was loaded, the page shows its download links and waits for the zips. If nothing could be read, the load fails and leaves `DB` empty, so a failed attempt never shows up on the About page. The message is the first problem when files failed (for example a browser that cannot unpack zips), or says that the files hold no export data.
 
 ### The model
 
@@ -123,13 +123,15 @@ These values change only when files are loaded, so the views read them instead o
 3. Read the central directory in one slice and create a `ZipEntry` (name, method, sizes, offset) per file. ZIP64 extra fields are honoured. Directory entries are skipped.
 4. Nothing else is read. When an entry is needed, `ZipEntry` reads its 30-byte local header to find where the data starts, slices exactly the compressed bytes with `Blob.slice()`, and, for DEFLATE, pipes them through the browser's native `DecompressionStream('deflate-raw')`.
 
+A browser without `'deflate-raw'` (before Chrome and Edge 103, Firefox 113 and Safari 16.4) cannot open a zip with DEFLATE entries: `ZipArchive.open()` then fails at once with a message that names the browsers and suggests the unzipped folder (`canInflate()`). STORED zips, such as the sample data, still open.
+
 Entries are available as a stream (`stream()`), bytes, text or a `Blob`. Only STORED (0) and DEFLATE (8) are supported.
 
 `ZipWriter` builds the per-person download and multi-file version downloads. It writes STORED entries with CRC-32 and UTF-8 names, makes repeated names unique (`a.md`, `a (2).md`), and refuses archives over 4 GB or 65,535 files.
 
 ## Streaming JSON parser
 
-`conversations.json` can be larger than the biggest string a browser can hold, so it is never decoded as one string. `parseJsonArrayStream()` in `src/load.js`:
+`conversations.json` can be larger than the biggest string a browser can hold (about 512 MB in Chrome), so it is never decoded as one string. The files of people, projects, memories and design chats are read the same way (`readEach()` in `src/ingest.js`), because an old-format `projects.json` or `memories.json` holds every record in one list. `parseJsonArrayStream()` in `src/load.js`:
 
 - reads the file as a stream of byte chunks
 - scans the **bytes** for JSON structure (`[`, `]`, `{`, `}`, `,`, `"`, `\`). All of these are ASCII, so bytes of multi-byte UTF-8 characters can never be mistaken for them.

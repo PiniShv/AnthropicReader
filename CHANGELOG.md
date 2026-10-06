@@ -23,6 +23,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - CI tests on Node 20, 22 and 24, with the current major versions of `actions/checkout` and `actions/setup-node` (they run on Node 24, not the deprecated Node 20 runtime).
 - In Chrome and Edge, **Choose a folder…** and **Reopen last export** open the files of a big folder 16 at a time instead of one by one, so loading starts sooner. The files are still read in the same order, so the result does not change.
 
+### Fixed
+
+- A browser that cannot unpack zip files (before Chrome and Edge 103, Firefox 113 and Safari 16.4) now says so when you pick a zip, and suggests the unzipped folder. Before, it showed one engine error per file, or the wrong message "No Claude export data found". When nothing at all could be read, the message now names the first problem.
+- The start page no longer fails in Chrome and Edge for an export with more than about 120,000 conversations.
+- The users, projects, memories and design chat files are read one record at a time, like `conversations.json`, so a very large old-format `projects.json` or `memories.json` also loads in Chrome and Edge.
+- "Copied" is shown only when the copy worked, and **Copy Markdown** on a Docs page also works in Safari.
+- On phones, the end of the page no longer sits under the browser's toolbar.
+- "About this export" mentions **Reopen last export** only when this tab saved the files for it.
+- Images and videos in an artifact's Files tab open from an object URL instead of a large `data:` URL.
+- In Safari, a quick click on a sortable column header no longer selects its text.
+
 ### Security
 
 - DOMPurify, the library that cleans HTML from the export before it is shown, is updated from 3.2.6 to 3.4.16. This brings the fixes for the 20 security advisories published against 3.2.6. Most of them need options or modes the reader does not use, but the sanitizer should never lag behind.

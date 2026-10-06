@@ -324,13 +324,25 @@ function toast(msg) {
   announce(msg);
 }
 
+/* Callers copy inside the click: Safari allows clipboard writes only there. The fallback
+ * reports what execCommand says (it returns false when blocked; it does not throw), and puts
+ * the focus back where it was. */
 async function copyText(text) {
   try { await navigator.clipboard.writeText(text); toast('Copied'); }
   catch (e) {
+    const back = document.activeElement;
     const ta = document.createElement('textarea');
-    ta.value = text; document.body.appendChild(ta); ta.select();
-    try { document.execCommand('copy'); toast('Copied'); } catch (e2) { toast('Copy failed'); }
+    ta.value = text;
+    ta.setAttribute('readonly', '');
+    ta.style.cssText = 'position:fixed;top:0;left:0;opacity:0';
+    document.body.appendChild(ta);
+    ta.select();
+    ta.setSelectionRange(0, text.length);
+    let ok = false;
+    try { ok = document.execCommand('copy'); } catch (e2) { ok = false; }
     ta.remove();
+    if (back && back.focus) back.focus();
+    toast(ok ? 'Copied' : 'Copy failed');
   }
 }
 

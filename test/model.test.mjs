@@ -132,6 +132,22 @@ test('same update time: the copy with more messages wins', async () => {
 
 /* ---------- Older export formats ---------- */
 
+test('record files are read one record at a time: a broken record keeps the ones before it', async () => {
+  // Streamed like conversations.json, so a huge old-format projects.json never becomes one string.
+  const good = JSON.stringify({ uuid: proj(1), name: 'Brand refresh', creator: { uuid: BRAM }, docs: [], created_at: '2026-02-01T10:00:00Z' });
+  const { api } = await importFiles([
+    looseFile('old-export/users.json', USERS),
+    looseFile('old-export/projects.json', `[${good}, {"uuid": "broken`),
+    looseFile('old-export/memories.json', ''),
+  ]);
+  assert.deepEqual(plain(api.DB.projects.map(x => x.name)), ['Brand refresh']);
+  // The files are read side by side, so the order of the warnings is not fixed.
+  const warnings = plain(api.DB.warnings).sort();
+  assert.equal(warnings.length, 2);
+  assert.match(warnings[0], /^old-export\/memories\.json: The file is empty\.$/);
+  assert.match(warnings[1], /^old-export\/projects\.json: /);
+});
+
 test('old formats: projects.json, memories.json and messages without parents', async () => {
   const files = [
     looseFile('old-export/users.json', USERS),
@@ -331,8 +347,12 @@ test('a broken zip becomes a warning and the rest still loads', async () => {
 test('nothing recognisable gives a clear error and leaves nothing behind', async () => {
   const app = loadApp();
   const { DB, importExport } = app.api;
+  await assert.rejects(importExport([looseFile('holiday.txt', 'photos')], { set() {} }), /No Claude export data found/);
+  // When files failed, the error says why (the reason may be the browser, not the files).
   const broken = new File(['this is not a zip'], 'export-002.zip');
-  await assert.rejects(importExport([looseFile('holiday.txt', 'photos'), broken], { set() {} }), /No Claude export data found/);
+  const other = new File(['not one either'], 'export-003.zip');
+  await assert.rejects(importExport([looseFile('holiday.txt', 'photos'), broken, other], { set() {} }),
+    /^Error: Nothing could be read from what you picked\. export-002\.zip: export-002\.zip is not a ZIP file .* \(1 more problem\)$/);
   // The failed attempt adds no rows to "About this export".
   assert.deepEqual([DB.sources.length, DB.warnings.length, DB.ignored.length], [0, 0, 0]);
   await importExport([looseFile('users.json', USERS)], { set() {} });

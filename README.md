@@ -84,7 +84,7 @@ You can load any subset. Missing parts show up as empty sections. Keep the tab o
 - **Older export formats** work too (`projects.json`, `memories.json`, chats without branches). You can **load several exports together**: when the same item is in two exports, the newer copy wins.
 - **Dark mode** (follows your system; ◐ switches it), **right-to-left** text such as Hebrew and Arabic, and a layout that works on **phones and tablets**.
 - **Keyboard and screen readers.** Everything works with the keyboard alone. A skip link leads to the content, the focus moves to the heading of each new page, and the page follows the system setting for less motion. The aim is WCAG 2.2 level AA: the sample data passes the automated axe-core checks in light and dark mode.
-- **Reopen last export** in Chrome and Edge: the page remembers which files you picked (not their content) and can open them again after a reload.
+- **Reopen last export** in desktop Chrome and Edge: the page remembers which files you picked (not their content) and can open them again after a reload.
 
 ## Privacy and security
 
@@ -116,7 +116,9 @@ These are limits of the export itself, not of the reader:
 
 Recent versions of **Chrome, Edge, Firefox and Safari** on desktop and mobile.
 
-The reader unpacks zip files with the browser's built-in `DecompressionStream('deflate-raw')`. That needs about Chrome or Edge 103, Firefox 113 or Safari 16.4, or newer. **Reopen last export** and the faster file pickers need the File System Access API, which today only Chrome and Edge have. Other browsers fall back to the normal file picker.
+- **Zip files** are unpacked with the browser's built-in `DecompressionStream('deflate-raw')`. That needs Chrome or Edge 103, Firefox 113 or Safari 16.4 (macOS, iOS and iPadOS), or newer. An older browser says so when you pick a zip. Then unzip the files first and choose the folder, or use a newer browser. Unzipped folders and the sample data should also work in somewhat older browsers (about Chrome 92, Firefox 90 and Safari 15.4), but those are not tested.
+- **Phones and tablets:** choose the `.zip` files. Picking a folder works only on desktop, and drag and drop may not be available.
+- **Reopen last export** and the faster file pickers need the File System Access API, which only desktop Chrome and Edge have (Brave turns it off by default). Other browsers use the normal file picker.
 
 ## Development
 

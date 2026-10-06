@@ -6,6 +6,7 @@ const App = {
   focus: null,          // Person id that scopes every list, or null
   route: { path: [], query: {} },
   lastHash: '',
+  canReopen: false,     // a load in this tab saved file handles for "Reopen last export"
 };
 
 const $ = (sel, root) => (root || document).querySelector(sel);

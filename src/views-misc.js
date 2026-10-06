@@ -277,7 +277,7 @@ function viewAbout() {
       <li>The export contains text only. Uploaded images, PDFs and screenshots appear as names, not files.</li>
       <li>Conversations are not linked to projects in the export, so a project page cannot list its chats.</li>
       <li>Artifacts may keep only their latest 20 versions. Some artifacts use claude.ai features (shared data, hosted images) that do not work offline.</li>
-      <li>Everything stays in this tab. Reloading the page forgets the data${window.showOpenFilePicker ? '; use “Reopen last export” on the start screen to load it again quickly' : ', so you pick the files again'}.</li>
+      <li>Everything stays in this tab. Reloading the page forgets the data${App.canReopen ? '; use “Reopen last export” on the start screen to load it again quickly' : ', so you pick the files again'}.</li>
     </ul></div>
   </div>`;
 }

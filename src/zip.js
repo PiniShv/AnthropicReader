@@ -12,6 +12,15 @@ const ZIP_SIG_LOC = 0x04034b50;
 
 const utf8 = new TextDecoder('utf-8');
 
+/* Unpacking DEFLATE needs DecompressionStream('deflate-raw'): Chrome and Edge 103, Firefox
+ * 113, Safari 16.4. Older browsers have no DecompressionStream, or one without 'deflate-raw'
+ * (Chrome 80-102), so a zip that needs it fails at once with this message, not later with an
+ * engine error per file. STORED zips (the sample data) and unzipped folders still work. */
+const NO_INFLATE = 'This browser cannot unpack zip files. Use Chrome or Edge 103, Firefox 113 or Safari 16.4 or newer, or unzip the files first and choose the folder.';
+function canInflate() {
+  try { new DecompressionStream('deflate-raw'); return true; } catch (e) { return false; }
+}
+
 async function readSlice(blob, start, end) {
   return new Uint8Array(await blob.slice(start, end).arrayBuffer());
 }
@@ -166,6 +175,7 @@ class ZipArchive {
   static async open(file) {
     const zip = new ZipArchive(file);
     await zip._readDirectory();
+    if (zip.entries.some(e => e.method === 8) && !canInflate()) throw new Error(NO_INFLATE);
     return zip;
   }
 

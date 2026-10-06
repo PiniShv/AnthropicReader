@@ -208,14 +208,21 @@ async function openArtifactFile(path, node) {
   const ext = fileExt(path);
   box.innerHTML = '<p class="muted">Opening…</p>';
   const head = `<div class="row" style="margin-bottom:8px"><b class="mono" dir="auto">${esc(path)}</b><span class="grow"></span><button class="btn small" type="button" ${on(() => node.blob(mimeFor(path)).then(b => downloadBlob(b, path.split('/').pop())))}>Download</button></div>`;
+  // Images and video get an object URL, not a data: URL: no base64 copy, and no size limit
+  // (Firefox caps data: URLs). It is freed when the page goes.
+  const objectUrl = async () => {
+    const url = URL.createObjectURL(await node.blob(mimeFor(path)));
+    signal.addEventListener('abort', () => URL.revokeObjectURL(url), { once: true });
+    return url;
+  };
   if (/^(png|jpe?g|gif|webp|svg|avif|ico|bmp)$/.test(ext)) {
-    const src = dataUrl(path, await node.bytes());
+    const src = await objectUrl();
     if (signal.aborted) return;
     box.innerHTML = head + `<img alt="${esc(path.split('/').pop())}" style="max-width:100%;border:1px solid var(--border);border-radius:6px" src="${src}">`;
   } else if (/^(mp4|webm)$/.test(ext)) {
-    const blob = await node.blob(mimeFor(path));
+    const src = await objectUrl();
     if (signal.aborted) return;
-    box.innerHTML = head + `<video controls style="max-width:100%" src="${URL.createObjectURL(blob)}"></video>`;
+    box.innerHTML = head + `<video controls style="max-width:100%" src="${src}"></video>`;
   } else if (isTextExt(ext) || node.size < 2e6) {
     const t = await node.text();
     if (signal.aborted) return;
@@ -253,7 +260,7 @@ async function drawPage(a, want) {
     <div class="card-pad" id="page-body">${mdBlock(body)}</div>
     <div class="frame-bar" style="border-top:1px solid var(--border);border-bottom:0">
       <button class="btn small" type="button" ${on(() => a.pageNode.blob('text/markdown').then(b => downloadBlob(b, safeFilename(artifactTitle(a), 'page') + '.md')))}>Download page.md</button>
-      <button class="btn small" type="button" ${on(() => a.pageNode.text().then(copyText))}>Copy Markdown</button>
+      <button class="btn small" type="button" ${on(() => copyText(md))}>Copy Markdown</button>
     </div>
   </div>
   ${(a.comments || []).length ? `<h2 class="section-title">Comments${tabs.length > 1 ? ' on this tab' : ''} <span class="badge">${threads.reduce((n, t) => n + (t.comments || []).length, 0)}</span></h2><div class="card card-pad">${threads.length ? pageCommentsHtml(a, threads) : '<p class="faint">No comments on this tab.</p>'}</div>` : ''}`;

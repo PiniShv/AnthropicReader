@@ -54,7 +54,7 @@ async function startLoad(files, handles) {
   try {
     const before = DB.warnings.length;
     await importExport(files, Loader);
-    if (handles && handles.length) HandleStore.save(handles);
+    if (handles && handles.length) HandleStore.save(handles).then(ok => { if (ok) App.canReopen = true; });
     const problems = DB.warnings.slice(before);
     if (problems.length) {
       // Do not hide failures behind the app: say what is missing and let the person decide.

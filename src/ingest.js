@@ -385,8 +385,13 @@ const SMALL_INGEST = new Map([
 ]);
 
 // Calls fn for the record, or for each record when v is a list.
-function each(v, fn) {
-  for (const x of Array.isArray(v) ? v : [v]) fn(x);
+/* Calls fn for each record of a file that holds one record or a list of them. A list is
+ * streamed, one record at a time: an old-format projects.json or memories.json can be bigger
+ * than the longest string Chrome allows (about 512 MB; Firefox and Safari allow more). */
+async function readEach(node, fn) {
+  let any = false;
+  await parseJsonArrayStream(await node.stream(), v => { any = true; fn(v); });
+  if (!any && !node.size) throw new Error('The file is empty.');
 }
 
 async function importExport(files, ui) {
@@ -416,7 +421,7 @@ async function importExport(files, ui) {
 
   // 1. People. Only finalize() has to come last: no add…() function reads another kind.
   for (const n of groups.users) {
-    try { each(await readJson(n), addUser); } catch (e) { DB.warnings.push(n.path + ': ' + e.message); }
+    try { await readEach(n, addUser); } catch (e) { DB.warnings.push(n.path + ': ' + e.message); }
   }
   ui.set('users', 'People', 1, plural(DB.people.size, 'person', 'people'), 'done');
 
@@ -448,7 +453,7 @@ async function importExport(files, ui) {
   const small = [...SMALL_INGEST.keys()].flatMap(kind => groups[kind].map(n => [kind, n]));
   let smallDone = 0;
   await mapLimit(small, 8, async ([kind, n]) => {
-    try { each(await readJson(n), x => SMALL_INGEST.get(kind)(x, n.container)); }
+    try { await readEach(n, x => SMALL_INGEST.get(kind)(x, n.container)); }
     catch (e) { DB.warnings.push(n.path + ': ' + e.message); }
     smallDone++;
     if (smallDone % 10 === 0 || smallDone === small.length) {
@@ -502,8 +507,12 @@ async function importExport(files, ui) {
   if (!hasRecords() && !DB.manifests.length) {
     // Records are never removed, so nothing was loaded before this attempt either. Start
     // clean, so the failed attempt leaves no sources, warnings or ignored files behind.
+    // When files failed, say why: the reason may be the browser, not the files.
+    const failed = DB.warnings.slice();
     Object.assign(DB, emptyDB());
-    throw new Error('No Claude export data found in what you picked. Choose the .zip files from the export, or the folder they were unpacked into.');
+    throw new Error(failed.length
+      ? `Nothing could be read from what you picked. ${failed[0]}${failed.length > 1 ? ` (${plural(failed.length - 1, 'more problem')})` : ''}`
+      : 'No Claude export data found in what you picked. Choose the .zip files from the export, or the folder they were unpacked into.');
   }
 }
 

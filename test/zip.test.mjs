@@ -242,6 +242,19 @@ test('reads a ZIP64 archive (EOCD64 record, locator and 0x0001 extra field)', as
   assert.equal(await zip.entries[3].text(), 'classic fields');
 });
 
+test('without deflate-raw, a DEFLATE zip fails at once with a clear message; a STORED zip still opens', async () => {
+  // A browser before Chrome 103: DecompressionStream exists, but not for 'deflate-raw'.
+  const old = loadApp({ files: ['src/zip.js'] });
+  old.run(`globalThis.DecompressionStream = class { constructor(f) { if (f === 'deflate-raw') throw new TypeError('Unsupported compression format'); } }`);
+  const deflated = new File([buildZip([{ name: 'conversations.json', data: '[]' }])], 'conversations-000.zip');
+  await assert.rejects(old.api.ZipArchive.open(deflated), /cannot unpack zip files\. Use Chrome or Edge 103, Firefox 113 or Safari 16\.4 or newer, or unzip the files first/);
+  const stored = await old.api.ZipArchive.open(new File([buildZip([{ name: 'users.json', data: '[]', method: 0 }])], 'light_metadata-000.zip'));
+  assert.equal(await stored.entries[0].text(), '[]');
+  // A browser before Firefox 113: no DecompressionStream at all.
+  old.run('delete globalThis.DecompressionStream');
+  await assert.rejects(old.api.ZipArchive.open(deflated), /cannot unpack zip files/);
+});
+
 test('a file that is not a zip fails with a clear error', async () => {
   await assert.rejects(ZipArchive.open(new File(['just some text, not a zip'], 'notes.zip')), /notes\.zip is not a ZIP file/);
   await assert.rejects(ZipArchive.open(new File([], 'empty.zip')), /empty\.zip is not a ZIP file/);

@@ -202,7 +202,9 @@ button.linklike:hover { text-decoration: underline; }
 .lp-row.error { color: var(--err); }
 
 /* ---------- App shell ---------- */
-.shell { display: grid; grid-template-columns: 232px 1fr; grid-template-rows: 54px 1fr; height: 100vh; }
+/* dvh: on phones 100vh is the height without the browser bars, so the end of the page would
+ * sit under them. Browsers without dvh keep 100vh. */
+.shell { display: grid; grid-template-columns: 232px 1fr; grid-template-rows: 54px 1fr; height: 100vh; height: 100dvh; }
 .topbar {
   grid-column: 1 / -1; display: flex; align-items: center; gap: 12px;
   padding: 0 16px; background: var(--surface); border-bottom: 1px solid var(--border);
@@ -274,7 +276,7 @@ table.list { width: 100%; border-collapse: collapse; font-size: 14px; }
 table.list th {
   text-align: left; font-weight: 600; font-size: 12.5px; color: var(--muted);
   padding: 9px 12px; border-bottom: 1px solid var(--border); background: var(--surface-2);
-  position: sticky; top: 0; white-space: nowrap; user-select: none;
+  position: sticky; top: 0; white-space: nowrap; -webkit-user-select: none; user-select: none;
 }
 /* A sortable column's header is a button, so it works from the keyboard. */
 table.list th .th-sort { border: 0; background: none; padding: 0; color: inherit; font-weight: inherit; cursor: pointer; white-space: nowrap; }
