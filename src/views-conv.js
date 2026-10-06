@@ -108,8 +108,8 @@ function viewConversation(id) {
         </div>
       </div>
       <div class="row wrap">
-        <button class="btn small" type="button" ${on(() => copyText(convToMarkdown(conv)))}>Copy as Markdown</button>
-        <button class="btn small" type="button" ${on(() => downloadText(safeFilename(conv.title, 'conversation') + '.md', convToMarkdown(conv)))}>Download .md</button>
+        <button class="btn small" type="button" ${on(() => copyText(convToMarkdown(conv, currentPath(conv))))}>Copy as Markdown</button>
+        <button class="btn small" type="button" ${on(() => downloadText(safeFilename(conv.title, 'conversation') + '.md', convToMarkdown(conv, currentPath(conv))))}>Download .md</button>
         <button class="btn small" type="button" ${on(() => downloadText(safeFilename(conv.title, 'conversation') + '.json', jsonPretty(conv.raw)))}>.json</button>
         <button class="btn small ghost" type="button" ${on(() => window.print())} title="Print or save as PDF" aria-label="Print or save as PDF">⎙</button>
       </div>

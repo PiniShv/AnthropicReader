@@ -60,12 +60,13 @@ function buildTree(conv) {
   return t;
 }
 
-// The visible path: from the root, at each fork take the chosen child, else the child whose
-// branch holds the newest message (the last array element is always the current leaf).
-function currentPath(conv) {
+/* A path through the branches: from the root, at each fork take the chosen child (choice:
+ * parent id -> child id), else the child whose branch holds the newest message (the last
+ * array element is always the current leaf). Without a choice, the newest path. */
+function branchPath(conv, choice) {
   const t = buildTree(conv);
   if (t.linear) return t.msgs.slice();
-  const choice = BRANCH_CHOICE.get(conv.id) || new Map();
+  choice = choice || new Map();
   const path = [];
   let cur = ROOT_PARENT;
   const seen = new Set();
@@ -82,6 +83,9 @@ function currentPath(conv) {
   }
   return path;
 }
+
+// The path the thread shows: the branches picked in this tab (branch arrows, search hits).
+const currentPath = conv => branchPath(conv, BRANCH_CHOICE.get(conv.id));
 
 // Make sure a message (e.g. a search hit on another branch) is on the visible path.
 function selectBranchFor(conv, msgId) {

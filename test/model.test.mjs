@@ -862,6 +862,25 @@ test('conversation stats: branch points, tool calls, outputs and links to artifa
   assert.deepEqual(Array.from(a.mentionedIn, x => x.id), [conv(1)]);
 });
 
+test('the person zip has the newest branch of a chat, whatever branch this tab shows', async () => {
+  const root = '00000000-0000-4000-8000-000000000000';
+  const c = conversation(conv(7), ADA, 'Two tries', [
+    message('t1', 'human', 'First question', { parent_message_uuid: root }),
+    message('t2', 'assistant', 'First answer', { parent_message_uuid: 't1' }),
+    message('t1b', 'human', 'Edited question', { parent_message_uuid: root }),
+    message('t2b', 'assistant', 'Newest answer', { parent_message_uuid: 't1b' }),
+  ]);
+  const { api } = await importFiles([looseFile('users.json', USERS), looseFile('conversations.json', [c])]);
+  const got = api.DB.convById.get(conv(7));
+  api.selectBranchFor(got, 't2');   // the older branch is open in the thread
+  assert.match(api.convToMarkdown(got, api.currentPath(got)), /First answer/);
+  const blob = await api.buildPersonZip(person(api, ADA), { allVersions: false }, () => {}, () => false);
+  const out = await api.ZipArchive.open(new File([blob], 'ada.zip'));
+  const md = await out.entries.find(e => /^conversations\/.*\.md$/.test(e.name)).text();
+  assert.match(md, /Newest answer/);
+  assert.doesNotMatch(md, /First answer/);
+});
+
 test('the branch and output badges count what the thread and the outputs box show', async () => {
   const c = conversation(conv(2), ADA, 'Odd chat', [
     // No parent, and a parent that is not in the export: the thread shows both as branches of the start.

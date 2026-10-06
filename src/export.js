@@ -3,7 +3,8 @@
 
 /* ---------- Markdown ---------- */
 
-function convToMarkdown(conv) {
+// path: the messages to write, in order (currentPath() or branchPath()).
+function convToMarkdown(conv, path) {
   const p = conv.owner;
   const lines = [];
   lines.push('# ' + (conv.title || 'Untitled conversation'));
@@ -14,7 +15,6 @@ function convToMarkdown(conv) {
   lines.push('');
   if (conv.summary) { lines.push('## Summary', '', conv.summary.trim(), ''); }
   lines.push('---', '');
-  const path = currentPath(conv);
   for (const m of path) lines.push(messageToMarkdown(conv, m), '');
   const off = conv.msgCount - path.length;
   if (off > 0) lines.push('---', '', `_${plural(off, 'message')} on other branches (edited or regenerated) are not shown here; they are in the .json file._`);
@@ -109,7 +109,8 @@ async function buildPersonZip(p, opts, progress, isCancelled) {
   for (const c of p.conversations) {
     if (isCancelled()) return null;
     const base = 'conversations/' + nameOf(c.created, c.title, c.id);
-    z.add(base + '.md', convToMarkdown(c));
+    // The newest branch, whatever branches were opened in this tab.
+    z.add(base + '.md', convToMarkdown(c, branchPath(c)));
     z.add(base + '.json', JSON.stringify(c.raw, null, 2));
     if (++i % 20 === 0) { progress(`Conversations ${i} / ${p.conversations.length}`); await new Promise(r => setTimeout(r, 0)); }
   }

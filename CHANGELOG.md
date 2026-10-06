@@ -29,6 +29,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Fixed
 
+- The Markdown of each chat in the per-person zip always follows the newest branch. Before, it followed the branches you had opened in the tab, so the same download could differ.
 - In the preview of a multi-file artifact, a stylesheet's images and fonts no longer break other paths that contain the same name. Before, inlining `a.png` also changed `data.png` and any other text with `a.png` in it.
 - Downloaded files get names that also work on Windows: no dot or space at the end, and no name that Windows keeps for a device (`CON`, `NUL`, `COM1`, …). In the per-person zip, the paths of artifact files are now cleaned like the other paths.
 - Zip files made on Windows, with backslashes in the file names inside, now load fully. Before, their artifacts and other files in folders were not found.
