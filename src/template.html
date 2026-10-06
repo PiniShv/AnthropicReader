@@ -9,8 +9,9 @@
 <style>/*__STYLES__*/</style>
 </head>
 <body>
+<a class="skip-link" href="#main">Skip to content</a>
 
-<section id="landing" class="landing">
+<section id="landing" class="landing" role="main">
   <div class="landing-card">
     <h1>Claude Export Reader</h1>
     <p class="lede">Browse a Claude team data export: every person, conversation, project, artifact, design chat and memory. Everything runs inside this browser tab. Nothing is uploaded.</p>
@@ -47,25 +48,27 @@
 
 <div id="shell" class="shell" hidden>
   <header class="topbar">
-    <button class="btn ghost small menu-btn" id="menu-btn" type="button" aria-label="Menu">☰</button>
+    <button class="btn ghost small menu-btn" id="menu-btn" type="button" aria-label="Menu" aria-expanded="false" aria-controls="sidebar">☰</button>
     <a class="brand" href="#/"><span class="brand-mark" aria-hidden="true">≡</span><span class="txt">Export Reader</span></a>
     <form class="topsearch" id="topsearch" role="search" autocomplete="off">
-      <input class="input" id="q" type="search" placeholder="Search everything…" aria-label="Search everything">
-      <kbd id="q-kbd">/</kbd>
+      <input class="input" id="q" type="search" placeholder="Search everything…" aria-label="Search everything" aria-keyshortcuts="Control+K Meta+K">
+      <kbd id="q-kbd" aria-hidden="true">Ctrl K</kbd>
     </form>
     <div class="top-actions">
       <div style="position:relative">
-        <button class="btn small" id="person-btn" type="button" aria-haspopup="listbox" aria-label="Focus on a person">👤 <span id="person-btn-label">Focus on a person</span></button>
-        <div class="picker" id="picker" hidden></div>
+        <button class="btn small" id="person-btn" type="button" aria-haspopup="dialog" aria-expanded="false" aria-controls="picker" aria-label="Focus on a person">👤 <span id="person-btn-label">Focus on a person</span></button>
+        <div class="picker" id="picker" role="dialog" aria-label="Focus on a person" hidden></div>
       </div>
-      <button class="btn small ghost" id="theme-btn" type="button" title="Switch light / dark">◐</button>
-      <button class="btn small ghost" id="load-btn" type="button" title="Open another export">⇪</button>
+      <button class="btn small ghost" id="theme-btn" type="button" title="Switch light / dark" aria-label="Dark theme" aria-pressed="false">◐</button>
+      <button class="btn small ghost" id="load-btn" type="button" title="Open another export" aria-label="Open another export">⇪</button>
     </div>
   </header>
   <nav class="sidebar" id="sidebar" aria-label="Sections"></nav>
   <main class="main" id="main" tabindex="-1"></main>
 </div>
 
+<!-- Short messages for screen readers ("Copied", search results); see announce() in render.js. -->
+<div id="sr-status" class="sr-only" role="status"></div>
 <input type="file" id="file-input" multiple hidden>
 <input type="file" id="folder-input" webkitdirectory multiple hidden>
 

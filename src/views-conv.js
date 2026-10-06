@@ -12,7 +12,7 @@ function convBadges(c) {
   if (c.empty) b.push('<span class="chip warn" title="The export has no message content for this chat">no content in export</span>');
   if (c.forks) b.push(`<span class="chip" title="Edited or regenerated messages">${plural(c.forks, 'branch point')}</span>`);
   if (c.outputCount) b.push(`<span class="chip" title="Files, artifacts or widgets Claude produced">${plural(c.outputCount, 'output')}</span>`);
-  if (c.fileCount) b.push(`<span class="chip" title="Uploaded files">📎 ${c.fileCount}</span>`);
+  if (c.fileCount) b.push(`<span class="chip" title="Uploaded files"><span aria-hidden="true">📎</span> ${c.fileCount}<span class="sr-only"> uploaded ${c.fileCount === 1 ? 'file' : 'files'}</span></span>`);
   return b.join(' ');
 }
 
@@ -38,7 +38,7 @@ function convTable(list, key, showOwner) {
     text: c => [c.title, c.summary, c.owner && c.owner.name, c.owner && c.owner.email, c.id].join(' '),
     placeholder: 'Filter by title, summary or person…',
     empty: 'No conversations.',
-    extraToolbar: empties ? `<label class="row muted" style="font-size:14px"><input type="checkbox" ${on(el => { CONV_OPTS.hideEmpty = el.checked; saveConvOpts(); onRoute(); })}${CONV_OPTS.hideEmpty ? ' checked' : ''}> Hide ${empties} without content</label>` : '',
+    extraToolbar: empties ? `<label class="row muted" style="font-size:14px"><input type="checkbox" id="conv-hide-empty" ${on(el => { CONV_OPTS.hideEmpty = el.checked; saveConvOpts(); onRoute(true); })}${CONV_OPTS.hideEmpty ? ' checked' : ''}> Hide ${empties} without content</label>` : '',
   });
 }
 
@@ -84,6 +84,8 @@ function viewConversation(id) {
   const path = currentPath(conv);
   const offBranch = totalMsgs - path.length;
   const outputs = collectOutputs(conv);
+  // A toolbar option: a toggle button (aria-pressed) that redraws the thread.
+  const opt = (key, icon, label, title) => `<button class="chip${CONV_OPTS[key] ? ' on' : ''}" type="button" aria-pressed="${CONV_OPTS[key]}"${title ? ` title="${title}"` : ''} ${on(el => setConvOpt(draw, key, el))}><span aria-hidden="true">${icon}</span> ${label}</button>`;
 
   after(() => {
     draw({ target });
@@ -109,7 +111,7 @@ function viewConversation(id) {
         <button class="btn small" type="button" ${on(() => copyText(convToMarkdown(conv)))}>Copy as Markdown</button>
         <button class="btn small" type="button" ${on(() => downloadText(safeFilename(conv.title, 'conversation') + '.md', convToMarkdown(conv)))}>Download .md</button>
         <button class="btn small" type="button" ${on(() => downloadText(safeFilename(conv.title, 'conversation') + '.json', jsonPretty(conv.raw)))}>.json</button>
-        <button class="btn small ghost" type="button" ${on(() => window.print())} title="Print or save as PDF">⎙</button>
+        <button class="btn small ghost" type="button" ${on(() => window.print())} title="Print or save as PDF" aria-label="Print or save as PDF">⎙</button>
       </div>
     </div>
 
@@ -117,12 +119,12 @@ function viewConversation(id) {
     ${outputs.length ? outputsBox(conv, outputs, draw) : ''}
 
     <div class="conv-toolbar" id="conv-toolbar">
-      <label class="chip${CONV_OPTS.showTools ? ' on' : ''}"><input type="checkbox" ${on(el => setConvOpt(draw, 'showTools', el))} ${CONV_OPTS.showTools ? 'checked' : ''} hidden>⚙ Tool calls</label>
-      <label class="chip${CONV_OPTS.showThinking ? ' on' : ''}"><input type="checkbox" ${on(el => setConvOpt(draw, 'showThinking', el))} ${CONV_OPTS.showThinking ? 'checked' : ''} hidden>💭 Thinking</label>
-      <label class="chip${CONV_OPTS.showSystem ? ' on' : ''}" title="Text the platform added to messages (memory snapshots, dates)"><input type="checkbox" ${on(el => setConvOpt(draw, 'showSystem', el))} ${CONV_OPTS.showSystem ? 'checked' : ''} hidden>⚑ System notes</label>
+      ${opt('showTools', '⚙', 'Tool calls')}
+      ${opt('showThinking', '💭', 'Thinking')}
+      ${opt('showSystem', '⚑', 'System notes', 'Text the platform added to messages (memory snapshots, dates)')}
       <button class="chip" type="button" ${on(expandAll)}>Expand all</button>
       <button class="chip" type="button" ${on(collapseAll)}>Collapse all</button>
-      ${q ? `<span class="chip on">Highlighting “${esc(q)}” <a href="#/c/${encodeURIComponent(conv.id)}" title="Clear">×</a></span><span class="muted" id="hit-count" style="font-size:13px"></span>` : ''}
+      ${q ? `<span class="chip on">Highlighting “${esc(q)}” <a href="#/c/${encodeURIComponent(conv.id)}" title="Clear" aria-label="Stop highlighting">×</a></span><span class="muted" id="hit-count" style="font-size:13px" role="status"></span>` : ''}
     </div>
 
     ${conv.empty ? `<div class="notice warn">${totalMsgs
@@ -134,9 +136,10 @@ function viewConversation(id) {
 
 // A toolbar option (tool calls, thinking, system notes): save it and redraw the thread in place.
 function setConvOpt(draw, key, el) {
-  CONV_OPTS[key] = el.checked;
+  CONV_OPTS[key] = !CONV_OPTS[key];
   saveConvOpts();
-  el.closest('.chip').classList.toggle('on', el.checked);
+  el.classList.toggle('on', CONV_OPTS[key]);
+  el.setAttribute('aria-pressed', String(CONV_OPTS[key]));
   draw({ anchor: threadAnchor() });
 }
 
@@ -208,6 +211,9 @@ function drawThread(conv, terms, opts) {
       el.classList.add('flash');
       const firstMark = el.querySelector('mark');
       if (firstMark) firstMark.scrollIntoView({ block: 'center' });
+      // The keyboard and screen readers go on from the message the link pointed at.
+      el.tabIndex = -1;
+      el.focus({ preventScroll: true });
     }
   }
 }
@@ -223,9 +229,9 @@ function messageHtml(m, ctx) {
   const prev = sibs[idx - 1], next = sibs[idx + 1];
   const branch = sibs.length > 1
     ? `<span class="branch-nav" title="${human ? 'This message was edited' : 'This reply was regenerated'}: ${sibs.length} versions">
-        <button type="button" ${prev ? on(el => switchBranch(ctx, prev.uuid, el)) : 'disabled'} aria-label="Previous version">‹</button>
+        <button type="button" ${prev ? on(el => switchBranch(ctx, prev.uuid, el, 0)) : 'disabled'} aria-label="Previous version">‹</button>
         ${idx + 1} / ${sibs.length}
-        <button type="button" ${next ? on(el => switchBranch(ctx, next.uuid, el)) : 'disabled'} aria-label="Next version">›</button>
+        <button type="button" ${next ? on(el => switchBranch(ctx, next.uuid, el, 1)) : 'disabled'} aria-label="Next version">›</button>
       </span>` : '';
   const blocks = Array.isArray(m.content) ? m.content : [];
   const firstStart = blocks.reduce((min, b) => { const t = parseTime(b && b.start_timestamp); return t && (!min || t < min) ? t : min; }, 0);
@@ -240,8 +246,8 @@ function messageHtml(m, ctx) {
       ${dur ? `<span class="faint" title="Time to answer">· ${esc(dur)}</span>` : ''}
       ${branch}
       <span class="msg-actions">
-        <button class="btn small ghost" type="button" ${on(() => copyText(messageToMarkdown(conv, m)))} title="Copy message text">⧉</button>
-        <button class="btn small ghost" type="button" ${on(() => copyText(location.href.split('#')[0] + '#/c/' + conv.id + '?m=' + m.uuid))} title="Copy link to this message">#</button>
+        <button class="btn small ghost" type="button" ${on(() => copyText(messageToMarkdown(conv, m)))} title="Copy message text" aria-label="Copy message text">⧉</button>
+        <button class="btn small ghost" type="button" ${on(() => copyText(location.href.split('#')[0] + '#/c/' + conv.id + '?m=' + m.uuid))} title="Copy link to this message" aria-label="Copy link to this message">#</button>
       </span>
     </div>
     <div class="msg-body">${body || '<span class="faint">(empty message)</span>'}</div>
@@ -249,11 +255,17 @@ function messageHtml(m, ctx) {
 }
 
 // Show another version of an edited or regenerated message, keeping it where it is on screen.
-function switchBranch(ctx, to, el) {
+// The thread is drawn again, so the focus goes to the same arrow (side 0 ‹, 1 ›) of the new
+// version, or to its other arrow when that one is the last.
+function switchBranch(ctx, to, el, side) {
   const msgEl = el.closest('.msg');
   const anchor = msgEl ? { id: to, top: msgEl.getBoundingClientRect().top } : threadAnchor();
   selectBranchFor(ctx.conv, to);
   ctx.draw({ anchor });
+  const msg = document.getElementById('m-' + to);
+  const arrows = msg ? $$('.branch-nav button', msg) : [];
+  const next = arrows[side] && !arrows[side].disabled ? arrows[side] : arrows.find(b => !b.disabled);
+  if (next) next.focus();
 }
 
 const HUMAN_FOLD = 3000;
@@ -711,13 +723,16 @@ function gotoBlock(conv, draw, msgId, target) {
   revealBlock(target);
 }
 
-// Open a block and every collapsed group around it, then scroll to it.
+// Open a block and every collapsed group around it, then scroll to it and move the focus there.
 function revealBlock(id) {
   const t = document.getElementById(id);
   if (!t) { toast('Could not find that item in the conversation'); return false; }
   for (let d = t.parentElement && t.parentElement.closest('details'); d; d = d.parentElement && d.parentElement.closest('details')) d.open = true;
   if (t.tagName === 'DETAILS') t.open = true;
-  t.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  t.scrollIntoView({ behavior: scrollMotion(), block: 'start' });
   t.classList.add('flash');
+  const summary = t.tagName === 'DETAILS' && t.querySelector(':scope > summary');
+  if (!summary) t.tabIndex = -1;
+  (summary || t).focus({ preventScroll: true });
   return true;
 }

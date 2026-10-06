@@ -91,17 +91,24 @@ function renderRoute(r) {
 }
 
 function notFound(msg) {
-  return `<div class="page narrow"><div class="empty"><h2>Not found</h2><p>${esc(msg)}</p><p><a href="#/">Go to the start page</a></p></div></div>`;
+  return `<div class="page narrow"><div class="empty"><h1>Not found</h1><p>${esc(msg)}</p><p><a href="#/">Go to the start page</a></p></div></div>`;
 }
 
 /* ---------- Sidebar ---------- */
 
+const APP_NAME = document.title;
+
+/* The sidebar, and the tab's title: the name of the active section. Titles never hold export
+ * data (a person's name, a chat title), because the browser keeps them in its history. */
 function renderSidebar() {
   const r = App.route.path;
   const sec = r[0] || '';
   const fp = focusPerson();
-  const link = (href, ico, label, count, active) =>
-    `<a class="nav-link${active ? ' active' : ''}" href="${href}"><span class="ico">${ico}</span>${esc(label)}${count != null ? `<span class="badge">${fmtNum(count)}</span>` : ''}</a>`;
+  let section = '';
+  const link = (href, ico, label, count, active, title) => {
+    if (active) section = title || label;
+    return `<a class="nav-link${active ? ' active' : ''}" href="${href}"${active ? ' aria-current="page"' : ''}><span class="ico" aria-hidden="true">${ico}</span>${esc(label)}${count != null ? `<span class="badge">${fmtNum(count)}</span>` : ''}</a>`;
+  };
   const activeFor = (...names) => names.includes(sec);
   const peopleCount = Array.from(DB.people.values()).filter(p => !p.system).length;
   $('#sidebar').innerHTML = `
@@ -113,7 +120,7 @@ function renderSidebar() {
     <div class="nav-group">
       ${link('#/', ICONS.home, 'Start', null, sec === '')}
       ${link('#/people', ICONS.people, 'People', peopleCount, activeFor('people', 'person') && !(sec === 'person' && fp && r[1] === fp.id))}
-      ${fp ? link('#/person/' + encodeURIComponent(fp.id), '★', fp.name.split(' · ')[0] + '’s profile', null, sec === 'person' && r[1] === fp.id) : ''}
+      ${fp ? link('#/person/' + encodeURIComponent(fp.id), '★', fp.name.split(' · ')[0] + '’s profile', null, sec === 'person' && r[1] === fp.id, 'People') : ''}
     </div>
     <div class="nav-group">
       <div class="nav-title">${fp ? 'Their data' : 'Everything'}</div>
@@ -123,6 +130,7 @@ function renderSidebar() {
       ${link('#/search', ICONS.search, 'Search', null, sec === 'search')}
       ${link('#/about', ICONS.about, 'About this export', null, sec === 'about')}
     </div>`;
+  document.title = section ? section + ' · ' + APP_NAME : APP_NAME;
 }
 
 /* ---------- Generic sortable / filterable table ---------- */
@@ -145,9 +153,9 @@ function tableHtml(spec) {
     mountTable({ spec, st, wrap: document.getElementById(id), bar: document.getElementById(barId), chips: document.getElementById(chipsId), ft: new WeakMap() });
   });
   return `${chips}<div class="toolbar" id="${barId}">
-      <input class="input filter" type="search" placeholder="${esc(spec.placeholder || 'Filter…')}" value="${esc(st.filter)}" aria-label="Filter">
+      <input class="input filter" type="search" placeholder="${esc(spec.placeholder || 'Filter…')}" value="${esc(st.filter)}" aria-label="Filter ${esc(spec.nounPlural || (spec.noun || 'item') + 's')}">
       ${spec.extraToolbar || ''}
-      <span class="count-note"></span>
+      <span class="count-note" role="status"></span>
     </div>
     <div class="table-wrap" id="${id}"></div>`;
 }
@@ -158,7 +166,7 @@ function facetChipsHtml(spec, st, id) {
   for (const r of spec.rows) { const v = spec.facet.of(r); counts.set(v, (counts.get(v) || 0) + 1); }
   if (!counts.size) return '';
   return `<div class="search-tabs" id="${id}">${Array.from(counts).sort((a, b) => b[1] - a[1])
-    .map(([v, n]) => `<button class="chip${st.facet === v ? ' on' : ''}" type="button" data-facet="${esc(v)}" title="Show only this type (click again for all)">${esc(v)} <b>${n}</b></button>`).join(' ')}</div>`;
+    .map(([v, n]) => `<button class="chip${st.facet === v ? ' on' : ''}" type="button" data-facet="${esc(v)}" aria-pressed="${st.facet === v}" title="Show only this type (click again for all)">${esc(v)} <b>${n}</b></button>`).join(' ')}</div>`;
 }
 
 function mountTable(t) {
@@ -169,6 +177,7 @@ function mountTable(t) {
     clearTimeout(timer);
     timer = setTimeout(() => { st.filter = input.value; st.limit = spec.page || 200; drawTable(t); }, 120);
   });
+  // Both redraw the table, so the focus moves to what replaced the button.
   wrap.addEventListener('click', e => {
     const th = e.target.closest('th[data-sort]');
     if (th) {
@@ -176,9 +185,19 @@ function mountTable(t) {
       if (st.sort === id) st.dir = -st.dir;
       else { st.sort = id; st.dir = spec.columns.find(c => c.id === id).asc ? 1 : -1; }
       drawTable(t);
+      const again = wrap.querySelector(`th[data-sort="${id}"] button`);
+      if (again) again.focus();
       return;
     }
-    if (e.target.closest('[data-more]')) { st.limit += spec.page || 200; drawTable(t); }
+    if (e.target.closest('[data-more]')) {
+      const first = st.limit;
+      st.limit += spec.page || 200;
+      drawTable(t);
+      // The first new row (its link), or else the next "Show more" button.
+      const row = wrap.querySelectorAll('tbody tr')[first];
+      const next = (row && row.querySelector('a')) || wrap.querySelector('[data-more]');
+      if (next) next.focus();
+    }
   });
   if (chips) {
     chips.addEventListener('click', e => {
@@ -219,9 +238,11 @@ function drawTable(t) {
   const rows = tableRows(t);
   const shown = rows.slice(0, st.limit);
   const head = spec.columns.map(c => {
-    const sortable = !!c.sortVal;
-    const arrow = st.sort === c.id ? `<span class="arrow">${st.dir < 0 ? '▼' : '▲'}</span>` : '';
-    return `<th class="${sortable ? 'sortable ' : ''}${c.thCls || c.cls || ''}" ${sortable ? `data-sort="${c.id}"` : ''}>${esc(c.label)}${arrow}</th>`;
+    const cls = c.thCls || c.cls || '';
+    if (!c.sortVal) return `<th class="${cls}">${esc(c.label)}</th>`;
+    const on = st.sort === c.id;
+    const arrow = on ? `<span class="arrow" aria-hidden="true">${st.dir < 0 ? '▼' : '▲'}</span>` : '';
+    return `<th class="${cls}" data-sort="${c.id}"${on ? ` aria-sort="${st.dir < 0 ? 'descending' : 'ascending'}"` : ''}><button class="th-sort" type="button">${esc(c.label)}${arrow}</button></th>`;
   }).join('');
   const cell = (c, r) => c.link ? `<a class="cell-link" href="${esc(spec.href(r))}">${c.html(r)}</a>` : c.html(r);
   const body = shown.map(r => `<tr data-href="${esc(spec.href(r))}">${spec.columns.map(c => `<td class="${c.cls || ''}">${cell(c, r)}</td>`).join('')}</tr>`).join('');
@@ -229,8 +250,16 @@ function drawTable(t) {
     ? `<table class="list"><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table>` +
       (rows.length > shown.length ? `<div class="more-row"><button class="btn small" type="button" data-more>Show ${fmtNum(Math.min(spec.page || 200, rows.length - shown.length))} more (${fmtNum(rows.length - shown.length)} left)</button></div>` : '')
     : `<div class="empty">${st.filter || st.facet ? 'Nothing matches the filter.' : esc(spec.empty || 'Nothing here.')}</div>`;
-  bar.querySelector('.count-note').textContent = st.filter || st.facet ? `${fmtNum(rows.length)} of ${fmtNum(spec.rows.length)}` : plural(spec.rows.length, spec.noun || 'item', spec.nounPlural);
-  if (chips) chips.querySelectorAll('[data-facet]').forEach(c => c.classList.toggle('on', c.dataset.facet === st.facet));
+  // A live region: set only when it changes, so sorting does not read the count again.
+  const note = bar.querySelector('.count-note');
+  const count = st.filter || st.facet ? `${fmtNum(rows.length)} of ${fmtNum(spec.rows.length)}` : plural(spec.rows.length, spec.noun || 'item', spec.nounPlural);
+  if (note.textContent !== count) note.textContent = count;
+  if (chips) {
+    chips.querySelectorAll('[data-facet]').forEach(c => {
+      c.classList.toggle('on', c.dataset.facet === st.facet);
+      c.setAttribute('aria-pressed', String(c.dataset.facet === st.facet));
+    });
+  }
 }
 
 /* Column helpers */
@@ -301,7 +330,7 @@ function miniConvList(list) {
   if (!list.length) return '<div class="card empty">No conversations.</div>';
   return `<div class="table-wrap"><table class="list"><tbody>${list.map(c => `
     <tr data-href="#/c/${encodeURIComponent(c.id)}">
-      <td class="title"><div dir="auto">${esc(c.title || 'Untitled conversation')}</div>${c.summary ? `<div class="snip" dir="auto">${esc(truncate(oneLine(stripMd(c.summary)), 220))}</div>` : ''}</td>
+      <td class="title"><a class="cell-link" href="#/c/${encodeURIComponent(c.id)}"><div dir="auto">${esc(c.title || 'Untitled conversation')}</div>${c.summary ? `<div class="snip" dir="auto">${esc(truncate(oneLine(stripMd(c.summary)), 220))}</div>` : ''}</a></td>
       <td class="hide-sm">${whoCell(c.owner)}</td>
       <td class="num">${fmtNum(c.msgCount)} msgs</td>
       <td class="date">${esc(fmtDate(c.lastTs))}</td>
@@ -348,7 +377,8 @@ function viewPeople() {
       let list = all.filter(p => (PEOPLE_STATE.showEmpty || p.total() > 0 || q) && (!q || personMatches(p, q)));
       list.sort((a, b) => PEOPLE_SORTS[PEOPLE_STATE.sort][1](a, b) || a.name.localeCompare(b.name));
       $('#people-grid').innerHTML = list.map(personCardHtml).join('') || '<div class="empty">No one matches.</div>';
-      $('#people-count').textContent = `${fmtNum(list.length)} shown`;
+      const count = `${fmtNum(list.length)} shown`;
+      if ($('#people-count').textContent !== count) $('#people-count').textContent = count;
     };
     const q = $('#people-q');
     q.addEventListener('input', () => { PEOPLE_STATE.q = q.value; draw(); });
@@ -365,7 +395,7 @@ function viewPeople() {
       <input class="input filter" id="people-q" type="search" placeholder="Filter by name or email…" value="${esc(PEOPLE_STATE.q)}" aria-label="Filter people">
       <select class="input" id="people-sort" aria-label="Sort people">${Object.entries(PEOPLE_SORTS).map(([k, [l]]) => `<option value="${k}"${PEOPLE_STATE.sort === k ? ' selected' : ''}>${l}</option>`).join('')}</select>
       <label class="row muted" style="font-size:14px"><input type="checkbox" id="people-empty"${PEOPLE_STATE.showEmpty ? ' checked' : ''}> Show people with no data (${empty})</label>
-      <span class="count-note" id="people-count"></span>
+      <span class="count-note" id="people-count" role="status"></span>
     </div>
     <div class="people-grid" id="people-grid"></div>
     ${none && none.total() ? `<p class="muted" style="margin-top:18px;font-size:14px">${plural(none.total(), 'item')} have no owner (agent-made artifacts, empty design chats). <a href="#/person/${NO_OWNER}">See them</a>.</p>` : ''}
@@ -380,8 +410,9 @@ function viewPerson(id, tab) {
   const counts = Object.fromEntries(PERSON_SECTIONS.map(s => [s.key, s.personCount(p)]));
   const isFocus = App.focus === p.id;
   const base = '#/person/' + encodeURIComponent(p.id);
-  const tabs = `<a class="tab${tab === 'overview' ? ' active' : ''}" href="${base}">Overview</a>` +
-    PERSON_SECTIONS.map(s => `<a class="tab${tab === s.key ? ' active' : ''}" href="${base}/${s.key}">${esc(s.label)} <span class="badge">${fmtNum(counts[s.key])}</span></a>`).join('');
+  const tabLink = (key, href, label) => `<a class="tab${tab === key ? ' active' : ''}" href="${href}"${tab === key ? ' aria-current="page"' : ''}>${label}</a>`;
+  const tabs = tabLink('overview', base, 'Overview') +
+    PERSON_SECTIONS.map(s => tabLink(s.key, `${base}/${s.key}`, `${esc(s.label)} <span class="badge">${fmtNum(counts[s.key])}</span>`)).join('');
   const sec = PERSON_SECTIONS.find(s => s.key === tab);
   if (tab !== 'overview' && !sec) return notFound('Unknown tab.');
   const body = sec ? sec.personTab(p) : personOverview(p, counts);
@@ -395,9 +426,9 @@ function viewPerson(id, tab) {
         <h1 class="row wrap">${esc(p.name)} ${unknownBadge(p)}</h1>
         <div class="sub">
           ${p.email ? `<a href="mailto:${esc(p.email)}">${esc(p.email)}</a>` : ''}
-          ${p.phone ? `<span class="row" style="gap:4px">📞 <span>${esc(maskPhone(p.phone))}</span> <button class="btn small ghost" type="button" ${on(el => { el.previousElementSibling.textContent = p.phone; el.remove(); })}>show</button></span>` : ''}
+          ${p.phone ? `<span class="row" style="gap:4px"><span aria-hidden="true">📞</span> <span tabindex="-1"><span class="sr-only">Phone: </span>${esc(maskPhone(p.phone))}</span> <button class="btn small ghost" type="button" aria-label="Show phone number" ${on(el => { const n = el.previousElementSibling; n.innerHTML = '<span class="sr-only">Phone: </span>' + esc(p.phone); el.remove(); n.focus(); })}>show</button></span>` : ''}
           <span>${firstLast}</span>
-          ${p.system ? '' : `<span class="mono faint" title="Account id">${esc(p.id)}</span> <button class="btn small ghost" type="button" ${on(() => copyText(p.id))} title="Copy id">⧉</button>`}
+          ${p.system ? '' : `<span class="mono faint" title="Account id">${esc(p.id)}</span> <button class="btn small ghost" type="button" ${on(() => copyText(p.id))} title="Copy id" aria-label="Copy account id">⧉</button>`}
         </div>
       </div>
       <div class="row wrap">
@@ -407,7 +438,7 @@ function viewPerson(id, tab) {
         <button class="btn small primary" type="button" ${on(() => exportPerson(p))} title="Download everything about this person as a .zip">Download their data</button>
       </div>
     </div>
-    <div class="tabs" role="tablist">${tabs}</div>
+    <nav class="tabs" aria-label="${esc(p.name)}’s data">${tabs}</nav>
     ${body}
   </div>`;
 }
@@ -440,10 +471,10 @@ function personOverview(p, counts) {
 
   // Recent activity timeline.
   const events = [];
-  withContent(p.conversations).forEach(c => events.push({ t: c.lastTs, ico: KIND.conversations.icon, html: `<a href="#/c/${encodeURIComponent(c.id)}" dir="auto">${esc(c.title || 'Untitled conversation')}</a> <span class="faint">· ${plural(c.msgCount, 'message')}</span>` }));
-  p.artifacts.forEach(a => events.push({ t: a.updated, ico: KIND.artifacts.icon, html: `<a href="#/a/${encodeURIComponent(a.id)}" dir="auto">${esc(artifactTitle(a))}</a> <span class="faint">· ${a.kind === 'page' ? 'page' : 'artifact'}, ${plural(a.versions.length, 'version')}</span>` }));
-  p.projects.forEach(x => events.push({ t: x.updated, ico: KIND.projects.icon, html: `<a href="#/p/${encodeURIComponent(x.id)}" dir="auto">${esc(x.name || 'Untitled project')}</a> <span class="faint">· project</span>` }));
-  p.designChats.forEach(d => events.push({ t: d.lastTs, ico: KIND.design.icon, html: `<a href="#/d/${encodeURIComponent(d.id)}" dir="auto">${esc(d.title)}</a> <span class="faint">· design chat in ${esc(d.project.name || 'a design project')}</span>` }));
+  withContent(p.conversations).forEach(c => events.push({ t: c.lastTs, kind: KIND.conversations, html: `<a href="#/c/${encodeURIComponent(c.id)}" dir="auto">${esc(c.title || 'Untitled conversation')}</a> <span class="faint">· ${plural(c.msgCount, 'message')}</span>` }));
+  p.artifacts.forEach(a => events.push({ t: a.updated, kind: KIND.artifacts, html: `<a href="#/a/${encodeURIComponent(a.id)}" dir="auto">${esc(artifactTitle(a))}</a> <span class="faint">· ${a.kind === 'page' ? 'page' : 'artifact'}, ${plural(a.versions.length, 'version')}</span>` }));
+  p.projects.forEach(x => events.push({ t: x.updated, kind: KIND.projects, html: `<a href="#/p/${encodeURIComponent(x.id)}" dir="auto">${esc(x.name || 'Untitled project')}</a> <span class="faint">· project</span>` }));
+  p.designChats.forEach(d => events.push({ t: d.lastTs, kind: KIND.design, html: `<a href="#/d/${encodeURIComponent(d.id)}" dir="auto">${esc(d.title)}</a> <span class="faint">· design chat in ${esc(d.project.name || 'a design project')}</span>` }));
   events.sort((a, b) => b.t - a.t);
 
   const profile = p.memory && p.memory.files.find(f => /^\/profile\.md$/i.test(f.path));
@@ -454,7 +485,7 @@ function personOverview(p, counts) {
     ${profile || cm ? `<h2 class="section-title">What Claude remembers <a class="chip" href="${base}/memory">open memory</a></h2>
       <div class="card card-pad">${profile ? memoryText(profile.body, p.memory) : mdBlock(truncate(cm, 1800))}</div>` : ''}
     <h2 class="section-title">Recent activity</h2>
-    ${events.length ? `<div class="card card-pad"><ul class="timeline">${events.slice(0, 40).map(e => `<li><span class="when" title="${esc(fmtDateTime(e.t))}">${esc(fmtDate(e.t))}</span><span class="kind">${e.ico}</span><span>${e.html}</span></li>`).join('')}</ul>
+    ${events.length ? `<div class="card card-pad"><ul class="timeline">${events.slice(0, 40).map(e => `<li><span class="when" title="${esc(fmtDateTime(e.t))}">${esc(fmtDate(e.t))}</span><span class="kind" role="img" aria-label="${esc(e.kind.noun[0])}">${e.kind.icon}</span><span>${e.html}</span></li>`).join('')}</ul>
       ${events.length > 40 ? `<p class="muted" style="font-size:13px;margin:10px 0 0">Showing the latest 40 of ${fmtNum(events.length)}. Use the tabs above for everything.</p>` : ''}</div>`
       : '<div class="card empty">No activity in this export.</div>'}`;
 }
@@ -472,12 +503,14 @@ function activityChart(stamps) {
   if (hi - lo > 35) lo = hi - 35;
   const max = Math.max(...Array.from(months.values()));
   const label = k => MONTH_FMT.format(new Date(Math.floor(k / 12), k % 12, 1));
-  const bars = [];
+  const bars = [], said = [];
   for (let k = lo; k <= hi; k++) {
     const v = months.get(k) || 0;
     bars.push(`<div class="bar" style="height:${v ? Math.max(4, (v / max) * 100) : 0}%" title="${esc(label(k))}: ${v}"></div>`);
+    said.push(`${label(k)}: ${v}`);
   }
-  return `<div class="activity">${bars.join('')}</div><div class="activity-labels"><span>${esc(label(lo))}</span><span>${esc(label(hi))}</span></div>`;
+  // A screen reader gets the numbers of every month that the bars show.
+  return `<div class="activity" role="img" aria-label="${esc('Items per month. ' + said.join(', '))}">${bars.join('')}</div><div class="activity-labels" aria-hidden="true"><span>${esc(label(lo))}</span><span>${esc(label(hi))}</span></div>`;
 }
 
 function personComments(p) {

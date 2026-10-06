@@ -22,8 +22,8 @@ For the format of the export itself, see [export-format.md](export-format.md).
 | `vendor/purify.min.js` | DOMPurify: HTML sanitizer. |
 | `src/zip.js` | `ZipArchive` / `ZipEntry`: random-access zip reader. `ZipWriter`: small zip writer for downloads. |
 | `src/load.js` | `FileNode`: a loose file with the same interface as a `ZipEntry` (`path`, `size`, `container`, `stream()`, `bytes()`, `text()`, `blob()`). File and folder picking, drag and drop, remembered file handles (`HandleStore`), `parseJsonArrayStream()`, and `mapLimit()` (async work a few at a time, used by the import and search too). |
-| `src/render.js` | Escaping (`esc`), reading and formatting of dates (`parseTime`; 0 means unknown and shows as nothing), numbers and sizes, Markdown (`mdToHtml`, `mdBlock`), sanitizing, search highlighting, sandboxed frames (`sandboxFrame()`, `withFrameShim()`), small helpers (toast, copy, download, MIME types). Pure formatting and sanitizing: it binds no handlers and keeps no page state. A code block's Copy button carries no key; one click listener in `app.js` handles every `.copy-code` button. |
-| `src/ui.js` | `App` (route and focus), `focusPerson()` / `focusScope()`, the `$` / `$$` shortcuts, and the lifetime of one drawn page: `VIEW`, `after()`, `viewKey()`, `on()` for click behaviour, `blk()` for collapsible blocks, and `preHtml()` for long text with a **Show all** button. |
+| `src/render.js` | Escaping (`esc`), reading and formatting of dates (`parseTime`; 0 means unknown and shows as nothing), numbers and sizes, Markdown (`mdToHtml`, `mdBlock`), sanitizing, search highlighting, sandboxed frames (`sandboxFrame()`, `withFrameShim()`), small helpers (toast, `announce()` for screen readers, copy, download, MIME types). Pure formatting and sanitizing: it binds no handlers and keeps no page state. A code block's Copy button carries no key; one click listener in `app.js` handles every `.copy-code` button. |
+| `src/ui.js` | `App` (route and focus), `focusPerson()` / `focusScope()`, the `$` / `$$` shortcuts, and the lifetime of one drawn page: `VIEW`, `after()`, `viewKey()`, `on()` for click behaviour, `blk()` for collapsible blocks, and `preHtml()` for long text with a **Show all** button. Focus helpers: `refocus()` and `isolate()` (see [Accessibility](#accessibility)). |
 | `src/model.js` | The in-memory model: `Person`, the `DB` object, `finalize()` (links and derived data), `parseVersionRel()` (which version an artifact file belongs to), `versionInfo()` (what an artifact version holds) and small queries (`scopeOf()`, `peopleMatching()`, `artifactTitle()`, `latestManifest()`, `missingFiles()`, `hasRecords()`). |
 | `src/ingest.js` | Reading files into the model: `classify()` and `sniffShape()`, one `add…()` function per record type, `OUTPUTS` (which tool calls count as outputs) and `importExport()` (the import pipeline). |
 | `src/conversation.js` | Conversations as data: the message tree and branches (`childrenByParent()`, `buildTree()`, `currentPath()`, `selectBranchFor()`), tool names and inputs, and the outputs Claude produced (`collectOutputs()`). |
@@ -56,6 +56,8 @@ A few small pieces carry most of the app. When you add something, reach for thes
 | `KINDS` | `views.js` | The five record kinds (conversations, artifacts, projects, design chats, memory): routes, labels, icons, counts, list and person views, and how a search hit looks (`searchResult`). `runSearch()` gives one list of hits per kind, by its key. |
 | `scopeOf(p)`, `focusScope()` | `model.js`, `ui.js` | The records in view: one person's, or everyone's. Lists, sidebar counts and search use it. |
 | `DB.generation` | `model.js` | Goes up on every `finalize()`, so caches of derived data (the search index and built previews) start again. |
+| `isolate(el)` | `ui.js` | Makes everything outside `el` inert, as a modal does. The download dialog and full-screen previews use it. |
+| `announce(msg)` | `render.js` | Says a short status message to screen readers (`toast()` calls it too). |
 | `getBuilt()` | `preview.js` | A built artifact preview. The last 4 (per version and board) are kept, so switching tabs does not rebuild them. The cache starts again when `DB.generation` changes. |
 
 ## Data flow
@@ -211,9 +213,21 @@ The app uses hash routes, so it works from `file://` and a reload keeps your pla
 | `#/search?q=…&t=<type>&deep=1` | search |
 | `#/about` | about this export |
 
-`navigate()` uses `history.pushState` / `replaceState` and draws the page. `onRoute()` ends the old view, draws the new one, runs its `after()` hooks and redraws the sidebar. Because a link click fires both `popstate` and `hashchange`, the app draws only when the hash really changed.
+`navigate()` uses `history.pushState` / `replaceState` and draws the page. `onRoute()` ends the old view, draws the new one, moves the focus (see [Accessibility](#accessibility)), runs its `after()` hooks and redraws the sidebar, which also sets the tab's title to the active section. Because a link click fires both `popstate` and `hashchange`, the app draws only when the hash really changed.
 
 **Focus mode** keeps the focused person's id in `App.focus` (and in `sessionStorage` for this tab). Only `writeFocus()` changes it, and it keeps both copies the same: `setFocus()` uses it when you pick a person, and `showApp()` after each load (which keeps the focus if that person is still loaded, or, after a reload, takes the one saved for this tab). Lists, sidebar counts and search read `focusScope()`: the focused person's records, which `finalize()` linked to them, or everyone's (`scopeOf()`).
+
+## Accessibility
+
+The aim is WCAG 2.2 level AA. The rules the code follows:
+
+- **Focus after a route change.** `focusPage()` (`app.js`) moves the focus to the new page's `h1`, so a screen reader reads it and Tab goes on from the top of the page. A change in place (`navigate(hash, true)`: a view tab, a version, a doc tab, a board, deep search) puts the focus back on the control with the same `id` instead (`VIEW.refocus`, `refocus()`). Async drawers call `refocus()` again once their controls are in the page. Parts that are drawn again without a route change (the thread after a branch switch, a table after a sort or **Show more**) move the focus themselves.
+- **Modal parts.** The download dialog and a full-screen preview make the rest of the page inert with `isolate()`, close on Escape and give the focus back to the button that opened them.
+- **Names and states.** Every icon-only button has an `aria-label`. A control that shows which item is shown gets `aria-current`; a toggle gets `aria-pressed`. Decorative icons are `aria-hidden`.
+- **Status messages** go to one polite live region (`#sr-status`) through `announce()`. Counts that change while someone types (`.count-note`) are live regions themselves.
+- **Colours** come from the theme tokens in `styles.css`. Text tokens reach 4.5:1 and `--border-strong` (control borders) 3:1 on every surface they are used on, in both themes. Links in text are underlined.
+- **Motion.** The system setting for less motion turns off animations and smooth scrolling (`scrollMotion()`).
+- **Scrolling.** Long `<pre>` blocks from `preHtml()` take Tab, so a keyboard can scroll them sideways.
 
 ## Search
 

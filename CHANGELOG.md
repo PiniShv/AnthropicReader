@@ -13,6 +13,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Changed
 
+- Accessibility to WCAG 2.2 level AA, checked with axe-core on the sample data in light and dark mode:
+  - Text and control borders have enough contrast in both themes, links in text are underlined, and the primary buttons in dark mode use dark text.
+  - Everything works from the keyboard: sortable column headers, artifact versions, the conversation options (now toggle buttons), the person picker (a combobox), and rows of the start page's latest conversations.
+  - A skip link leads to the content. After a page change the focus goes to the new page's heading, and the tab title names the section. After a change in place (a tab, a version, a branch, a sort) the focus stays on the control.
+  - The download dialog and full-screen previews keep the focus inside until Escape, and then give it back. Escape also closes the person picker and the menu on phones.
+  - Icon-only buttons have names, status messages ("Copied", the number of results) are read out by screen readers, and the system setting for less motion turns off animations and smooth scrolling.
+- The shortcut to the search box is now `Ctrl+K` (`⌘K` on a Mac) instead of `/`. A one-key shortcut can fire by accident for people who use speech input.
 - CI tests on Node 20, 22 and 24, with the current major versions of `actions/checkout` and `actions/setup-node` (they run on Node 24, not the deprecated Node 20 runtime).
 - In Chrome and Edge, **Choose a folder…** and **Reopen last export** open the files of a big folder 16 at a time instead of one by one, so loading starts sooner. The files are still read in the same order, so the result does not change.
 

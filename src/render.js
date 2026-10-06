@@ -144,6 +144,7 @@ function finishMarkdown(html) {
     b.className = 'btn small copy-code';
     b.type = 'button';
     b.textContent = 'Copy';
+    b.setAttribute('aria-label', 'Copy code');
     pre.appendChild(b);
   });
   const div = document.createElement('div');
@@ -278,8 +279,9 @@ function snippetHtml(text, terms, radius) {
 const FRAME_SHIM = '<script>/* Claude Export Reader: in-page links */(function(){document.addEventListener("click",function(e){' +
   'if(e.defaultPrevented)return;var a=e.target&&e.target.closest?e.target.closest("a[href]"):null;if(!a)return;' +
   'var h=a.getAttribute("href")||"";if(h.charAt(0)!=="#")return;e.preventDefault();var id=h.slice(1);' +
-  'if(!id||id==="top"){scrollTo({top:0,behavior:"smooth"});return;}try{id=decodeURIComponent(id)}catch(x){}' +
-  'var t=document.getElementById(id)||document.getElementsByName(id)[0];if(t){t.scrollIntoView({behavior:"smooth"});}' +
+  'var b=matchMedia("(prefers-reduced-motion: reduce)").matches?"auto":"smooth";' +
+  'if(!id||id==="top"){scrollTo({top:0,behavior:b});return;}try{id=decodeURIComponent(id)}catch(x){}' +
+  'var t=document.getElementById(id)||document.getElementsByName(id)[0];if(t){t.scrollIntoView({behavior:b});}' +
   'else{try{location.hash=h}catch(x){}}});})();<\/script>';
 
 // Insert helper scripts right after <head> (or the doctype), never before the doctype:
@@ -303,12 +305,23 @@ function sandboxFrame(html, height) {
 
 /* ---------- Misc ---------- */
 
+// Says msg to screen readers, through the polite live region in the page (#sr-status).
+function announce(msg) {
+  const el = document.getElementById('sr-status');
+  if (!el) return;
+  // Empty first, so the same message twice in a row is said twice.
+  el.textContent = '';
+  setTimeout(() => { el.textContent = msg; }, 60);
+}
+
 function toast(msg) {
   const t = document.createElement('div');
   t.className = 'toast';
   t.textContent = msg;
+  t.setAttribute('aria-hidden', 'true');
   document.body.appendChild(t);
   setTimeout(() => t.remove(), 1800);
+  announce(msg);
 }
 
 async function copyText(text) {

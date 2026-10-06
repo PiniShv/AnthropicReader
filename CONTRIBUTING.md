@@ -65,6 +65,7 @@ Read [docs/architecture.md](docs/architecture.md) for the full picture. In short
   - make links from export data clickable only through `safeUrl()`
 - Keep big exports fast. Do not read large files up front. Render big blocks lazily (`blk()` with a render function), and cut very long text with `preHtml()`.
 - Use `dir="auto"` on blocks of user text, so right-to-left languages display correctly.
+- Keep it accessible (WCAG 2.2 AA): every control is a real `<button>`, link or form field, so it works from the keyboard. Give icon-only buttons an `aria-label`, take colours from the theme tokens in `styles.css`, and keep the focus in place when you draw a part of the page again. See [Accessibility](docs/architecture.md#accessibility).
 
 ## Adding support for a new export field
 
@@ -136,7 +137,7 @@ Checklist:
 - [ ] `npm test` passes.
 - [ ] `npm run build` was run, and the updated `dist/claude-export-reader.html` is committed. (`npm run build:check` passes.)
 - [ ] No real export data anywhere: not in code, tests, fixtures, screenshots or the description.
-- [ ] Tried in a browser with the sample data. For UI changes, also checked dark mode and a narrow (phone-sized) window.
+- [ ] Tried in a browser with the sample data. For UI changes, also checked dark mode, a narrow (phone-sized) window and the keyboard alone (Tab, Enter, Space, Escape).
 - [ ] No new network requests and no new dependencies.
 - [ ] Docs updated if behaviour or the format changed (README, `docs/`).
 - [ ] A line added under **Unreleased** in [CHANGELOG.md](CHANGELOG.md) for changes users will notice.

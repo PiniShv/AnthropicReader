@@ -12,12 +12,13 @@
   --surface-2: #f1efea;
   --surface-3: #e9e6df;
   --border: #e2ded5;
-  --border-strong: #cfc9bc;
+  --border-strong: #8a857b;
   --text: #1d1c1a;
   --muted: #656158;
-  --faint: #8f8a80;
+  --faint: #6c675e;
   --accent: #a9532f;
   --accent-strong: #8d4223;
+  --on-accent: #ffffff;
   --accent-weak: #f5e6dd;
   --link: #2a5db0;
   --human-bg: #edf1f7;
@@ -25,7 +26,7 @@
   --code-bg: #f3f1ec;
   --mark: #ffe58a;
   --ok: #2c7a4b;
-  --warn: #9a6200;
+  --warn: #8a5700;
   --err: #b3261e;
   --radius: 10px;
   --radius-sm: 6px;
@@ -42,12 +43,13 @@
     --surface-2: #29282d;
     --surface-3: #333137;
     --border: #36343a;
-    --border-strong: #4a474f;
+    --border-strong: #75717a;
     --text: #ecebe8;
     --muted: #aaa69e;
-    --faint: #85817a;
+    --faint: #a09c94;
     --accent: #e08a62;
     --accent-strong: #f0a07a;
+    --on-accent: #18171a;
     --accent-weak: #3a2a22;
     --link: #8db4f5;
     --human-bg: #262c36;
@@ -68,12 +70,13 @@
   --surface-2: #29282d;
   --surface-3: #333137;
   --border: #36343a;
-  --border-strong: #4a474f;
+  --border-strong: #75717a;
   --text: #ecebe8;
   --muted: #aaa69e;
-  --faint: #85817a;
+  --faint: #a09c94;
   --accent: #e08a62;
   --accent-strong: #f0a07a;
+  --on-accent: #18171a;
   --accent-weak: #3a2a22;
   --link: #8db4f5;
   --human-bg: #262c36;
@@ -95,11 +98,13 @@ body {
   font: 15px/1.55 var(--font);
   -webkit-font-smoothing: antialiased;
 }
-a { color: var(--link); text-decoration: none; }
-a:hover { text-decoration: underline; }
+/* Links in text are underlined, so they do not rely on colour alone. Links drawn as controls or
+ * cards (the classes below) have their own look. */
+a { color: var(--link); text-decoration: underline; text-underline-offset: .15em; }
+.brand, .btn, .cell-link, .chip, .count-note, .file-chip, .nav-link, .person-card, .result, .tab, .tile { text-decoration: none; }
 button { font: inherit; color: inherit; }
 [hidden] { display: none !important; }
-mark { background: var(--mark); color: inherit; border-radius: 2px; padding: 0 1px; }
+mark { background: var(--mark); color: var(--text); border-radius: 2px; padding: 0 1px; }
 code, pre, kbd, samp { font-family: var(--mono); font-size: .88em; }
 h1, h2, h3, h4 { line-height: 1.25; margin: 0; }
 .muted { color: var(--muted); }
@@ -112,7 +117,13 @@ h1, h2, h3, h4 { line-height: 1.25; margin: 0; }
 .wrap { flex-wrap: wrap; }
 .stack > * + * { margin-top: 12px; }
 .ellipsis { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+.sr-only { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; border: 0; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+/* Every focusable element shows the same ring when reached from the keyboard. */
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+/* A page's heading gets the focus after a route change, for screen readers; it is not a control. */
+h1[tabindex="-1"]:focus, h2[tabindex="-1"]:focus { outline: none; }
+.skip-link { position: absolute; left: 8px; top: -60px; z-index: 200; padding: 8px 14px; border-radius: 8px; background: var(--surface); border: 2px solid var(--accent); color: var(--text); font-weight: 600; }
+.skip-link:focus { top: 8px; }
 
 /* ---------- Buttons, chips, inputs ---------- */
 .btn {
@@ -122,10 +133,7 @@ h1, h2, h3, h4 { line-height: 1.25; margin: 0; }
   cursor: pointer; font-size: 14px; line-height: 1.2; white-space: nowrap;
 }
 .btn:hover { background: var(--surface-2); text-decoration: none; }
-.btn:focus-visible, .input:focus-visible, .chip:focus-visible, a:focus-visible, summary:focus-visible, [tabindex]:focus-visible {
-  outline: 2px solid var(--accent); outline-offset: 2px;
-}
-.btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
 .btn.primary:hover { background: var(--accent-strong); }
 .btn.small { padding: 4px 9px; font-size: 13px; border-radius: 6px; }
 .btn.ghost { border-color: transparent; background: transparent; }
@@ -210,10 +218,10 @@ button.linklike:hover { text-decoration: underline; }
 }
 .brand { font-weight: 700; font-size: 15px; white-space: nowrap; display: flex; align-items: center; gap: 8px; color: var(--text); }
 .brand:hover { text-decoration: none; }
-.brand-mark { width: 22px; height: 22px; border-radius: 6px; background: var(--accent); color: #fff; display: inline-flex; align-items: center; justify-content: center; font-size: 13px; }
+.brand-mark { width: 22px; height: 22px; border-radius: 6px; background: var(--accent); color: var(--on-accent); display: inline-flex; align-items: center; justify-content: center; font-size: 13px; }
 .topsearch { flex: 1; max-width: 560px; position: relative; }
-.topsearch .input { padding-left: 32px; }
-.topsearch::before { content: "⌕"; position: absolute; left: 11px; top: 50%; transform: translateY(-52%); color: var(--faint); font-size: 17px; pointer-events: none; }
+.topsearch .input { padding-left: 32px; padding-right: 60px; }
+.topsearch::before { content: "⌕"; content: "⌕" / ""; position: absolute; left: 11px; top: 50%; transform: translateY(-52%); color: var(--faint); font-size: 17px; pointer-events: none; }
 .topsearch kbd { position: absolute; right: 8px; top: 50%; transform: translateY(-50%); }
 kbd { border: 1px solid var(--border-strong); border-bottom-width: 2px; border-radius: 4px; padding: 0 5px; font-size: 11px; color: var(--muted); background: var(--surface-2); }
 .top-actions { display: flex; align-items: center; gap: 6px; margin-left: auto; }
@@ -239,7 +247,9 @@ kbd { border: 1px solid var(--border-strong); border-bottom-width: 2px; border-r
 .focus-box .who { display: flex; align-items: center; gap: 8px; margin: 6px 0 8px; font-weight: 600; }
 .focus-box .who a { color: var(--text); }
 
-.main { overflow-y: auto; overflow-x: hidden; min-width: 0; }
+/* scroll-padding: room for the sticky conversation toolbar, so it never covers what gets the
+ * focus or is scrolled to. */
+.main { overflow-y: auto; overflow-x: hidden; min-width: 0; scroll-padding-top: 56px; }
 .page { max-width: 1240px; margin: 0 auto; padding: 22px 28px 64px; }
 .page.narrow { max-width: 980px; }
 .page-head { display: flex; align-items: flex-start; gap: 14px; margin-bottom: 18px; flex-wrap: wrap; }
@@ -274,8 +284,9 @@ table.list th {
   padding: 9px 12px; border-bottom: 1px solid var(--border); background: var(--surface-2);
   position: sticky; top: 0; white-space: nowrap; user-select: none;
 }
-table.list th.sortable { cursor: pointer; }
-table.list th.sortable:hover { color: var(--text); }
+/* A sortable column's header is a button, so it works from the keyboard. */
+table.list th .th-sort { border: 0; background: none; padding: 0; color: inherit; font-weight: inherit; cursor: pointer; white-space: nowrap; }
+table.list th .th-sort:hover { color: var(--text); }
 table.list th .arrow { font-size: 10px; margin-left: 3px; }
 table.list td { padding: 9px 12px; border-bottom: 1px solid var(--border); vertical-align: top; }
 table.list tr:last-child td { border-bottom: 0; }
@@ -300,7 +311,7 @@ a.cell-link:hover > div:first-child { text-decoration: underline; }
 .person-card .email { color: var(--muted); font-size: 13px; }
 .person-card .counts { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 6px; font-size: 12.5px; color: var(--muted); }
 .person-card .counts b { color: var(--text); font-weight: 600; }
-.person-card.inactive { opacity: .62; }
+.person-card.inactive { border-style: dashed; }
 
 /* Tabs */
 .tabs { display: flex; flex-wrap: wrap; gap: 2px; border-bottom: 1px solid var(--border); margin: 18px 0 16px; }
@@ -350,7 +361,7 @@ details.blk > summary {
   display: flex; align-items: center; gap: 7px; list-style: none; min-width: 0;
 }
 details.blk > summary::-webkit-details-marker { display: none; }
-details.blk > summary::before { content: "▸"; font-size: 10px; transition: transform .12s; flex: none; }
+details.blk > summary::before { content: "▸"; content: "▸" / ""; font-size: 10px; transition: transform .12s; flex: none; }
 details.blk[open] > summary::before { transform: rotate(90deg); }
 details.blk > summary .lbl { font-weight: 600; color: var(--text); flex: none; }
 details.blk > summary .desc { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
@@ -358,12 +369,12 @@ details.blk > summary .meta { margin-left: auto; flex: none; font-size: 12px; co
 details.blk > .blk-body { padding: 8px 12px 12px; border-top: 1px solid var(--border); font-size: 14px; overflow-x: auto; }
 details.blk.thinking { background: var(--surface-2); border-style: dashed; }
 details.blk.thinking .blk-body { color: var(--muted); }
-details.blk.tool > summary .lbl::before { content: "⚙ "; color: var(--faint); font-weight: 400; }
+details.blk.tool > summary .lbl::before { content: "⚙ "; content: "⚙ " / ""; color: var(--faint); font-weight: 400; }
 details.blk.result.error { border-color: var(--err); }
 details.blk.result.error > summary .lbl { color: var(--err); }
 details.blk.artifact { border-color: var(--accent); }
 details.blk.artifact > summary .lbl { color: var(--accent-strong); }
-details.blk.attach > summary .lbl::before { content: "📎 "; font-weight: 400; }
+details.blk.attach > summary .lbl::before { content: "📎 "; content: "📎 " / ""; font-weight: 400; }
 .tool-group { display: flex; flex-direction: column; gap: 6px; }
 .blk-sub { font-size: 12px; color: var(--faint); text-transform: uppercase; letter-spacing: .05em; margin: 10px 0 4px; font-weight: 600; }
 .blk-sub:first-child { margin-top: 0; }
@@ -399,7 +410,7 @@ pre.code.wrap { white-space: pre-wrap; overflow-wrap: anywhere; }
 .md hr { border: 0; border-top: 1px solid var(--border); margin: 1.2em 0; }
 .md input[type=checkbox] { margin-right: 6px; }
 .copy-code { position: absolute; top: 6px; right: 6px; opacity: 0; transition: opacity .12s; }
-pre:hover > .copy-code { opacity: 1; }
+pre:hover > .copy-code, .copy-code:focus-visible { opacity: 1; }
 .frontmatter { font-family: var(--mono); font-size: 12px; color: var(--muted); background: var(--surface-2); border-radius: var(--radius-sm); padding: 8px 11px; white-space: pre-wrap; margin-bottom: 10px; }
 
 /* ---------- Artifact viewer ---------- */
@@ -410,14 +421,16 @@ pre:hover > .copy-code { opacity: 1; }
 .frame-bar .ttl { font-weight: 600; font-size: 14px; min-width: 0; }
 iframe.preview { display: block; width: 100%; height: 72vh; border: 0; background: #fff; }
 .frame-box.full { position: fixed; inset: 0; z-index: 50; border-radius: 0; display: flex; flex-direction: column; }
+.frame-box.full > .frame-body { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: auto; }
 .frame-box.full iframe.preview { flex: 1; height: auto; }
 .version-list { list-style: none; margin: 0; padding: 0; max-height: 60vh; overflow-y: auto; }
-.version-list li { padding: 8px 10px; border-radius: 8px; cursor: pointer; font-size: 13.5px; border: 1px solid transparent; }
-.version-list li:hover { background: var(--surface-2); }
-.version-list li.sel { background: var(--accent-weak); border-color: var(--accent); }
-.version-list li .vt { font-weight: 600; }
-.version-list li .vd { color: var(--muted); font-size: 12.5px; }
-.version-list li.missing { opacity: .55; cursor: default; }
+.version-list li > * { display: block; width: 100%; padding: 8px 10px; border-radius: 8px; font-size: 13.5px; border: 1px solid transparent; text-align: start; }
+.version-list button { background: none; cursor: pointer; }
+.version-list button:hover { background: var(--surface-2); }
+.version-list .sel { background: var(--accent-weak); border-color: var(--accent); }
+.version-list .vt { display: block; font-weight: 600; }
+.version-list .vd { display: block; color: var(--muted); font-size: 12.5px; }
+.version-list .missing { color: var(--muted); }
 .side-card + .side-card { margin-top: 12px; }
 .comment { padding: 10px 0; border-bottom: 1px solid var(--border); font-size: 14px; }
 .comment:last-child { border-bottom: 0; }
@@ -461,20 +474,27 @@ details.blk.mem-file > summary .desc { color: var(--muted); }
 .cite-list li::marker { color: var(--faint); }
 .md sup a { font-size: 11px; padding: 0 2px; }
 
+/* Less motion when the system asks for it: no slides, fades or smooth scrolling. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; scroll-behavior: auto !important; }
+}
+
 /* ---------- Responsive ---------- */
 @media (max-width: 900px) {
   .viewer { grid-template-columns: 1fr; }
 }
 @media (max-width: 760px) {
   .shell { grid-template-columns: 1fr; }
-  .sidebar { position: fixed; top: 54px; bottom: 0; left: 0; width: 260px; z-index: 20; transform: translateX(-100%); transition: transform .18s; box-shadow: var(--shadow); }
-  .shell.nav-open .sidebar { transform: none; }
+  /* A closed menu is also hidden from the keyboard, after it has slid away. */
+  .sidebar { position: fixed; top: 54px; bottom: 0; left: 0; width: 260px; z-index: 20; transform: translateX(-100%); visibility: hidden; transition: transform .18s, visibility 0s .18s; box-shadow: var(--shadow); }
+  .shell.nav-open .sidebar { transform: none; visibility: visible; transition: transform .18s; }
   .menu-btn { display: inline-flex; }
-  .brand .txt { display: none; }
+  .brand .txt { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
   .topbar { gap: 6px; padding: 0 10px; }
   .topbar > * { min-width: 0; }
   .topsearch { flex: 1; min-width: 0; }
   .topsearch kbd { display: none; }
+  .topsearch .input { padding-right: 11px; }
   #person-btn-label { display: none; }
   .top-actions { gap: 2px; flex: none; }
   details.blk > summary { flex-wrap: wrap; }
@@ -498,8 +518,9 @@ details.blk.mem-file > summary .desc { color: var(--muted); }
 </style>
 </head>
 <body>
+<a class="skip-link" href="#main">Skip to content</a>
 
-<section id="landing" class="landing">
+<section id="landing" class="landing" role="main">
   <div class="landing-card">
     <h1>Claude Export Reader</h1>
     <p class="lede">Browse a Claude team data export: every person, conversation, project, artifact, design chat and memory. Everything runs inside this browser tab. Nothing is uploaded.</p>
@@ -536,25 +557,27 @@ details.blk.mem-file > summary .desc { color: var(--muted); }
 
 <div id="shell" class="shell" hidden>
   <header class="topbar">
-    <button class="btn ghost small menu-btn" id="menu-btn" type="button" aria-label="Menu">☰</button>
+    <button class="btn ghost small menu-btn" id="menu-btn" type="button" aria-label="Menu" aria-expanded="false" aria-controls="sidebar">☰</button>
     <a class="brand" href="#/"><span class="brand-mark" aria-hidden="true">≡</span><span class="txt">Export Reader</span></a>
     <form class="topsearch" id="topsearch" role="search" autocomplete="off">
-      <input class="input" id="q" type="search" placeholder="Search everything…" aria-label="Search everything">
-      <kbd id="q-kbd">/</kbd>
+      <input class="input" id="q" type="search" placeholder="Search everything…" aria-label="Search everything" aria-keyshortcuts="Control+K Meta+K">
+      <kbd id="q-kbd" aria-hidden="true">Ctrl K</kbd>
     </form>
     <div class="top-actions">
       <div style="position:relative">
-        <button class="btn small" id="person-btn" type="button" aria-haspopup="listbox" aria-label="Focus on a person">👤 <span id="person-btn-label">Focus on a person</span></button>
-        <div class="picker" id="picker" hidden></div>
+        <button class="btn small" id="person-btn" type="button" aria-haspopup="dialog" aria-expanded="false" aria-controls="picker" aria-label="Focus on a person">👤 <span id="person-btn-label">Focus on a person</span></button>
+        <div class="picker" id="picker" role="dialog" aria-label="Focus on a person" hidden></div>
       </div>
-      <button class="btn small ghost" id="theme-btn" type="button" title="Switch light / dark">◐</button>
-      <button class="btn small ghost" id="load-btn" type="button" title="Open another export">⇪</button>
+      <button class="btn small ghost" id="theme-btn" type="button" title="Switch light / dark" aria-label="Dark theme" aria-pressed="false">◐</button>
+      <button class="btn small ghost" id="load-btn" type="button" title="Open another export" aria-label="Open another export">⇪</button>
     </div>
   </header>
   <nav class="sidebar" id="sidebar" aria-label="Sections"></nav>
   <main class="main" id="main" tabindex="-1"></main>
 </div>
 
+<!-- Short messages for screen readers ("Copied", search results); see announce() in render.js. -->
+<div id="sr-status" class="sr-only" role="status"></div>
 <input type="file" id="file-input" multiple hidden>
 <input type="file" id="folder-input" webkitdirectory multiple hidden>
 
@@ -1291,6 +1314,7 @@ function finishMarkdown(html) {
     b.className = 'btn small copy-code';
     b.type = 'button';
     b.textContent = 'Copy';
+    b.setAttribute('aria-label', 'Copy code');
     pre.appendChild(b);
   });
   const div = document.createElement('div');
@@ -1425,8 +1449,9 @@ function snippetHtml(text, terms, radius) {
 const FRAME_SHIM = '<script>/* Claude Export Reader: in-page links */(function(){document.addEventListener("click",function(e){' +
   'if(e.defaultPrevented)return;var a=e.target&&e.target.closest?e.target.closest("a[href]"):null;if(!a)return;' +
   'var h=a.getAttribute("href")||"";if(h.charAt(0)!=="#")return;e.preventDefault();var id=h.slice(1);' +
-  'if(!id||id==="top"){scrollTo({top:0,behavior:"smooth"});return;}try{id=decodeURIComponent(id)}catch(x){}' +
-  'var t=document.getElementById(id)||document.getElementsByName(id)[0];if(t){t.scrollIntoView({behavior:"smooth"});}' +
+  'var b=matchMedia("(prefers-reduced-motion: reduce)").matches?"auto":"smooth";' +
+  'if(!id||id==="top"){scrollTo({top:0,behavior:b});return;}try{id=decodeURIComponent(id)}catch(x){}' +
+  'var t=document.getElementById(id)||document.getElementsByName(id)[0];if(t){t.scrollIntoView({behavior:b});}' +
   'else{try{location.hash=h}catch(x){}}});})();<\/script>';
 
 // Insert helper scripts right after <head> (or the doctype), never before the doctype:
@@ -1450,12 +1475,23 @@ function sandboxFrame(html, height) {
 
 /* ---------- Misc ---------- */
 
+// Says msg to screen readers, through the polite live region in the page (#sr-status).
+function announce(msg) {
+  const el = document.getElementById('sr-status');
+  if (!el) return;
+  // Empty first, so the same message twice in a row is said twice.
+  el.textContent = '';
+  setTimeout(() => { el.textContent = msg; }, 60);
+}
+
 function toast(msg) {
   const t = document.createElement('div');
   t.className = 'toast';
   t.textContent = msg;
+  t.setAttribute('aria-hidden', 'true');
   document.body.appendChild(t);
   setTimeout(() => t.remove(), 1800);
+  announce(msg);
 }
 
 async function copyText(text) {
@@ -1524,8 +1560,10 @@ const focusScope = () => scopeOf(focusPerson());
 /* Everything that lives exactly as long as one drawn page. onRoute() aborts the old view and
  * starts a new one: listeners added with its signal go away, and async drawers stop at their
  * next `if (signal.aborted) return;`. terms: the search words the page highlights. The view
- * that owns them sets them, and every lazy block marks them in the body it draws later. */
-const newView = () => ({ ac: new AbortController(), fns: new Map(), mounts: [], terms: [] });
+ * that owns them sets them, and every lazy block marks them in the body it draws later.
+ * refocus: the id of the control that had the focus before the page was drawn again in place
+ * (see refocus()). */
+const newView = () => ({ ac: new AbortController(), fns: new Map(), mounts: [], terms: [], refocus: '' });
 let VIEW = newView();
 
 // One counter for every view, so a key or a generated id never means two things: an element
@@ -1568,17 +1606,18 @@ const PRE_LIMIT = 60000;
 
 // <pre> with large content cut to PRE_LIMIT and a "Show all" button that expands in place.
 // The button keeps the full text, so it is not put into the page twice.
+// tabindex: long lines scroll sideways, and a keyboard can only scroll what it can focus.
 function preHtml(text, opts) {
   text = String(text == null ? '' : text);
   const wrap = opts && opts.wrap ? ' wrap' : '';
-  if (text.length <= PRE_LIMIT) return `<pre class="code${wrap}">${esc(text)}</pre>`;
+  if (text.length <= PRE_LIMIT) return `<pre class="code${wrap}" tabindex="0">${esc(text)}</pre>`;
   // Show all: the full text replaces the cut one in the <pre> right before the button's row.
   const showAll = el => {
     const row = el.closest('.row');
     const pre = row && row.previousElementSibling;
-    if (pre) { pre.textContent = text; row.remove(); }
+    if (pre) { pre.textContent = text; row.remove(); pre.focus(); }
   };
-  return `<pre class="code${wrap}">${esc(text.slice(0, PRE_LIMIT))}</pre>
+  return `<pre class="code${wrap}" tabindex="0">${esc(text.slice(0, PRE_LIMIT))}</pre>
     <div class="row" style="margin-top:6px"><span class="muted" style="font-size:13px">Showing ${fmtBytes(PRE_LIMIT)} of ${fmtBytes(text.length)}.</span>
     <button class="btn small" type="button" ${on(showAll)}>Show all</button></div>`;
 }
@@ -1588,6 +1627,35 @@ function preHtml(text, opts) {
 function sourceBlk(text, { label = 'Source', desc = '', wrap = false, gap = 8 } = {}) {
   return blk({ style: `margin-top:${gap}px`, summary: `<span class="lbl">${label}</span>${desc}`, body: preHtml(text, { wrap }) });
 }
+
+/* Puts the focus back on the control with the id in VIEW.refocus, once it is in the page (an
+ * async drawer calls this again after it adds its controls). Only while the focus is nowhere
+ * or on the page heading, so it never takes the focus away from where someone moved it. */
+function refocus() {
+  const el = VIEW.refocus && document.getElementById(VIEW.refocus);
+  const a = document.activeElement;
+  if (!el || (a && a !== document.body && a.tagName !== 'H1')) return false;
+  VIEW.refocus = '';
+  el.focus();
+  return true;
+}
+
+/* Makes everything outside el inert, as a modal dialog does: no focus, no clicks, hidden from
+ * screen readers. The live region (#sr-status) stays. Returns the function that undoes it. */
+function isolate(el) {
+  const done = [];
+  for (let n = el; n.parentElement && n !== document.body; n = n.parentElement) {
+    for (const sib of n.parentElement.children) {
+      if (sib === n || sib.inert || sib.id === 'sr-status' || sib.tagName === 'SCRIPT') continue;
+      sib.inert = true;
+      done.push(sib);
+    }
+  }
+  return () => done.splice(0).forEach(x => { x.inert = false; });
+}
+
+// Smooth scrolling, unless the system asks for less motion.
+const scrollMotion = () => (matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth');
 
 function mountView(v) {
   while (v.mounts.length) {
@@ -3371,17 +3439,24 @@ function renderRoute(r) {
 }
 
 function notFound(msg) {
-  return `<div class="page narrow"><div class="empty"><h2>Not found</h2><p>${esc(msg)}</p><p><a href="#/">Go to the start page</a></p></div></div>`;
+  return `<div class="page narrow"><div class="empty"><h1>Not found</h1><p>${esc(msg)}</p><p><a href="#/">Go to the start page</a></p></div></div>`;
 }
 
 /* ---------- Sidebar ---------- */
 
+const APP_NAME = document.title;
+
+/* The sidebar, and the tab's title: the name of the active section. Titles never hold export
+ * data (a person's name, a chat title), because the browser keeps them in its history. */
 function renderSidebar() {
   const r = App.route.path;
   const sec = r[0] || '';
   const fp = focusPerson();
-  const link = (href, ico, label, count, active) =>
-    `<a class="nav-link${active ? ' active' : ''}" href="${href}"><span class="ico">${ico}</span>${esc(label)}${count != null ? `<span class="badge">${fmtNum(count)}</span>` : ''}</a>`;
+  let section = '';
+  const link = (href, ico, label, count, active, title) => {
+    if (active) section = title || label;
+    return `<a class="nav-link${active ? ' active' : ''}" href="${href}"${active ? ' aria-current="page"' : ''}><span class="ico" aria-hidden="true">${ico}</span>${esc(label)}${count != null ? `<span class="badge">${fmtNum(count)}</span>` : ''}</a>`;
+  };
   const activeFor = (...names) => names.includes(sec);
   const peopleCount = Array.from(DB.people.values()).filter(p => !p.system).length;
   $('#sidebar').innerHTML = `
@@ -3393,7 +3468,7 @@ function renderSidebar() {
     <div class="nav-group">
       ${link('#/', ICONS.home, 'Start', null, sec === '')}
       ${link('#/people', ICONS.people, 'People', peopleCount, activeFor('people', 'person') && !(sec === 'person' && fp && r[1] === fp.id))}
-      ${fp ? link('#/person/' + encodeURIComponent(fp.id), '★', fp.name.split(' · ')[0] + '’s profile', null, sec === 'person' && r[1] === fp.id) : ''}
+      ${fp ? link('#/person/' + encodeURIComponent(fp.id), '★', fp.name.split(' · ')[0] + '’s profile', null, sec === 'person' && r[1] === fp.id, 'People') : ''}
     </div>
     <div class="nav-group">
       <div class="nav-title">${fp ? 'Their data' : 'Everything'}</div>
@@ -3403,6 +3478,7 @@ function renderSidebar() {
       ${link('#/search', ICONS.search, 'Search', null, sec === 'search')}
       ${link('#/about', ICONS.about, 'About this export', null, sec === 'about')}
     </div>`;
+  document.title = section ? section + ' · ' + APP_NAME : APP_NAME;
 }
 
 /* ---------- Generic sortable / filterable table ---------- */
@@ -3425,9 +3501,9 @@ function tableHtml(spec) {
     mountTable({ spec, st, wrap: document.getElementById(id), bar: document.getElementById(barId), chips: document.getElementById(chipsId), ft: new WeakMap() });
   });
   return `${chips}<div class="toolbar" id="${barId}">
-      <input class="input filter" type="search" placeholder="${esc(spec.placeholder || 'Filter…')}" value="${esc(st.filter)}" aria-label="Filter">
+      <input class="input filter" type="search" placeholder="${esc(spec.placeholder || 'Filter…')}" value="${esc(st.filter)}" aria-label="Filter ${esc(spec.nounPlural || (spec.noun || 'item') + 's')}">
       ${spec.extraToolbar || ''}
-      <span class="count-note"></span>
+      <span class="count-note" role="status"></span>
     </div>
     <div class="table-wrap" id="${id}"></div>`;
 }
@@ -3438,7 +3514,7 @@ function facetChipsHtml(spec, st, id) {
   for (const r of spec.rows) { const v = spec.facet.of(r); counts.set(v, (counts.get(v) || 0) + 1); }
   if (!counts.size) return '';
   return `<div class="search-tabs" id="${id}">${Array.from(counts).sort((a, b) => b[1] - a[1])
-    .map(([v, n]) => `<button class="chip${st.facet === v ? ' on' : ''}" type="button" data-facet="${esc(v)}" title="Show only this type (click again for all)">${esc(v)} <b>${n}</b></button>`).join(' ')}</div>`;
+    .map(([v, n]) => `<button class="chip${st.facet === v ? ' on' : ''}" type="button" data-facet="${esc(v)}" aria-pressed="${st.facet === v}" title="Show only this type (click again for all)">${esc(v)} <b>${n}</b></button>`).join(' ')}</div>`;
 }
 
 function mountTable(t) {
@@ -3449,6 +3525,7 @@ function mountTable(t) {
     clearTimeout(timer);
     timer = setTimeout(() => { st.filter = input.value; st.limit = spec.page || 200; drawTable(t); }, 120);
   });
+  // Both redraw the table, so the focus moves to what replaced the button.
   wrap.addEventListener('click', e => {
     const th = e.target.closest('th[data-sort]');
     if (th) {
@@ -3456,9 +3533,19 @@ function mountTable(t) {
       if (st.sort === id) st.dir = -st.dir;
       else { st.sort = id; st.dir = spec.columns.find(c => c.id === id).asc ? 1 : -1; }
       drawTable(t);
+      const again = wrap.querySelector(`th[data-sort="${id}"] button`);
+      if (again) again.focus();
       return;
     }
-    if (e.target.closest('[data-more]')) { st.limit += spec.page || 200; drawTable(t); }
+    if (e.target.closest('[data-more]')) {
+      const first = st.limit;
+      st.limit += spec.page || 200;
+      drawTable(t);
+      // The first new row (its link), or else the next "Show more" button.
+      const row = wrap.querySelectorAll('tbody tr')[first];
+      const next = (row && row.querySelector('a')) || wrap.querySelector('[data-more]');
+      if (next) next.focus();
+    }
   });
   if (chips) {
     chips.addEventListener('click', e => {
@@ -3499,9 +3586,11 @@ function drawTable(t) {
   const rows = tableRows(t);
   const shown = rows.slice(0, st.limit);
   const head = spec.columns.map(c => {
-    const sortable = !!c.sortVal;
-    const arrow = st.sort === c.id ? `<span class="arrow">${st.dir < 0 ? '▼' : '▲'}</span>` : '';
-    return `<th class="${sortable ? 'sortable ' : ''}${c.thCls || c.cls || ''}" ${sortable ? `data-sort="${c.id}"` : ''}>${esc(c.label)}${arrow}</th>`;
+    const cls = c.thCls || c.cls || '';
+    if (!c.sortVal) return `<th class="${cls}">${esc(c.label)}</th>`;
+    const on = st.sort === c.id;
+    const arrow = on ? `<span class="arrow" aria-hidden="true">${st.dir < 0 ? '▼' : '▲'}</span>` : '';
+    return `<th class="${cls}" data-sort="${c.id}"${on ? ` aria-sort="${st.dir < 0 ? 'descending' : 'ascending'}"` : ''}><button class="th-sort" type="button">${esc(c.label)}${arrow}</button></th>`;
   }).join('');
   const cell = (c, r) => c.link ? `<a class="cell-link" href="${esc(spec.href(r))}">${c.html(r)}</a>` : c.html(r);
   const body = shown.map(r => `<tr data-href="${esc(spec.href(r))}">${spec.columns.map(c => `<td class="${c.cls || ''}">${cell(c, r)}</td>`).join('')}</tr>`).join('');
@@ -3509,8 +3598,16 @@ function drawTable(t) {
     ? `<table class="list"><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table>` +
       (rows.length > shown.length ? `<div class="more-row"><button class="btn small" type="button" data-more>Show ${fmtNum(Math.min(spec.page || 200, rows.length - shown.length))} more (${fmtNum(rows.length - shown.length)} left)</button></div>` : '')
     : `<div class="empty">${st.filter || st.facet ? 'Nothing matches the filter.' : esc(spec.empty || 'Nothing here.')}</div>`;
-  bar.querySelector('.count-note').textContent = st.filter || st.facet ? `${fmtNum(rows.length)} of ${fmtNum(spec.rows.length)}` : plural(spec.rows.length, spec.noun || 'item', spec.nounPlural);
-  if (chips) chips.querySelectorAll('[data-facet]').forEach(c => c.classList.toggle('on', c.dataset.facet === st.facet));
+  // A live region: set only when it changes, so sorting does not read the count again.
+  const note = bar.querySelector('.count-note');
+  const count = st.filter || st.facet ? `${fmtNum(rows.length)} of ${fmtNum(spec.rows.length)}` : plural(spec.rows.length, spec.noun || 'item', spec.nounPlural);
+  if (note.textContent !== count) note.textContent = count;
+  if (chips) {
+    chips.querySelectorAll('[data-facet]').forEach(c => {
+      c.classList.toggle('on', c.dataset.facet === st.facet);
+      c.setAttribute('aria-pressed', String(c.dataset.facet === st.facet));
+    });
+  }
 }
 
 /* Column helpers */
@@ -3581,7 +3678,7 @@ function miniConvList(list) {
   if (!list.length) return '<div class="card empty">No conversations.</div>';
   return `<div class="table-wrap"><table class="list"><tbody>${list.map(c => `
     <tr data-href="#/c/${encodeURIComponent(c.id)}">
-      <td class="title"><div dir="auto">${esc(c.title || 'Untitled conversation')}</div>${c.summary ? `<div class="snip" dir="auto">${esc(truncate(oneLine(stripMd(c.summary)), 220))}</div>` : ''}</td>
+      <td class="title"><a class="cell-link" href="#/c/${encodeURIComponent(c.id)}"><div dir="auto">${esc(c.title || 'Untitled conversation')}</div>${c.summary ? `<div class="snip" dir="auto">${esc(truncate(oneLine(stripMd(c.summary)), 220))}</div>` : ''}</a></td>
       <td class="hide-sm">${whoCell(c.owner)}</td>
       <td class="num">${fmtNum(c.msgCount)} msgs</td>
       <td class="date">${esc(fmtDate(c.lastTs))}</td>
@@ -3628,7 +3725,8 @@ function viewPeople() {
       let list = all.filter(p => (PEOPLE_STATE.showEmpty || p.total() > 0 || q) && (!q || personMatches(p, q)));
       list.sort((a, b) => PEOPLE_SORTS[PEOPLE_STATE.sort][1](a, b) || a.name.localeCompare(b.name));
       $('#people-grid').innerHTML = list.map(personCardHtml).join('') || '<div class="empty">No one matches.</div>';
-      $('#people-count').textContent = `${fmtNum(list.length)} shown`;
+      const count = `${fmtNum(list.length)} shown`;
+      if ($('#people-count').textContent !== count) $('#people-count').textContent = count;
     };
     const q = $('#people-q');
     q.addEventListener('input', () => { PEOPLE_STATE.q = q.value; draw(); });
@@ -3645,7 +3743,7 @@ function viewPeople() {
       <input class="input filter" id="people-q" type="search" placeholder="Filter by name or email…" value="${esc(PEOPLE_STATE.q)}" aria-label="Filter people">
       <select class="input" id="people-sort" aria-label="Sort people">${Object.entries(PEOPLE_SORTS).map(([k, [l]]) => `<option value="${k}"${PEOPLE_STATE.sort === k ? ' selected' : ''}>${l}</option>`).join('')}</select>
       <label class="row muted" style="font-size:14px"><input type="checkbox" id="people-empty"${PEOPLE_STATE.showEmpty ? ' checked' : ''}> Show people with no data (${empty})</label>
-      <span class="count-note" id="people-count"></span>
+      <span class="count-note" id="people-count" role="status"></span>
     </div>
     <div class="people-grid" id="people-grid"></div>
     ${none && none.total() ? `<p class="muted" style="margin-top:18px;font-size:14px">${plural(none.total(), 'item')} have no owner (agent-made artifacts, empty design chats). <a href="#/person/${NO_OWNER}">See them</a>.</p>` : ''}
@@ -3660,8 +3758,9 @@ function viewPerson(id, tab) {
   const counts = Object.fromEntries(PERSON_SECTIONS.map(s => [s.key, s.personCount(p)]));
   const isFocus = App.focus === p.id;
   const base = '#/person/' + encodeURIComponent(p.id);
-  const tabs = `<a class="tab${tab === 'overview' ? ' active' : ''}" href="${base}">Overview</a>` +
-    PERSON_SECTIONS.map(s => `<a class="tab${tab === s.key ? ' active' : ''}" href="${base}/${s.key}">${esc(s.label)} <span class="badge">${fmtNum(counts[s.key])}</span></a>`).join('');
+  const tabLink = (key, href, label) => `<a class="tab${tab === key ? ' active' : ''}" href="${href}"${tab === key ? ' aria-current="page"' : ''}>${label}</a>`;
+  const tabs = tabLink('overview', base, 'Overview') +
+    PERSON_SECTIONS.map(s => tabLink(s.key, `${base}/${s.key}`, `${esc(s.label)} <span class="badge">${fmtNum(counts[s.key])}</span>`)).join('');
   const sec = PERSON_SECTIONS.find(s => s.key === tab);
   if (tab !== 'overview' && !sec) return notFound('Unknown tab.');
   const body = sec ? sec.personTab(p) : personOverview(p, counts);
@@ -3675,9 +3774,9 @@ function viewPerson(id, tab) {
         <h1 class="row wrap">${esc(p.name)} ${unknownBadge(p)}</h1>
         <div class="sub">
           ${p.email ? `<a href="mailto:${esc(p.email)}">${esc(p.email)}</a>` : ''}
-          ${p.phone ? `<span class="row" style="gap:4px">📞 <span>${esc(maskPhone(p.phone))}</span> <button class="btn small ghost" type="button" ${on(el => { el.previousElementSibling.textContent = p.phone; el.remove(); })}>show</button></span>` : ''}
+          ${p.phone ? `<span class="row" style="gap:4px"><span aria-hidden="true">📞</span> <span tabindex="-1"><span class="sr-only">Phone: </span>${esc(maskPhone(p.phone))}</span> <button class="btn small ghost" type="button" aria-label="Show phone number" ${on(el => { const n = el.previousElementSibling; n.innerHTML = '<span class="sr-only">Phone: </span>' + esc(p.phone); el.remove(); n.focus(); })}>show</button></span>` : ''}
           <span>${firstLast}</span>
-          ${p.system ? '' : `<span class="mono faint" title="Account id">${esc(p.id)}</span> <button class="btn small ghost" type="button" ${on(() => copyText(p.id))} title="Copy id">⧉</button>`}
+          ${p.system ? '' : `<span class="mono faint" title="Account id">${esc(p.id)}</span> <button class="btn small ghost" type="button" ${on(() => copyText(p.id))} title="Copy id" aria-label="Copy account id">⧉</button>`}
         </div>
       </div>
       <div class="row wrap">
@@ -3687,7 +3786,7 @@ function viewPerson(id, tab) {
         <button class="btn small primary" type="button" ${on(() => exportPerson(p))} title="Download everything about this person as a .zip">Download their data</button>
       </div>
     </div>
-    <div class="tabs" role="tablist">${tabs}</div>
+    <nav class="tabs" aria-label="${esc(p.name)}’s data">${tabs}</nav>
     ${body}
   </div>`;
 }
@@ -3720,10 +3819,10 @@ function personOverview(p, counts) {
 
   // Recent activity timeline.
   const events = [];
-  withContent(p.conversations).forEach(c => events.push({ t: c.lastTs, ico: KIND.conversations.icon, html: `<a href="#/c/${encodeURIComponent(c.id)}" dir="auto">${esc(c.title || 'Untitled conversation')}</a> <span class="faint">· ${plural(c.msgCount, 'message')}</span>` }));
-  p.artifacts.forEach(a => events.push({ t: a.updated, ico: KIND.artifacts.icon, html: `<a href="#/a/${encodeURIComponent(a.id)}" dir="auto">${esc(artifactTitle(a))}</a> <span class="faint">· ${a.kind === 'page' ? 'page' : 'artifact'}, ${plural(a.versions.length, 'version')}</span>` }));
-  p.projects.forEach(x => events.push({ t: x.updated, ico: KIND.projects.icon, html: `<a href="#/p/${encodeURIComponent(x.id)}" dir="auto">${esc(x.name || 'Untitled project')}</a> <span class="faint">· project</span>` }));
-  p.designChats.forEach(d => events.push({ t: d.lastTs, ico: KIND.design.icon, html: `<a href="#/d/${encodeURIComponent(d.id)}" dir="auto">${esc(d.title)}</a> <span class="faint">· design chat in ${esc(d.project.name || 'a design project')}</span>` }));
+  withContent(p.conversations).forEach(c => events.push({ t: c.lastTs, kind: KIND.conversations, html: `<a href="#/c/${encodeURIComponent(c.id)}" dir="auto">${esc(c.title || 'Untitled conversation')}</a> <span class="faint">· ${plural(c.msgCount, 'message')}</span>` }));
+  p.artifacts.forEach(a => events.push({ t: a.updated, kind: KIND.artifacts, html: `<a href="#/a/${encodeURIComponent(a.id)}" dir="auto">${esc(artifactTitle(a))}</a> <span class="faint">· ${a.kind === 'page' ? 'page' : 'artifact'}, ${plural(a.versions.length, 'version')}</span>` }));
+  p.projects.forEach(x => events.push({ t: x.updated, kind: KIND.projects, html: `<a href="#/p/${encodeURIComponent(x.id)}" dir="auto">${esc(x.name || 'Untitled project')}</a> <span class="faint">· project</span>` }));
+  p.designChats.forEach(d => events.push({ t: d.lastTs, kind: KIND.design, html: `<a href="#/d/${encodeURIComponent(d.id)}" dir="auto">${esc(d.title)}</a> <span class="faint">· design chat in ${esc(d.project.name || 'a design project')}</span>` }));
   events.sort((a, b) => b.t - a.t);
 
   const profile = p.memory && p.memory.files.find(f => /^\/profile\.md$/i.test(f.path));
@@ -3734,7 +3833,7 @@ function personOverview(p, counts) {
     ${profile || cm ? `<h2 class="section-title">What Claude remembers <a class="chip" href="${base}/memory">open memory</a></h2>
       <div class="card card-pad">${profile ? memoryText(profile.body, p.memory) : mdBlock(truncate(cm, 1800))}</div>` : ''}
     <h2 class="section-title">Recent activity</h2>
-    ${events.length ? `<div class="card card-pad"><ul class="timeline">${events.slice(0, 40).map(e => `<li><span class="when" title="${esc(fmtDateTime(e.t))}">${esc(fmtDate(e.t))}</span><span class="kind">${e.ico}</span><span>${e.html}</span></li>`).join('')}</ul>
+    ${events.length ? `<div class="card card-pad"><ul class="timeline">${events.slice(0, 40).map(e => `<li><span class="when" title="${esc(fmtDateTime(e.t))}">${esc(fmtDate(e.t))}</span><span class="kind" role="img" aria-label="${esc(e.kind.noun[0])}">${e.kind.icon}</span><span>${e.html}</span></li>`).join('')}</ul>
       ${events.length > 40 ? `<p class="muted" style="font-size:13px;margin:10px 0 0">Showing the latest 40 of ${fmtNum(events.length)}. Use the tabs above for everything.</p>` : ''}</div>`
       : '<div class="card empty">No activity in this export.</div>'}`;
 }
@@ -3752,12 +3851,14 @@ function activityChart(stamps) {
   if (hi - lo > 35) lo = hi - 35;
   const max = Math.max(...Array.from(months.values()));
   const label = k => MONTH_FMT.format(new Date(Math.floor(k / 12), k % 12, 1));
-  const bars = [];
+  const bars = [], said = [];
   for (let k = lo; k <= hi; k++) {
     const v = months.get(k) || 0;
     bars.push(`<div class="bar" style="height:${v ? Math.max(4, (v / max) * 100) : 0}%" title="${esc(label(k))}: ${v}"></div>`);
+    said.push(`${label(k)}: ${v}`);
   }
-  return `<div class="activity">${bars.join('')}</div><div class="activity-labels"><span>${esc(label(lo))}</span><span>${esc(label(hi))}</span></div>`;
+  // A screen reader gets the numbers of every month that the bars show.
+  return `<div class="activity" role="img" aria-label="${esc('Items per month. ' + said.join(', '))}">${bars.join('')}</div><div class="activity-labels" aria-hidden="true"><span>${esc(label(lo))}</span><span>${esc(label(hi))}</span></div>`;
 }
 
 function personComments(p) {
@@ -3796,7 +3897,7 @@ function convBadges(c) {
   if (c.empty) b.push('<span class="chip warn" title="The export has no message content for this chat">no content in export</span>');
   if (c.forks) b.push(`<span class="chip" title="Edited or regenerated messages">${plural(c.forks, 'branch point')}</span>`);
   if (c.outputCount) b.push(`<span class="chip" title="Files, artifacts or widgets Claude produced">${plural(c.outputCount, 'output')}</span>`);
-  if (c.fileCount) b.push(`<span class="chip" title="Uploaded files">📎 ${c.fileCount}</span>`);
+  if (c.fileCount) b.push(`<span class="chip" title="Uploaded files"><span aria-hidden="true">📎</span> ${c.fileCount}<span class="sr-only"> uploaded ${c.fileCount === 1 ? 'file' : 'files'}</span></span>`);
   return b.join(' ');
 }
 
@@ -3822,7 +3923,7 @@ function convTable(list, key, showOwner) {
     text: c => [c.title, c.summary, c.owner && c.owner.name, c.owner && c.owner.email, c.id].join(' '),
     placeholder: 'Filter by title, summary or person…',
     empty: 'No conversations.',
-    extraToolbar: empties ? `<label class="row muted" style="font-size:14px"><input type="checkbox" ${on(el => { CONV_OPTS.hideEmpty = el.checked; saveConvOpts(); onRoute(); })}${CONV_OPTS.hideEmpty ? ' checked' : ''}> Hide ${empties} without content</label>` : '',
+    extraToolbar: empties ? `<label class="row muted" style="font-size:14px"><input type="checkbox" id="conv-hide-empty" ${on(el => { CONV_OPTS.hideEmpty = el.checked; saveConvOpts(); onRoute(true); })}${CONV_OPTS.hideEmpty ? ' checked' : ''}> Hide ${empties} without content</label>` : '',
   });
 }
 
@@ -3868,6 +3969,8 @@ function viewConversation(id) {
   const path = currentPath(conv);
   const offBranch = totalMsgs - path.length;
   const outputs = collectOutputs(conv);
+  // A toolbar option: a toggle button (aria-pressed) that redraws the thread.
+  const opt = (key, icon, label, title) => `<button class="chip${CONV_OPTS[key] ? ' on' : ''}" type="button" aria-pressed="${CONV_OPTS[key]}"${title ? ` title="${title}"` : ''} ${on(el => setConvOpt(draw, key, el))}><span aria-hidden="true">${icon}</span> ${label}</button>`;
 
   after(() => {
     draw({ target });
@@ -3893,7 +3996,7 @@ function viewConversation(id) {
         <button class="btn small" type="button" ${on(() => copyText(convToMarkdown(conv)))}>Copy as Markdown</button>
         <button class="btn small" type="button" ${on(() => downloadText(safeFilename(conv.title, 'conversation') + '.md', convToMarkdown(conv)))}>Download .md</button>
         <button class="btn small" type="button" ${on(() => downloadText(safeFilename(conv.title, 'conversation') + '.json', jsonPretty(conv.raw)))}>.json</button>
-        <button class="btn small ghost" type="button" ${on(() => window.print())} title="Print or save as PDF">⎙</button>
+        <button class="btn small ghost" type="button" ${on(() => window.print())} title="Print or save as PDF" aria-label="Print or save as PDF">⎙</button>
       </div>
     </div>
 
@@ -3901,12 +4004,12 @@ function viewConversation(id) {
     ${outputs.length ? outputsBox(conv, outputs, draw) : ''}
 
     <div class="conv-toolbar" id="conv-toolbar">
-      <label class="chip${CONV_OPTS.showTools ? ' on' : ''}"><input type="checkbox" ${on(el => setConvOpt(draw, 'showTools', el))} ${CONV_OPTS.showTools ? 'checked' : ''} hidden>⚙ Tool calls</label>
-      <label class="chip${CONV_OPTS.showThinking ? ' on' : ''}"><input type="checkbox" ${on(el => setConvOpt(draw, 'showThinking', el))} ${CONV_OPTS.showThinking ? 'checked' : ''} hidden>💭 Thinking</label>
-      <label class="chip${CONV_OPTS.showSystem ? ' on' : ''}" title="Text the platform added to messages (memory snapshots, dates)"><input type="checkbox" ${on(el => setConvOpt(draw, 'showSystem', el))} ${CONV_OPTS.showSystem ? 'checked' : ''} hidden>⚑ System notes</label>
+      ${opt('showTools', '⚙', 'Tool calls')}
+      ${opt('showThinking', '💭', 'Thinking')}
+      ${opt('showSystem', '⚑', 'System notes', 'Text the platform added to messages (memory snapshots, dates)')}
       <button class="chip" type="button" ${on(expandAll)}>Expand all</button>
       <button class="chip" type="button" ${on(collapseAll)}>Collapse all</button>
-      ${q ? `<span class="chip on">Highlighting “${esc(q)}” <a href="#/c/${encodeURIComponent(conv.id)}" title="Clear">×</a></span><span class="muted" id="hit-count" style="font-size:13px"></span>` : ''}
+      ${q ? `<span class="chip on">Highlighting “${esc(q)}” <a href="#/c/${encodeURIComponent(conv.id)}" title="Clear" aria-label="Stop highlighting">×</a></span><span class="muted" id="hit-count" style="font-size:13px" role="status"></span>` : ''}
     </div>
 
     ${conv.empty ? `<div class="notice warn">${totalMsgs
@@ -3918,9 +4021,10 @@ function viewConversation(id) {
 
 // A toolbar option (tool calls, thinking, system notes): save it and redraw the thread in place.
 function setConvOpt(draw, key, el) {
-  CONV_OPTS[key] = el.checked;
+  CONV_OPTS[key] = !CONV_OPTS[key];
   saveConvOpts();
-  el.closest('.chip').classList.toggle('on', el.checked);
+  el.classList.toggle('on', CONV_OPTS[key]);
+  el.setAttribute('aria-pressed', String(CONV_OPTS[key]));
   draw({ anchor: threadAnchor() });
 }
 
@@ -3992,6 +4096,9 @@ function drawThread(conv, terms, opts) {
       el.classList.add('flash');
       const firstMark = el.querySelector('mark');
       if (firstMark) firstMark.scrollIntoView({ block: 'center' });
+      // The keyboard and screen readers go on from the message the link pointed at.
+      el.tabIndex = -1;
+      el.focus({ preventScroll: true });
     }
   }
 }
@@ -4007,9 +4114,9 @@ function messageHtml(m, ctx) {
   const prev = sibs[idx - 1], next = sibs[idx + 1];
   const branch = sibs.length > 1
     ? `<span class="branch-nav" title="${human ? 'This message was edited' : 'This reply was regenerated'}: ${sibs.length} versions">
-        <button type="button" ${prev ? on(el => switchBranch(ctx, prev.uuid, el)) : 'disabled'} aria-label="Previous version">‹</button>
+        <button type="button" ${prev ? on(el => switchBranch(ctx, prev.uuid, el, 0)) : 'disabled'} aria-label="Previous version">‹</button>
         ${idx + 1} / ${sibs.length}
-        <button type="button" ${next ? on(el => switchBranch(ctx, next.uuid, el)) : 'disabled'} aria-label="Next version">›</button>
+        <button type="button" ${next ? on(el => switchBranch(ctx, next.uuid, el, 1)) : 'disabled'} aria-label="Next version">›</button>
       </span>` : '';
   const blocks = Array.isArray(m.content) ? m.content : [];
   const firstStart = blocks.reduce((min, b) => { const t = parseTime(b && b.start_timestamp); return t && (!min || t < min) ? t : min; }, 0);
@@ -4024,8 +4131,8 @@ function messageHtml(m, ctx) {
       ${dur ? `<span class="faint" title="Time to answer">· ${esc(dur)}</span>` : ''}
       ${branch}
       <span class="msg-actions">
-        <button class="btn small ghost" type="button" ${on(() => copyText(messageToMarkdown(conv, m)))} title="Copy message text">⧉</button>
-        <button class="btn small ghost" type="button" ${on(() => copyText(location.href.split('#')[0] + '#/c/' + conv.id + '?m=' + m.uuid))} title="Copy link to this message">#</button>
+        <button class="btn small ghost" type="button" ${on(() => copyText(messageToMarkdown(conv, m)))} title="Copy message text" aria-label="Copy message text">⧉</button>
+        <button class="btn small ghost" type="button" ${on(() => copyText(location.href.split('#')[0] + '#/c/' + conv.id + '?m=' + m.uuid))} title="Copy link to this message" aria-label="Copy link to this message">#</button>
       </span>
     </div>
     <div class="msg-body">${body || '<span class="faint">(empty message)</span>'}</div>
@@ -4033,11 +4140,17 @@ function messageHtml(m, ctx) {
 }
 
 // Show another version of an edited or regenerated message, keeping it where it is on screen.
-function switchBranch(ctx, to, el) {
+// The thread is drawn again, so the focus goes to the same arrow (side 0 ‹, 1 ›) of the new
+// version, or to its other arrow when that one is the last.
+function switchBranch(ctx, to, el, side) {
   const msgEl = el.closest('.msg');
   const anchor = msgEl ? { id: to, top: msgEl.getBoundingClientRect().top } : threadAnchor();
   selectBranchFor(ctx.conv, to);
   ctx.draw({ anchor });
+  const msg = document.getElementById('m-' + to);
+  const arrows = msg ? $$('.branch-nav button', msg) : [];
+  const next = arrows[side] && !arrows[side].disabled ? arrows[side] : arrows.find(b => !b.disabled);
+  if (next) next.focus();
 }
 
 const HUMAN_FOLD = 3000;
@@ -4495,14 +4608,17 @@ function gotoBlock(conv, draw, msgId, target) {
   revealBlock(target);
 }
 
-// Open a block and every collapsed group around it, then scroll to it.
+// Open a block and every collapsed group around it, then scroll to it and move the focus there.
 function revealBlock(id) {
   const t = document.getElementById(id);
   if (!t) { toast('Could not find that item in the conversation'); return false; }
   for (let d = t.parentElement && t.parentElement.closest('details'); d; d = d.parentElement && d.parentElement.closest('details')) d.open = true;
   if (t.tagName === 'DETAILS') t.open = true;
-  t.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  t.scrollIntoView({ behavior: scrollMotion(), block: 'start' });
   t.classList.add('flash');
+  const summary = t.tagName === 'DETAILS' && t.querySelector(':scope > summary');
+  if (!summary) t.tabIndex = -1;
+  (summary || t).focus({ preventScroll: true });
   return true;
 }
 
@@ -4527,7 +4643,7 @@ function artifactTable(list, key, showOwner, facet) {
     {
       id: 'title', label: 'Title', cls: 'title', link: true, asc: true, sortVal: a => artifactTitle(a).toLowerCase(),
       html: a => `<div dir="auto">${esc(artifactTitle(a))}</div>${a.description && !TYPE_BLURB.test(a.description) && a.description !== artifactTitle(a) ? `<div class="snip" dir="auto">${esc(truncate(a.description, 200))}</div>` : ''}
-        <div class="row wrap" style="margin-top:5px;gap:4px"><span class="chip">${esc(a.contentType)}</span>${visChip(a)}${a.commentCount ? `<span class="chip">🗨 ${a.commentCount}</span>` : ''}${a.mentionedIn.length ? `<span class="chip" title="Linked from conversations">💬 ${a.mentionedIn.length}</span>` : ''}</div>`,
+        <div class="row wrap" style="margin-top:5px;gap:4px"><span class="chip">${esc(a.contentType)}</span>${visChip(a)}${a.commentCount ? `<span class="chip"><span aria-hidden="true">🗨</span> ${a.commentCount}<span class="sr-only"> ${a.commentCount === 1 ? 'comment' : 'comments'}</span></span>` : ''}${a.mentionedIn.length ? `<span class="chip" title="Linked from conversations"><span aria-hidden="true">💬</span> ${a.mentionedIn.length}<span class="sr-only"> linked from conversations</span></span>` : ''}</div>`,
     },
   ];
   if (showOwner) columns.push(COL.owner);
@@ -4585,14 +4701,18 @@ function viewArtifact(id, vid) {
     return drawVersion(a, selected, query.view || 'preview', board, pickBoard);
   });
 
-  const versionList = versions.map(v => {
+  // A version with files is a button that opens it; Docs keep no old text, so theirs are not.
+  const versionList = versions.map((v, i) => {
     const has = isPage || a.vfiles.has(v.id);
     const desc = v.description && !TYPE_BLURB.test(v.description) && v.description !== v.title ? decodeEntities(v.description) : '';
-    return `<li class="${v.id === selected ? 'sel' : ''}${has ? '' : ' missing'}" ${has && !isPage ? on(() => navigate('#/a/' + encodeURIComponent(a.id) + '/' + encodeURIComponent(v.id), true)) : ''} title="${esc(v.id)}">
-      <div class="vt" dir="auto">${esc(v.title || 'Untitled')}${v.id === a.activeVersion ? ' <span class="chip ok" style="font-size:11px">current</span>' : ''}</div>
-      <div class="vd">${esc(fmtDateTime(v.created))}${!isPage ? ' · ' + esc(versionInfo(a, v.id).type) : ''}</div>
-      ${desc ? `<div class="vd" dir="auto">${esc(truncate(desc, 140))}</div>` : ''}
-    </li>`;
+    const sel = v.id === selected;
+    const inner = `<span class="vt" dir="auto">${esc(v.title || 'Untitled')}${v.id === a.activeVersion ? ' <span class="chip ok" style="font-size:11px">current</span>' : ''}</span>
+      <span class="vd">${esc(fmtDateTime(v.created))}${!isPage ? ' · ' + esc(versionInfo(a, v.id).type) : ''}${has ? '' : ' · files not loaded'}</span>
+      ${desc ? `<span class="vd" dir="auto">${esc(truncate(desc, 140))}</span>` : ''}`;
+    const cls = `${sel ? 'sel' : ''}${has ? '' : ' missing'}`;
+    return `<li title="${esc(v.id)}">${has && !isPage
+      ? `<button class="${cls}" type="button" id="ver-${i}"${sel ? ' aria-current="true"' : ''} ${on(() => navigate('#/a/' + encodeURIComponent(a.id) + '/' + encodeURIComponent(v.id), true))}>${inner}</button>`
+      : `<div class="${cls}"${sel ? ' aria-current="true"' : ''}>${inner}</div>`}</li>`;
   }).join('');
 
   return `<div class="page">
@@ -4624,45 +4744,68 @@ function viewArtifact(id, vid) {
 
 /* ---------- Versions ---------- */
 
+/* The bar is drawn once and only the body below it changes, so the keyboard focus and full
+ * screen survive while the version loads. */
 async function drawVersion(a, vid, view, board, pickBoard) {
   const box = $('#art-main');
   const info = versionInfo(a, vid);
   const tabs = [['preview', 'Preview'], ['source', 'Source'], ['files', 'Files']];
-  const bar = (extra) => `<div class="frame-bar">
-      ${tabs.map(([k, l]) => `<button class="btn small${view === k ? ' primary' : ''}" type="button" ${on(() => navigate('#/a/' + encodeURIComponent(a.id) + '/' + encodeURIComponent(vid) + '?view=' + k, true))}>${l}</button>`).join('')}
-      <span class="grow"></span>${extra || ''}
+  box.innerHTML = `<div class="frame-box"><div class="frame-bar">
+      ${tabs.map(([k, l]) => `<button class="btn small${view === k ? ' primary' : ''}" type="button" id="art-view-${k}"${view === k ? ' aria-current="true"' : ''} ${on(() => navigate('#/a/' + encodeURIComponent(a.id) + '/' + encodeURIComponent(vid) + '?view=' + k, true))}>${l}</button>`).join('')}
+      <span class="grow"></span>
       <button class="btn small" type="button" ${on(() => openPreviewTab(a, vid, board))} title="Open the preview in a new tab">↗ New tab</button>
-      <button class="btn small" type="button" ${on(el => el.closest('.frame-box').classList.toggle('full'))} title="Full screen (Esc to leave)">⤢</button>
-      <button class="btn small" type="button" ${on(() => downloadVersion(a, vid))} title="Download this version">⇩</button>
-    </div>`;
-  box.innerHTML = `<div class="frame-box">${bar()}<div class="empty">Opening ${esc(info.type)}…</div></div>`;
+      <button class="btn small" type="button" ${on(el => setFull(el.closest('.frame-box'), !el.closest('.frame-box').classList.contains('full')))} title="Full screen (Esc to leave)" aria-label="Full screen" aria-pressed="false">⤢</button>
+      <button class="btn small" type="button" ${on(() => downloadVersion(a, vid))} title="Download this version" aria-label="Download this version">⇩</button>
+    </div><div class="frame-body"><div class="empty">Opening ${esc(info.type)}…</div></div></div>`;
+  refocus();
+  const body = box.querySelector('.frame-body');
   const { signal } = VIEW.ac;
   try {
-    if (!info.slot) { box.innerHTML = `<div class="frame-box">${bar()}<div class="empty">This version has no files in the loaded export.</div></div>`; return; }
+    if (!info.slot) { body.innerHTML = '<div class="empty">This version has no files in the loaded export.</div>'; return; }
     if (view === 'files') {
-      box.innerHTML = `<div class="frame-box">${bar()}<div class="card-pad">${versionFilesHtml(vid, info)}</div></div>`;
+      body.innerHTML = `<div class="card-pad">${versionFilesHtml(vid, info)}</div>`;
       return;
     }
     if (view === 'source') {
       const src = await versionSource(info);
       if (signal.aborted) return;
-      box.innerHTML = `<div class="frame-box">${bar()}<div class="card-pad">${src != null ? preHtml(src) : '<p class="faint">No single source file. See the Files tab.</p>'}</div></div>`;
+      body.innerHTML = `<div class="card-pad">${src != null ? preHtml(src) : '<p class="faint">No single source file. See the Files tab.</p>'}</div>`;
       return;
     }
     const built = await getBuilt(a, vid, info, board);
     if (signal.aborted) return;
     const notes = built.notes.length ? `<div class="notice" style="border-radius:0;border-width:0 0 1px">${built.notes.map(esc).join('<br>')}</div>` : '';
     if (built.html == null) {
-      box.innerHTML = `<div class="frame-box">${bar()}${notes}<div class="empty">${esc(built.empty || 'Nothing to preview.')}</div></div>`;
+      body.innerHTML = `${notes}<div class="empty">${esc(built.empty || 'Nothing to preview.')}</div>`;
       return;
     }
-    const picker = built.boards ? `<select class="input" style="padding:3px 8px;font-size:13px" ${on.change(el => pickBoard(el.value))} aria-label="Board">${built.boards.list.map(b => `<option value="${esc(b.file)}"${b.file === built.boards.current ? ' selected' : ''}>${esc(b.title)}</option>`).join('')}</select>` : '';
-    box.innerHTML = `<div class="frame-box" id="art-frame-box">${bar(picker)}${notes}<iframe class="preview" id="art-frame" sandbox="allow-scripts allow-popups allow-forms allow-modals allow-downloads" referrerpolicy="no-referrer" title="${esc(artifactTitle(a))}"></iframe></div>`;
-    box.querySelector('iframe').srcdoc = built.html;
+    if (built.boards) {
+      box.querySelector('.frame-bar > .grow').insertAdjacentHTML('afterend', `<select class="input" id="art-board" style="padding:3px 8px;font-size:13px" ${on.change(el => pickBoard(el.value))} aria-label="Board">${built.boards.list.map(b => `<option value="${esc(b.file)}"${b.file === built.boards.current ? ' selected' : ''}>${esc(b.title)}</option>`).join('')}</select>`);
+      refocus();
+    }
+    body.innerHTML = `${notes}<iframe class="preview" id="art-frame" sandbox="allow-scripts allow-popups allow-forms allow-modals allow-downloads" referrerpolicy="no-referrer" title="${esc(artifactTitle(a))}"></iframe>`;
+    body.querySelector('iframe').srcdoc = built.html;
   } catch (err) {
     console.error(err);
     if (signal.aborted) return;
-    box.innerHTML = `<div class="frame-box">${bar()}<div class="notice warn">Could not open this version: ${esc(err.message || err)}</div></div>`;
+    body.innerHTML = `<div class="notice warn">Could not open this version: ${esc(err.message || err)}</div>`;
+  }
+}
+
+/* Full screen works like a modal dialog: the rest of the page is inert until Esc or ⤢, and the
+ * focus goes back to ⤢. Leaving the page ends it too. */
+function setFull(box, full) {
+  if (!box || box.classList.contains('full') === full) return;
+  const btn = box.querySelector('[aria-pressed]');
+  box.classList.toggle('full', full);
+  btn.setAttribute('aria-pressed', String(full));
+  if (full) {
+    const undo = isolate(box);
+    box.undoFull = undo;
+    VIEW.ac.signal.addEventListener('abort', undo, { once: true });
+  } else {
+    box.undoFull();
+    btn.focus();
   }
 }
 
@@ -4694,7 +4837,7 @@ async function openArtifactFile(path, node) {
   if (/^(png|jpe?g|gif|webp|svg|avif|ico|bmp)$/.test(ext)) {
     const src = dataUrl(path, await node.bytes());
     if (signal.aborted) return;
-    box.innerHTML = head + `<img alt="" style="max-width:100%;border:1px solid var(--border);border-radius:6px" src="${src}">`;
+    box.innerHTML = head + `<img alt="${esc(path.split('/').pop())}" style="max-width:100%;border:1px solid var(--border);border-radius:6px" src="${src}">`;
   } else if (/^(mp4|webm)$/.test(ext)) {
     const blob = await node.blob(mimeFor(path));
     if (signal.aborted) return;
@@ -4706,7 +4849,7 @@ async function openArtifactFile(path, node) {
   } else {
     box.innerHTML = head + '<p class="muted">Binary file; use Download.</p>';
   }
-  box.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  box.scrollIntoView({ behavior: scrollMotion(), block: 'nearest' });
 }
 
 /* ---------- Pages (Claude Docs) ---------- */
@@ -4732,7 +4875,7 @@ async function drawPage(a, want) {
   const threads = (a.comments || []).filter(t => !t.tab || t.tab === tab.title || tabs.length === 1);
   const body = tab.body.replace(/!\[([^\]]*)\]\(attachment\)/g, (all, alt) => `*[image not in export${alt ? ': ' + alt : ''}]*`);
   box.innerHTML = `<div class="card">
-    ${tabs.length > 1 ? `<div class="tabs" style="margin:0;padding:0 12px">${tabs.map((t, i) => `<button class="tab${i === idx ? ' active' : ''}" type="button" ${on(() => navigate('#/a/' + encodeURIComponent(a.id) + '?tab=' + encodeURIComponent(t.title), true))} dir="auto">${esc(t.title || 'Untitled')}</button>`).join('')}</div>` : ''}
+    ${tabs.length > 1 ? `<div class="tabs" style="margin:0;padding:0 12px">${tabs.map((t, i) => `<button class="tab${i === idx ? ' active' : ''}" type="button" id="doc-tab-${i}"${i === idx ? ' aria-current="true"' : ''} ${on(() => navigate('#/a/' + encodeURIComponent(a.id) + '?tab=' + encodeURIComponent(t.title), true))} dir="auto">${esc(t.title || 'Untitled')}</button>`).join('')}</div>` : ''}
     <div class="card-pad" id="page-body">${mdBlock(body)}</div>
     <div class="frame-bar" style="border-top:1px solid var(--border);border-bottom:0">
       <button class="btn small" type="button" ${on(() => a.pageNode.blob('text/markdown').then(b => downloadBlob(b, safeFilename(artifactTitle(a), 'page') + '.md')))}>Download page.md</button>
@@ -4740,6 +4883,7 @@ async function drawPage(a, want) {
     </div>
   </div>
   ${(a.comments || []).length ? `<h2 class="section-title">Comments${tabs.length > 1 ? ' on this tab' : ''} <span class="badge">${threads.reduce((n, t) => n + (t.comments || []).length, 0)}</span></h2><div class="card card-pad">${threads.length ? pageCommentsHtml(a, threads) : '<p class="faint">No comments on this tab.</p>'}</div>` : ''}`;
+  refocus();
   // Highlight the text each comment thread points at.
   const quotes = threads.map(t => t.quoted_text).filter(q => q && q.replace(/\s/g, '').length >= 3);
   if (quotes.length) highlightIn(box.querySelector('#page-body'), quotes, { firstOnly: true });
@@ -4788,12 +4932,12 @@ async function openPreviewTab(a, vid, board) {
   const w = window.open('', '_blank');
   if (!w) { toast('Pop-up blocked. Allow pop-ups for this page, or use Download.'); return; }
   w.document.open();
-  w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>${esc(artifactTitle(a))}</title><style>html,body,iframe{margin:0;border:0;width:100%;height:100%;display:block;font-family:system-ui,sans-serif}</style></head><body><p style="padding:20px">Opening ${esc(artifactTitle(a))}…</p></body></html>`);
+  w.document.write(`<!doctype html><html lang="en"><head><meta charset="utf-8"><title>${esc(artifactTitle(a))}</title><style>html,body,iframe{margin:0;border:0;width:100%;height:100%;display:block;font-family:system-ui,sans-serif}</style></head><body><p style="padding:20px">Opening ${esc(artifactTitle(a))}…</p></body></html>`);
   w.document.close();
   try {
     const built = await getBuilt(a, vid, versionInfo(a, vid), board);
     if (built.html == null) { w.document.body.innerHTML = '<p style="padding:20px">Nothing to preview for this version.</p>'; return; }
-    w.document.body.innerHTML = '<iframe sandbox="allow-scripts allow-popups allow-forms allow-modals allow-downloads" referrerpolicy="no-referrer"></iframe>';
+    w.document.body.innerHTML = '<iframe sandbox="allow-scripts allow-popups allow-forms allow-modals allow-downloads" referrerpolicy="no-referrer" title="Preview"></iframe>';
     w.document.querySelector('iframe').srcdoc = built.html;
   } catch (err) {
     w.document.body.textContent = 'Could not open: ' + (err.message || err);
@@ -4947,7 +5091,7 @@ function designMessageHtml(m, d, receipts) {
   }
   // assistant
   if (c.kind === 'question-record' && c.questionRecord) {
-    return `<article class="msg assistant" id="m-${esc(m.uuid)}"><div class="msg-head"><span class="avatar sm" style="--h:20">C</span><span class="who">Claude</span><span>${esc(time)}</span></div>
+    return `<article class="msg assistant" id="m-${esc(m.uuid)}"><div class="msg-head"><span class="avatar sm" style="--h:20" aria-hidden="true">C</span><span class="who">Claude</span><span>${esc(time)}</span></div>
       <div class="msg-body">${designQuestionCard(c.questionRecord.spec, receipts.get(c.questionRecord.questionId))}</div></article>`;
   }
   if (c.kind === 'chat-summary') {
@@ -4989,7 +5133,7 @@ function designMessageHtml(m, d, receipts) {
     if (rows.length) out.push(`<div class="files-row" style="font-size:12.5px">${rows.join(' ')}</div>`);
   }
   const failed = !c.turnInputTokens && blocks && blocks.length && blocks[blocks.length - 1].type === 'error';
-  return `<article class="msg assistant" id="m-${esc(m.uuid)}"><div class="msg-head"><span class="avatar sm" style="--h:20">C</span><span class="who">Claude</span><span>${esc(time)}</span>${c.turnInputTokens ? `<span class="faint">· ${fmtNum(Math.round(c.turnInputTokens / 1000))}k context</span>` : ''}${failed ? ' <span class="chip err">turn failed</span>' : ''}${snip}</div>
+  return `<article class="msg assistant" id="m-${esc(m.uuid)}"><div class="msg-head"><span class="avatar sm" style="--h:20" aria-hidden="true">C</span><span class="who">Claude</span><span>${esc(time)}</span>${c.turnInputTokens ? `<span class="faint">· ${fmtNum(Math.round(c.turnInputTokens / 1000))}k context</span>` : ''}${failed ? ' <span class="chip err">turn failed</span>' : ''}${snip}</div>
     <div class="msg-body">${out.join('') || '<span class="faint">(no text)</span>'}</div></article>`;
 }
 
@@ -5107,7 +5251,7 @@ function viewMemories() {
       text: m => [m.owner && m.owner.name, m.owner && m.owner.email, m.conversationsMemory, ...m.projectMemories.map(x => x.text), ...m.files.map(f => f.path + ' ' + f.content)].join(' '),
       columns: [
         { id: 'owner', label: 'Person', asc: true, sortVal: m => m.owner.name.toLowerCase(), html: m => whoCell(m.owner) },
-        { id: 'profile', label: 'Profile', cls: 'title', html: m => { const pf = m.files.find(f => f.path === '/profile.md'); const t = pf ? pf.body : m.conversationsMemory; return `<div class="snip" dir="auto" style="font-weight:400">${esc(truncate(oneLine(stripMd(String(t || '').replace(/- \[stated\]/g, ''))), 220))}</div>`; } },
+        { id: 'profile', label: 'Profile', cls: 'title', link: true, html: m => { const pf = m.files.find(f => f.path === '/profile.md'); const t = pf ? pf.body : m.conversationsMemory; return `<div class="snip" dir="auto" style="font-weight:400">${esc(truncate(oneLine(stripMd(String(t || '').replace(/- \[stated\]/g, ''))), 220))}</div>`; } },
         COL.num('files', 'Files', m => m.files.length),
         { id: 'chat', label: 'Chat memory', html: m => m.conversationsMemory ? '✓' : '<span class="faint">—</span>', sortVal: m => (m.conversationsMemory ? 1 : 0), cls: 'num' },
         COL.date('updated', 'Updated', m => m.updated),
@@ -5128,6 +5272,7 @@ function viewMemory(personId) {
       el.open = true;
       el.scrollIntoView({ block: 'start' });
       el.classList.add('flash');
+      el.querySelector('summary').focus({ preventScroll: true });
     });
   }
   return `<div class="page narrow">
@@ -5163,7 +5308,7 @@ function memoryBody(mem) {
     return MEM_FOLDERS[g] || g;
   };
   let i = 0;
-  const groupsHtml = keys.map(g => `<h3 class="section-title" style="font-size:14.5px">${esc(label(g))} <span class="badge">${groups.get(g).length}</span></h3>
+  const groupsHtml = keys.map(g => `<h2 class="section-title" style="font-size:14.5px">${esc(label(g))} <span class="badge">${groups.get(g).length}</span></h2>
     <div class="doc-list">${groups.get(g).map(f => memoryFileCard(f, mem, i++)).join('')}</div>`).join('');
   return `
     ${mem.files.length ? `<div class="row wrap" style="margin:4px 0 0"><span class="muted" style="font-size:13.5px">Memory files Claude keeps. Each fact is tagged with where it came from.</span><span class="grow"></span><button class="btn small" type="button" ${on(() => $$('.mem-file').forEach(d => { d.open = true; }))}>Expand all</button></div>${groupsHtml}` : ''}
@@ -5224,7 +5369,7 @@ function viewSearch(q, t) {
     <div class="page-head"><div class="grow"><h1>Search</h1>
       <div class="sub">${s.person ? `<span>Only ${personLink(s.person)}’s data · <a href="#" ${on(() => setFocus(null))}>search everyone</a></span>` : '<span>All people</span>'}</div></div></div>
     <div class="toolbar">
-      <label class="row muted" style="font-size:14px"><input type="checkbox" ${on(el => navigate(searchHref({ q, deep: el.checked, t: urlType }), true))}${deep ? ' checked' : ''}> Deep search: also look inside tool calls, thinking, attached files and artifact content (slower the first time)</label>
+      <label class="row muted" style="font-size:14px"><input type="checkbox" id="search-deep" ${on(el => navigate(searchHref({ q, deep: el.checked, t: urlType }), true))}${deep ? ' checked' : ''}> Deep search: also look inside tool calls, thinking, attached files and artifact content (slower the first time)</label>
     </div>
     <div id="search-tabs" class="search-tabs"></div>
     <div id="search-results"></div>
@@ -5235,7 +5380,7 @@ function drawSearchResults(res, q, t, deep) {
   const terms = res.terms;
   // One list of hits per kind (res[k.key], built from KINDS by runSearch), plus res.people.
   const total = KINDS.reduce((n, k) => n + res[k.key].length, res.people.length);
-  const tab = (k, label, n) => `<a class="chip${t === k ? ' on' : ''}" href="${searchHref({ q, deep, t: k })}">${label} <b>${fmtNum(n)}</b></a>`;
+  const tab = (k, label, n) => `<a class="chip${t === k ? ' on' : ''}" href="${searchHref({ q, deep, t: k })}"${t === k ? ' aria-current="page"' : ''}>${label} <b>${fmtNum(n)}</b></a>`;
   $('#search-tabs').innerHTML = tab('all', 'Everything', total) + KINDS.map(k => tab(k.key, esc(k.searchTab || k.label), res[k.key].length)).join('') + tab('people', 'People', res.people.length);
   const limit = t === 'all' ? 5 : 200;
   const qs = '?q=' + encodeURIComponent(q);
@@ -5250,6 +5395,7 @@ function drawSearchResults(res, q, t, deep) {
   const ppl = ({ item: p }) => `<a class="result" href="#/person/${encodeURIComponent(p.id)}"><div class="r-title">${avatarHtml(p, 'sm')}<span>${esc(p.name)}</span></div><div class="r-meta"><span>${esc(p.email || '')}</span><span>${plural(p.total(), 'item')}</span></div></a>`;
   $('#search-results').innerHTML = (total ? '' : `<div class="card empty">Nothing found for “${esc(q)}”.${deep ? '' : ' Try ticking “Deep search”.'}</div>`) +
     sec('people', 'People', res.people, ppl) + KINDS.map(k => sec(k.key, esc(k.label), res[k.key], hit => k.searchResult(hit, terms, qs))).join('');
+  announce(total ? plural(total, 'result') + ' found' : 'Nothing found');
 }
 
 // Search results of the kinds this file draws (see KINDS.searchResult).
@@ -5327,12 +5473,15 @@ function missingParts(m) {
 
 /* ======================= Per-person export ======================= */
 
+/* A modal dialog: the page behind it is inert, Escape or Cancel closes it, and the focus goes
+ * back to the button that opened it. Leaving the page closes it too. */
 async function exportPerson(p) {
+  const opener = document.activeElement;
   const back = document.createElement('div');
   back.className = 'modal-back';
   const versionsTotal = p.artifacts.reduce((a, x) => a + x.versions.length, 0);
-  back.innerHTML = `<div class="modal" role="dialog" aria-modal="true" aria-label="Download data">
-    <h2>Download ${esc(p.name)}’s data</h2>
+  back.innerHTML = `<div class="modal" role="dialog" aria-modal="true" aria-labelledby="exp-title">
+    <h2 id="exp-title">Download ${esc(p.name)}’s data</h2>
     <p class="muted" style="margin:0 0 10px;font-size:14px">One .zip with everything linked to this person: conversations as readable Markdown plus the original JSON, and the original files for everything else.</p>
     <ul style="margin:0 0 10px;padding-left:20px;font-size:14px">
       <li>${plural(p.conversations.length, 'conversation')}</li><li>${plural(p.artifacts.length, 'artifact')}</li>
@@ -5344,10 +5493,20 @@ async function exportPerson(p) {
     <div class="actions"><button class="btn" type="button" id="exp-cancel">Cancel</button><button class="btn primary" type="button" id="exp-go">Download .zip</button></div>
   </div>`;
   document.body.appendChild(back);
+  const undo = isolate(back);
   let cancelled = false;
-  const close = () => { cancelled = true; back.remove(); };
+  const close = () => {
+    if (cancelled) return;
+    cancelled = true;
+    back.remove();
+    undo();
+    if (opener && opener.isConnected) opener.focus();
+  };
+  VIEW.ac.signal.addEventListener('abort', close, { once: true });
   back.addEventListener('click', e => { if (e.target === back) close(); });
+  back.addEventListener('keydown', e => { if (e.key === 'Escape') { e.stopPropagation(); close(); } });
   $('#exp-cancel', back).addEventListener('click', close);
+  $('#exp-allv', back).focus();
   $('#exp-go', back).addEventListener('click', async () => {
     const go = $('#exp-go', back);
     go.disabled = true;
@@ -5360,6 +5519,7 @@ async function exportPerson(p) {
     } catch (err) {
       console.error(err);
       prog.textContent = 'Failed: ' + (err.message || err);
+      announce(prog.textContent);
       go.disabled = false;
     }
   });
@@ -7464,6 +7624,8 @@ function currentTheme() {
   if (t) return t;
   return matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
 }
+// ◐ is a toggle: "Dark theme", pressed or not.
+function syncThemeButton() { $('#theme-btn').setAttribute('aria-pressed', String(currentTheme() === 'dark')); }
 try { applyTheme(localStorage.getItem('cer-theme')); } catch (e) { /* storage blocked */ }
 
 /* ---------- Loading ---------- */
@@ -7499,6 +7661,7 @@ async function startLoad(files, handles) {
   $('#landing').hidden = false;
   $('#shell').hidden = true;
   Loader.reset();
+  announce('Reading the export…');
   $$('#dropzone button').forEach(b => (b.disabled = true));
   try {
     const before = DB.warnings.length;
@@ -7515,13 +7678,17 @@ async function startLoad(files, handles) {
       row.innerHTML = `<span class="grow muted" style="font-size:14px">Some files could not be read, so part of the data is missing.</span><button class="btn primary" type="button" id="continue-anyway">Continue anyway</button>`;
       Loader.box().appendChild(row);
       $('#continue-anyway').addEventListener('click', showApp);
+      announce('Some files could not be read, so part of the data is missing.');
+      $('#continue-anyway').focus();
       return;
     }
     if (!hasRecords() && DB.manifests.length) { showManifestOnly(); return; }
     showApp();
   } catch (err) {
     console.error(err);
-    Loader.set('fatal', 'Could not read the export: ' + (err && err.message ? err.message : err), 1, '', 'error');
+    const msg = 'Could not read the export: ' + (err && err.message ? err.message : err);
+    Loader.set('fatal', msg, 1, '', 'error');
+    announce(msg);
   } finally {
     $$('#dropzone button').forEach(b => (b.disabled = false));
   }
@@ -7533,9 +7700,10 @@ function showManifestOnly() {
   const box = Loader.box();
   Loader.rows.clear();
   box.hidden = false;
-  box.innerHTML = `<h2 style="font-size:17px;margin:0 0 6px">This is your export’s file list</h2>
+  box.innerHTML = `<h2 style="font-size:17px;margin:0 0 6px" tabindex="-1">This is your export’s file list</h2>
     <p class="muted" style="margin:0 0 12px;font-size:14px">Exported ${esc(fmtDateTime(m.createdAt))}. Download the ${plural(m.files.length, 'part')} below, then drop the zip files onto this page.</p>
     ${manifestDownloadsHtml(m, m.files)}`;
+  box.querySelector('h2').focus();
 }
 
 function showApp() {
@@ -7630,7 +7798,9 @@ async function setupLanding() {
         startLoad(files, last.handles);
       } catch (err) {
         Loader.reset();
-        Loader.set('reopen', 'Could not reopen: ' + (err.message || err) + '. The files may have moved; choose them again.', 1, '', 'error');
+        const msg = 'Could not reopen: ' + (err.message || err) + '. The files may have moved; choose them again.';
+        Loader.set('reopen', msg, 1, '', 'error');
+        announce(msg);
         HandleStore.clear();
         btn.hidden = true;
       }
@@ -7649,27 +7819,49 @@ function parseHash() {
   return { path, query };
 }
 
+// replace: the same page with other options (a tab, a version, a board). The URL changes in
+// place, and the focus goes back to the control that made the change.
 function navigate(hash, replace) {
   if (replace) history.replaceState(null, '', hash);
   else history.pushState(null, '', hash);
-  onRoute();
+  onRoute(!!replace);
 }
 
-function onRoute() {
+// inPlace: see navigate(). Without it, the focus goes to the new page's heading.
+function onRoute(inPlace) {
   if ($('#shell').hidden) return;
+  const main = $('#main');
+  const was = document.activeElement;
+  const refocusId = inPlace === true && was && main.contains(was) ? was.id : '';
   App.route = parseHash();
   App.lastHash = location.hash;
   VIEW.ac.abort();
   VIEW = newView();
-  $('#shell').classList.remove('nav-open');
+  toggleNav(false);
   closePicker();
-  const main = $('#main');
   main.innerHTML = renderRoute(App.route);
   main.scrollTop = 0;
+  VIEW.refocus = refocusId;
+  focusPage();
   mountView(VIEW);
+  // A page with no control of its own (About) is still scrolled from the keyboard: then the
+  // main area itself takes Tab.
+  main.tabIndex = main.querySelector('a[href], button, input, select, summary, [tabindex="0"], iframe') ? -1 : 0;
   renderSidebar();
   const q = App.route.path[0] === 'search' ? (App.route.query.q || '') : '';
   if (document.activeElement !== $('#q')) $('#q').value = q;
+}
+
+/* The focus after a route change: back on the control that redrew the page in place, or on
+ * the page's heading, so a screen reader reads it and Tab goes on from the top of the page.
+ * Someone typing in the search box keeps the focus there. scroll: bring the heading into view
+ * (the skip link, which also works on the start screen). */
+function focusPage(scroll) {
+  if (document.activeElement === $('#q') || refocus()) return;
+  const root = $('#shell').hidden ? $('#landing') : $('#main');
+  const h = $('h1', root);
+  if (h) h.setAttribute('tabindex', '-1');
+  (h || root).focus({ preventScroll: !scroll });
 }
 
 // Link clicks fire both popstate and hashchange; draw once per new hash.
@@ -7704,26 +7896,38 @@ function updateFocusButton() {
   $('#person-btn').classList.toggle('primary', !!p);
 }
 
-function closePicker() { const pk = $('#picker'); if (pk) pk.hidden = true; }
+// focusButton: give the focus back to the button that opened the picker (Escape).
+function closePicker(focusButton) {
+  const pk = $('#picker');
+  if (!pk || pk.hidden) return;
+  pk.hidden = true;
+  $('#person-btn').setAttribute('aria-expanded', 'false');
+  if (focusButton) $('#person-btn').focus();
+}
 
+/* A combobox: the focus stays in the text box, and the arrow keys move the highlighted option
+ * (aria-activedescendant). */
 function openPicker() {
   const pk = $('#picker');
   pk.hidden = false;
-  pk.innerHTML = `<input class="input" id="picker-q" placeholder="Type a name or email…" aria-label="Filter people">
-    <div id="picker-list" role="listbox"></div>`;
+  $('#person-btn').setAttribute('aria-expanded', 'true');
+  pk.innerHTML = `<input class="input" id="picker-q" role="combobox" aria-expanded="true" aria-controls="picker-list" aria-autocomplete="list" placeholder="Type a name or email…" aria-label="Find a person">
+    <div id="picker-list" role="listbox" aria-label="People"></div><div class="empty" id="picker-none" hidden>No match</div>`;
   const input = $('#picker-q');
   let hl = 0;
   const draw = () => {
-    const list = peopleMatching(input.value).slice(0, 60);
-    hl = Math.min(hl, Math.max(0, list.length));
-    $('#picker-list').innerHTML =
-      (App.focus ? `<div class="picker-item${hl === 0 ? ' hl' : ''}" data-pick=""><span class="avatar sm unknown">×</span><span>Show everyone</span></div>` : '') +
-      list.map((p, i) => {
-        const idx = i + (App.focus ? 1 : 0);
-        return `<div class="picker-item${idx === hl ? ' hl' : ''}" data-pick="${esc(p.id)}" role="option">${avatarHtml(p, 'sm')}
+    const rows = (App.focus ? [{ id: '', html: '<span class="avatar sm unknown" aria-hidden="true">×</span><span>Show everyone</span>' }] : [])
+      .concat(peopleMatching(input.value).slice(0, 60).map(p => ({ id: p.id, html: `${avatarHtml(p, 'sm')}
           <span class="grow"><span>${esc(p.name)}</span> <span class="em">${esc(p.email || '')}</span></span>
-          <span class="badge" title="items">${fmtNum(p.total())}</span></div>`;
-      }).join('') || '<div class="empty">No match</div>';
+          <span class="badge" title="items">${fmtNum(p.total())}<span class="sr-only"> items</span></span>` })));
+    hl = Math.min(hl, Math.max(0, rows.length - 1));
+    $('#picker-list').innerHTML = rows.map((r, i) =>
+      `<div class="picker-item${i === hl ? ' hl' : ''}" id="pick-${i}" role="option" aria-selected="${i === hl}" data-pick="${esc(r.id)}">${r.html}</div>`).join('');
+    $('#picker-none').hidden = rows.length > 0;
+    if (rows.length) input.setAttribute('aria-activedescendant', 'pick-' + hl);
+    else input.removeAttribute('aria-activedescendant');
+    const cur = $('#pick-' + hl);
+    if (cur) cur.scrollIntoView({ block: 'nearest' });
   };
   input.addEventListener('input', () => { hl = 0; draw(); });
   input.addEventListener('keydown', e => {
@@ -7731,7 +7935,7 @@ function openPicker() {
     if (e.key === 'ArrowDown') { hl = Math.min(items.length - 1, hl + 1); draw(); e.preventDefault(); }
     else if (e.key === 'ArrowUp') { hl = Math.max(0, hl - 1); draw(); e.preventDefault(); }
     else if (e.key === 'Enter') { const it = items[hl]; if (it) pickPerson(it.dataset.pick); e.preventDefault(); }
-    else if (e.key === 'Escape') closePicker();
+    else if (e.key === 'Escape') { closePicker(true); e.preventDefault(); e.stopPropagation(); }
   });
   draw();
   input.focus();
@@ -7745,10 +7949,21 @@ function pickPerson(id) {
 
 /* ---------- Global events ---------- */
 
+// The menu on narrow screens.
+function toggleNav(open) {
+  const shell = $('#shell');
+  const on = open == null ? !shell.classList.contains('nav-open') : open;
+  shell.classList.toggle('nav-open', on);
+  $('#menu-btn').setAttribute('aria-expanded', String(on));
+}
+
 function setupShell() {
+  syncThemeButton();
+  matchMedia('(prefers-color-scheme: dark)').addEventListener('change', syncThemeButton);
   $('#theme-btn').addEventListener('click', () => {
     const next = currentTheme() === 'dark' ? 'light' : 'dark';
     applyTheme(next);
+    syncThemeButton();
     try { localStorage.setItem('cer-theme', next); } catch (e) { /* ignore */ }
   });
   $('#load-btn').addEventListener('click', () => {
@@ -7756,7 +7971,7 @@ function setupShell() {
     location.hash = '';
     location.reload();
   });
-  $('#menu-btn').addEventListener('click', () => $('#shell').classList.toggle('nav-open'));
+  $('#menu-btn').addEventListener('click', () => toggleNav());
   $('#person-btn').addEventListener('click', e => {
     e.stopPropagation();
     if ($('#picker').hidden) openPicker(); else closePicker();
@@ -7765,6 +7980,11 @@ function setupShell() {
     e.stopPropagation();
     const it = e.target.closest('[data-pick]');
     if (it) pickPerson(it.dataset.pick);
+  });
+  // Tabbing out of the picker closes it. (A click on an option moves the focus nowhere.)
+  $('#picker').addEventListener('focusout', e => {
+    const to = e.relatedTarget;
+    if (to && !$('#picker').contains(to) && to !== $('#person-btn')) closePicker();
   });
   document.addEventListener('click', () => closePicker());
 
@@ -7784,19 +8004,28 @@ function setupShell() {
     }, 280);
   });
 
+  // Ctrl+K (⌘K on a Mac) jumps to the search box. A one-key shortcut such as "/" can fire by
+  // accident for people who use speech input (WCAG 2.1.4), so it needs the modifier.
+  $('#q-kbd').textContent = /Mac|iPhone|iPad/.test(navigator.platform || '') ? '⌘ K' : 'Ctrl K';
   document.addEventListener('keydown', e => {
-    const tag = (e.target && e.target.tagName) || '';
-    const typing = /INPUT|TEXTAREA|SELECT/.test(tag) || (e.target && e.target.isContentEditable);
-    if (e.key === '/' && !typing && !$('#shell').hidden) { e.preventDefault(); $('#q').focus(); $('#q').select(); }
-    if (e.key === 'Escape') {
-      closePicker();
-      const full = $('.frame-box.full');
-      if (full) full.classList.remove('full');
+    const key = String(e.key || '');
+    if ((e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey && key.toLowerCase() === 'k' && !$('#shell').hidden) {
+      e.preventDefault();
+      $('#q').focus();
+      $('#q').select();
     }
+    if (key !== 'Escape') return;
+    // Escape closes the top-most thing that is open.
+    const full = $('.frame-box.full');
+    if (!$('#picker').hidden) closePicker(true);
+    else if (full) setFull(full, false);
+    else if ($('#shell').classList.contains('nav-open')) { toggleNav(false); $('#menu-btn').focus(); }
   });
 
   // Controls in the view run the function bound in their markup with on() (ui.js).
   document.addEventListener('click', e => {
+    // The skip link: to the page's heading (a real #main would be read as a route).
+    if (e.target.closest('.skip-link')) { e.preventDefault(); focusPage(true); return; }
     // The Copy button of a code block in Markdown (finishMarkdown in render.js).
     const copy = e.target.closest('button.copy-code');
     if (copy) { copyPre(copy); return; }

@@ -18,8 +18,10 @@ const focusScope = () => scopeOf(focusPerson());
 /* Everything that lives exactly as long as one drawn page. onRoute() aborts the old view and
  * starts a new one: listeners added with its signal go away, and async drawers stop at their
  * next `if (signal.aborted) return;`. terms: the search words the page highlights. The view
- * that owns them sets them, and every lazy block marks them in the body it draws later. */
-const newView = () => ({ ac: new AbortController(), fns: new Map(), mounts: [], terms: [] });
+ * that owns them sets them, and every lazy block marks them in the body it draws later.
+ * refocus: the id of the control that had the focus before the page was drawn again in place
+ * (see refocus()). */
+const newView = () => ({ ac: new AbortController(), fns: new Map(), mounts: [], terms: [], refocus: '' });
 let VIEW = newView();
 
 // One counter for every view, so a key or a generated id never means two things: an element
@@ -62,17 +64,18 @@ const PRE_LIMIT = 60000;
 
 // <pre> with large content cut to PRE_LIMIT and a "Show all" button that expands in place.
 // The button keeps the full text, so it is not put into the page twice.
+// tabindex: long lines scroll sideways, and a keyboard can only scroll what it can focus.
 function preHtml(text, opts) {
   text = String(text == null ? '' : text);
   const wrap = opts && opts.wrap ? ' wrap' : '';
-  if (text.length <= PRE_LIMIT) return `<pre class="code${wrap}">${esc(text)}</pre>`;
+  if (text.length <= PRE_LIMIT) return `<pre class="code${wrap}" tabindex="0">${esc(text)}</pre>`;
   // Show all: the full text replaces the cut one in the <pre> right before the button's row.
   const showAll = el => {
     const row = el.closest('.row');
     const pre = row && row.previousElementSibling;
-    if (pre) { pre.textContent = text; row.remove(); }
+    if (pre) { pre.textContent = text; row.remove(); pre.focus(); }
   };
-  return `<pre class="code${wrap}">${esc(text.slice(0, PRE_LIMIT))}</pre>
+  return `<pre class="code${wrap}" tabindex="0">${esc(text.slice(0, PRE_LIMIT))}</pre>
     <div class="row" style="margin-top:6px"><span class="muted" style="font-size:13px">Showing ${fmtBytes(PRE_LIMIT)} of ${fmtBytes(text.length)}.</span>
     <button class="btn small" type="button" ${on(showAll)}>Show all</button></div>`;
 }
@@ -82,6 +85,35 @@ function preHtml(text, opts) {
 function sourceBlk(text, { label = 'Source', desc = '', wrap = false, gap = 8 } = {}) {
   return blk({ style: `margin-top:${gap}px`, summary: `<span class="lbl">${label}</span>${desc}`, body: preHtml(text, { wrap }) });
 }
+
+/* Puts the focus back on the control with the id in VIEW.refocus, once it is in the page (an
+ * async drawer calls this again after it adds its controls). Only while the focus is nowhere
+ * or on the page heading, so it never takes the focus away from where someone moved it. */
+function refocus() {
+  const el = VIEW.refocus && document.getElementById(VIEW.refocus);
+  const a = document.activeElement;
+  if (!el || (a && a !== document.body && a.tagName !== 'H1')) return false;
+  VIEW.refocus = '';
+  el.focus();
+  return true;
+}
+
+/* Makes everything outside el inert, as a modal dialog does: no focus, no clicks, hidden from
+ * screen readers. The live region (#sr-status) stays. Returns the function that undoes it. */
+function isolate(el) {
+  const done = [];
+  for (let n = el; n.parentElement && n !== document.body; n = n.parentElement) {
+    for (const sib of n.parentElement.children) {
+      if (sib === n || sib.inert || sib.id === 'sr-status' || sib.tagName === 'SCRIPT') continue;
+      sib.inert = true;
+      done.push(sib);
+    }
+  }
+  return () => done.splice(0).forEach(x => { x.inert = false; });
+}
+
+// Smooth scrolling, unless the system asks for less motion.
+const scrollMotion = () => (matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth');
 
 function mountView(v) {
   while (v.mounts.length) {

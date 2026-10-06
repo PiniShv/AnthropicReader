@@ -78,11 +78,12 @@ You can load any subset. Missing parts show up as empty sections. Keep the tab o
 - **Projects** with instructions, knowledge files (Markdown rendered, HTML in a safe preview) and the related memory.
 - **Design chats** from Claude Design, with tool calls, attachments, question forms and their answers, and file changes per turn.
 - **Memory**: memory files grouped by folder, the chat memory summary and project memories. `[[links]]` between memory files work.
-- **Search** across people, conversations, artifacts, projects, design chats and memory. Use quotes for exact phrases. Tick **Deep search** to also look inside tool calls, thinking, attached files and the content of artifacts. Press `/` to jump to the search box.
+- **Search** across people, conversations, artifacts, projects, design chats and memory. Use quotes for exact phrases. Tick **Deep search** to also look inside tool calls, thinking, attached files and the content of artifacts. Press `Ctrl+K` (`⌘K` on a Mac) to jump to the search box.
 - **Download one person's data** as a single `.zip`: conversations as Markdown and JSON, artifacts, projects, design chats, memory and comments.
 - **Manifest download links** for parts you have not loaded yet.
 - **Older export formats** work too (`projects.json`, `memories.json`, chats without branches). You can **load several exports together**: when the same item is in two exports, the newer copy wins.
 - **Dark mode** (follows your system; ◐ switches it), **right-to-left** text such as Hebrew and Arabic, and a layout that works on **phones and tablets**.
+- **Keyboard and screen readers.** Everything works with the keyboard alone. A skip link leads to the content, the focus moves to the heading of each new page, and the page follows the system setting for less motion. The aim is WCAG 2.2 level AA: the sample data passes the automated axe-core checks in light and dark mode.
 - **Reopen last export** in Chrome and Edge: the page remembers which files you picked (not their content) and can open them again after a reload.
 
 ## Privacy and security

@@ -12,6 +12,8 @@ function currentTheme() {
   if (t) return t;
   return matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
 }
+// ◐ is a toggle: "Dark theme", pressed or not.
+function syncThemeButton() { $('#theme-btn').setAttribute('aria-pressed', String(currentTheme() === 'dark')); }
 try { applyTheme(localStorage.getItem('cer-theme')); } catch (e) { /* storage blocked */ }
 
 /* ---------- Loading ---------- */
@@ -47,6 +49,7 @@ async function startLoad(files, handles) {
   $('#landing').hidden = false;
   $('#shell').hidden = true;
   Loader.reset();
+  announce('Reading the export…');
   $$('#dropzone button').forEach(b => (b.disabled = true));
   try {
     const before = DB.warnings.length;
@@ -63,13 +66,17 @@ async function startLoad(files, handles) {
       row.innerHTML = `<span class="grow muted" style="font-size:14px">Some files could not be read, so part of the data is missing.</span><button class="btn primary" type="button" id="continue-anyway">Continue anyway</button>`;
       Loader.box().appendChild(row);
       $('#continue-anyway').addEventListener('click', showApp);
+      announce('Some files could not be read, so part of the data is missing.');
+      $('#continue-anyway').focus();
       return;
     }
     if (!hasRecords() && DB.manifests.length) { showManifestOnly(); return; }
     showApp();
   } catch (err) {
     console.error(err);
-    Loader.set('fatal', 'Could not read the export: ' + (err && err.message ? err.message : err), 1, '', 'error');
+    const msg = 'Could not read the export: ' + (err && err.message ? err.message : err);
+    Loader.set('fatal', msg, 1, '', 'error');
+    announce(msg);
   } finally {
     $$('#dropzone button').forEach(b => (b.disabled = false));
   }
@@ -81,9 +88,10 @@ function showManifestOnly() {
   const box = Loader.box();
   Loader.rows.clear();
   box.hidden = false;
-  box.innerHTML = `<h2 style="font-size:17px;margin:0 0 6px">This is your export’s file list</h2>
+  box.innerHTML = `<h2 style="font-size:17px;margin:0 0 6px" tabindex="-1">This is your export’s file list</h2>
     <p class="muted" style="margin:0 0 12px;font-size:14px">Exported ${esc(fmtDateTime(m.createdAt))}. Download the ${plural(m.files.length, 'part')} below, then drop the zip files onto this page.</p>
     ${manifestDownloadsHtml(m, m.files)}`;
+  box.querySelector('h2').focus();
 }
 
 function showApp() {
@@ -178,7 +186,9 @@ async function setupLanding() {
         startLoad(files, last.handles);
       } catch (err) {
         Loader.reset();
-        Loader.set('reopen', 'Could not reopen: ' + (err.message || err) + '. The files may have moved; choose them again.', 1, '', 'error');
+        const msg = 'Could not reopen: ' + (err.message || err) + '. The files may have moved; choose them again.';
+        Loader.set('reopen', msg, 1, '', 'error');
+        announce(msg);
         HandleStore.clear();
         btn.hidden = true;
       }
@@ -197,27 +207,49 @@ function parseHash() {
   return { path, query };
 }
 
+// replace: the same page with other options (a tab, a version, a board). The URL changes in
+// place, and the focus goes back to the control that made the change.
 function navigate(hash, replace) {
   if (replace) history.replaceState(null, '', hash);
   else history.pushState(null, '', hash);
-  onRoute();
+  onRoute(!!replace);
 }
 
-function onRoute() {
+// inPlace: see navigate(). Without it, the focus goes to the new page's heading.
+function onRoute(inPlace) {
   if ($('#shell').hidden) return;
+  const main = $('#main');
+  const was = document.activeElement;
+  const refocusId = inPlace === true && was && main.contains(was) ? was.id : '';
   App.route = parseHash();
   App.lastHash = location.hash;
   VIEW.ac.abort();
   VIEW = newView();
-  $('#shell').classList.remove('nav-open');
+  toggleNav(false);
   closePicker();
-  const main = $('#main');
   main.innerHTML = renderRoute(App.route);
   main.scrollTop = 0;
+  VIEW.refocus = refocusId;
+  focusPage();
   mountView(VIEW);
+  // A page with no control of its own (About) is still scrolled from the keyboard: then the
+  // main area itself takes Tab.
+  main.tabIndex = main.querySelector('a[href], button, input, select, summary, [tabindex="0"], iframe') ? -1 : 0;
   renderSidebar();
   const q = App.route.path[0] === 'search' ? (App.route.query.q || '') : '';
   if (document.activeElement !== $('#q')) $('#q').value = q;
+}
+
+/* The focus after a route change: back on the control that redrew the page in place, or on
+ * the page's heading, so a screen reader reads it and Tab goes on from the top of the page.
+ * Someone typing in the search box keeps the focus there. scroll: bring the heading into view
+ * (the skip link, which also works on the start screen). */
+function focusPage(scroll) {
+  if (document.activeElement === $('#q') || refocus()) return;
+  const root = $('#shell').hidden ? $('#landing') : $('#main');
+  const h = $('h1', root);
+  if (h) h.setAttribute('tabindex', '-1');
+  (h || root).focus({ preventScroll: !scroll });
 }
 
 // Link clicks fire both popstate and hashchange; draw once per new hash.
@@ -252,26 +284,38 @@ function updateFocusButton() {
   $('#person-btn').classList.toggle('primary', !!p);
 }
 
-function closePicker() { const pk = $('#picker'); if (pk) pk.hidden = true; }
+// focusButton: give the focus back to the button that opened the picker (Escape).
+function closePicker(focusButton) {
+  const pk = $('#picker');
+  if (!pk || pk.hidden) return;
+  pk.hidden = true;
+  $('#person-btn').setAttribute('aria-expanded', 'false');
+  if (focusButton) $('#person-btn').focus();
+}
 
+/* A combobox: the focus stays in the text box, and the arrow keys move the highlighted option
+ * (aria-activedescendant). */
 function openPicker() {
   const pk = $('#picker');
   pk.hidden = false;
-  pk.innerHTML = `<input class="input" id="picker-q" placeholder="Type a name or email…" aria-label="Filter people">
-    <div id="picker-list" role="listbox"></div>`;
+  $('#person-btn').setAttribute('aria-expanded', 'true');
+  pk.innerHTML = `<input class="input" id="picker-q" role="combobox" aria-expanded="true" aria-controls="picker-list" aria-autocomplete="list" placeholder="Type a name or email…" aria-label="Find a person">
+    <div id="picker-list" role="listbox" aria-label="People"></div><div class="empty" id="picker-none" hidden>No match</div>`;
   const input = $('#picker-q');
   let hl = 0;
   const draw = () => {
-    const list = peopleMatching(input.value).slice(0, 60);
-    hl = Math.min(hl, Math.max(0, list.length));
-    $('#picker-list').innerHTML =
-      (App.focus ? `<div class="picker-item${hl === 0 ? ' hl' : ''}" data-pick=""><span class="avatar sm unknown">×</span><span>Show everyone</span></div>` : '') +
-      list.map((p, i) => {
-        const idx = i + (App.focus ? 1 : 0);
-        return `<div class="picker-item${idx === hl ? ' hl' : ''}" data-pick="${esc(p.id)}" role="option">${avatarHtml(p, 'sm')}
+    const rows = (App.focus ? [{ id: '', html: '<span class="avatar sm unknown" aria-hidden="true">×</span><span>Show everyone</span>' }] : [])
+      .concat(peopleMatching(input.value).slice(0, 60).map(p => ({ id: p.id, html: `${avatarHtml(p, 'sm')}
           <span class="grow"><span>${esc(p.name)}</span> <span class="em">${esc(p.email || '')}</span></span>
-          <span class="badge" title="items">${fmtNum(p.total())}</span></div>`;
-      }).join('') || '<div class="empty">No match</div>';
+          <span class="badge" title="items">${fmtNum(p.total())}<span class="sr-only"> items</span></span>` })));
+    hl = Math.min(hl, Math.max(0, rows.length - 1));
+    $('#picker-list').innerHTML = rows.map((r, i) =>
+      `<div class="picker-item${i === hl ? ' hl' : ''}" id="pick-${i}" role="option" aria-selected="${i === hl}" data-pick="${esc(r.id)}">${r.html}</div>`).join('');
+    $('#picker-none').hidden = rows.length > 0;
+    if (rows.length) input.setAttribute('aria-activedescendant', 'pick-' + hl);
+    else input.removeAttribute('aria-activedescendant');
+    const cur = $('#pick-' + hl);
+    if (cur) cur.scrollIntoView({ block: 'nearest' });
   };
   input.addEventListener('input', () => { hl = 0; draw(); });
   input.addEventListener('keydown', e => {
@@ -279,7 +323,7 @@ function openPicker() {
     if (e.key === 'ArrowDown') { hl = Math.min(items.length - 1, hl + 1); draw(); e.preventDefault(); }
     else if (e.key === 'ArrowUp') { hl = Math.max(0, hl - 1); draw(); e.preventDefault(); }
     else if (e.key === 'Enter') { const it = items[hl]; if (it) pickPerson(it.dataset.pick); e.preventDefault(); }
-    else if (e.key === 'Escape') closePicker();
+    else if (e.key === 'Escape') { closePicker(true); e.preventDefault(); e.stopPropagation(); }
   });
   draw();
   input.focus();
@@ -293,10 +337,21 @@ function pickPerson(id) {
 
 /* ---------- Global events ---------- */
 
+// The menu on narrow screens.
+function toggleNav(open) {
+  const shell = $('#shell');
+  const on = open == null ? !shell.classList.contains('nav-open') : open;
+  shell.classList.toggle('nav-open', on);
+  $('#menu-btn').setAttribute('aria-expanded', String(on));
+}
+
 function setupShell() {
+  syncThemeButton();
+  matchMedia('(prefers-color-scheme: dark)').addEventListener('change', syncThemeButton);
   $('#theme-btn').addEventListener('click', () => {
     const next = currentTheme() === 'dark' ? 'light' : 'dark';
     applyTheme(next);
+    syncThemeButton();
     try { localStorage.setItem('cer-theme', next); } catch (e) { /* ignore */ }
   });
   $('#load-btn').addEventListener('click', () => {
@@ -304,7 +359,7 @@ function setupShell() {
     location.hash = '';
     location.reload();
   });
-  $('#menu-btn').addEventListener('click', () => $('#shell').classList.toggle('nav-open'));
+  $('#menu-btn').addEventListener('click', () => toggleNav());
   $('#person-btn').addEventListener('click', e => {
     e.stopPropagation();
     if ($('#picker').hidden) openPicker(); else closePicker();
@@ -313,6 +368,11 @@ function setupShell() {
     e.stopPropagation();
     const it = e.target.closest('[data-pick]');
     if (it) pickPerson(it.dataset.pick);
+  });
+  // Tabbing out of the picker closes it. (A click on an option moves the focus nowhere.)
+  $('#picker').addEventListener('focusout', e => {
+    const to = e.relatedTarget;
+    if (to && !$('#picker').contains(to) && to !== $('#person-btn')) closePicker();
   });
   document.addEventListener('click', () => closePicker());
 
@@ -332,19 +392,28 @@ function setupShell() {
     }, 280);
   });
 
+  // Ctrl+K (⌘K on a Mac) jumps to the search box. A one-key shortcut such as "/" can fire by
+  // accident for people who use speech input (WCAG 2.1.4), so it needs the modifier.
+  $('#q-kbd').textContent = /Mac|iPhone|iPad/.test(navigator.platform || '') ? '⌘ K' : 'Ctrl K';
   document.addEventListener('keydown', e => {
-    const tag = (e.target && e.target.tagName) || '';
-    const typing = /INPUT|TEXTAREA|SELECT/.test(tag) || (e.target && e.target.isContentEditable);
-    if (e.key === '/' && !typing && !$('#shell').hidden) { e.preventDefault(); $('#q').focus(); $('#q').select(); }
-    if (e.key === 'Escape') {
-      closePicker();
-      const full = $('.frame-box.full');
-      if (full) full.classList.remove('full');
+    const key = String(e.key || '');
+    if ((e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey && key.toLowerCase() === 'k' && !$('#shell').hidden) {
+      e.preventDefault();
+      $('#q').focus();
+      $('#q').select();
     }
+    if (key !== 'Escape') return;
+    // Escape closes the top-most thing that is open.
+    const full = $('.frame-box.full');
+    if (!$('#picker').hidden) closePicker(true);
+    else if (full) setFull(full, false);
+    else if ($('#shell').classList.contains('nav-open')) { toggleNav(false); $('#menu-btn').focus(); }
   });
 
   // Controls in the view run the function bound in their markup with on() (ui.js).
   document.addEventListener('click', e => {
+    // The skip link: to the page's heading (a real #main would be read as a route).
+    if (e.target.closest('.skip-link')) { e.preventDefault(); focusPage(true); return; }
     // The Copy button of a code block in Markdown (finishMarkdown in render.js).
     const copy = e.target.closest('button.copy-code');
     if (copy) { copyPre(copy); return; }

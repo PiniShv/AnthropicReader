@@ -88,7 +88,7 @@ function viewMemories() {
       text: m => [m.owner && m.owner.name, m.owner && m.owner.email, m.conversationsMemory, ...m.projectMemories.map(x => x.text), ...m.files.map(f => f.path + ' ' + f.content)].join(' '),
       columns: [
         { id: 'owner', label: 'Person', asc: true, sortVal: m => m.owner.name.toLowerCase(), html: m => whoCell(m.owner) },
-        { id: 'profile', label: 'Profile', cls: 'title', html: m => { const pf = m.files.find(f => f.path === '/profile.md'); const t = pf ? pf.body : m.conversationsMemory; return `<div class="snip" dir="auto" style="font-weight:400">${esc(truncate(oneLine(stripMd(String(t || '').replace(/- \[stated\]/g, ''))), 220))}</div>`; } },
+        { id: 'profile', label: 'Profile', cls: 'title', link: true, html: m => { const pf = m.files.find(f => f.path === '/profile.md'); const t = pf ? pf.body : m.conversationsMemory; return `<div class="snip" dir="auto" style="font-weight:400">${esc(truncate(oneLine(stripMd(String(t || '').replace(/- \[stated\]/g, ''))), 220))}</div>`; } },
         COL.num('files', 'Files', m => m.files.length),
         { id: 'chat', label: 'Chat memory', html: m => m.conversationsMemory ? '✓' : '<span class="faint">—</span>', sortVal: m => (m.conversationsMemory ? 1 : 0), cls: 'num' },
         COL.date('updated', 'Updated', m => m.updated),
@@ -109,6 +109,7 @@ function viewMemory(personId) {
       el.open = true;
       el.scrollIntoView({ block: 'start' });
       el.classList.add('flash');
+      el.querySelector('summary').focus({ preventScroll: true });
     });
   }
   return `<div class="page narrow">
@@ -144,7 +145,7 @@ function memoryBody(mem) {
     return MEM_FOLDERS[g] || g;
   };
   let i = 0;
-  const groupsHtml = keys.map(g => `<h3 class="section-title" style="font-size:14.5px">${esc(label(g))} <span class="badge">${groups.get(g).length}</span></h3>
+  const groupsHtml = keys.map(g => `<h2 class="section-title" style="font-size:14.5px">${esc(label(g))} <span class="badge">${groups.get(g).length}</span></h2>
     <div class="doc-list">${groups.get(g).map(f => memoryFileCard(f, mem, i++)).join('')}</div>`).join('');
   return `
     ${mem.files.length ? `<div class="row wrap" style="margin:4px 0 0"><span class="muted" style="font-size:13.5px">Memory files Claude keeps. Each fact is tagged with where it came from.</span><span class="grow"></span><button class="btn small" type="button" ${on(() => $$('.mem-file').forEach(d => { d.open = true; }))}>Expand all</button></div>${groupsHtml}` : ''}
@@ -205,7 +206,7 @@ function viewSearch(q, t) {
     <div class="page-head"><div class="grow"><h1>Search</h1>
       <div class="sub">${s.person ? `<span>Only ${personLink(s.person)}’s data · <a href="#" ${on(() => setFocus(null))}>search everyone</a></span>` : '<span>All people</span>'}</div></div></div>
     <div class="toolbar">
-      <label class="row muted" style="font-size:14px"><input type="checkbox" ${on(el => navigate(searchHref({ q, deep: el.checked, t: urlType }), true))}${deep ? ' checked' : ''}> Deep search: also look inside tool calls, thinking, attached files and artifact content (slower the first time)</label>
+      <label class="row muted" style="font-size:14px"><input type="checkbox" id="search-deep" ${on(el => navigate(searchHref({ q, deep: el.checked, t: urlType }), true))}${deep ? ' checked' : ''}> Deep search: also look inside tool calls, thinking, attached files and artifact content (slower the first time)</label>
     </div>
     <div id="search-tabs" class="search-tabs"></div>
     <div id="search-results"></div>
@@ -216,7 +217,7 @@ function drawSearchResults(res, q, t, deep) {
   const terms = res.terms;
   // One list of hits per kind (res[k.key], built from KINDS by runSearch), plus res.people.
   const total = KINDS.reduce((n, k) => n + res[k.key].length, res.people.length);
-  const tab = (k, label, n) => `<a class="chip${t === k ? ' on' : ''}" href="${searchHref({ q, deep, t: k })}">${label} <b>${fmtNum(n)}</b></a>`;
+  const tab = (k, label, n) => `<a class="chip${t === k ? ' on' : ''}" href="${searchHref({ q, deep, t: k })}"${t === k ? ' aria-current="page"' : ''}>${label} <b>${fmtNum(n)}</b></a>`;
   $('#search-tabs').innerHTML = tab('all', 'Everything', total) + KINDS.map(k => tab(k.key, esc(k.searchTab || k.label), res[k.key].length)).join('') + tab('people', 'People', res.people.length);
   const limit = t === 'all' ? 5 : 200;
   const qs = '?q=' + encodeURIComponent(q);
@@ -231,6 +232,7 @@ function drawSearchResults(res, q, t, deep) {
   const ppl = ({ item: p }) => `<a class="result" href="#/person/${encodeURIComponent(p.id)}"><div class="r-title">${avatarHtml(p, 'sm')}<span>${esc(p.name)}</span></div><div class="r-meta"><span>${esc(p.email || '')}</span><span>${plural(p.total(), 'item')}</span></div></a>`;
   $('#search-results').innerHTML = (total ? '' : `<div class="card empty">Nothing found for “${esc(q)}”.${deep ? '' : ' Try ticking “Deep search”.'}</div>`) +
     sec('people', 'People', res.people, ppl) + KINDS.map(k => sec(k.key, esc(k.label), res[k.key], hit => k.searchResult(hit, terms, qs))).join('');
+  announce(total ? plural(total, 'result') + ' found' : 'Nothing found');
 }
 
 // Search results of the kinds this file draws (see KINDS.searchResult).
@@ -308,12 +310,15 @@ function missingParts(m) {
 
 /* ======================= Per-person export ======================= */
 
+/* A modal dialog: the page behind it is inert, Escape or Cancel closes it, and the focus goes
+ * back to the button that opened it. Leaving the page closes it too. */
 async function exportPerson(p) {
+  const opener = document.activeElement;
   const back = document.createElement('div');
   back.className = 'modal-back';
   const versionsTotal = p.artifacts.reduce((a, x) => a + x.versions.length, 0);
-  back.innerHTML = `<div class="modal" role="dialog" aria-modal="true" aria-label="Download data">
-    <h2>Download ${esc(p.name)}’s data</h2>
+  back.innerHTML = `<div class="modal" role="dialog" aria-modal="true" aria-labelledby="exp-title">
+    <h2 id="exp-title">Download ${esc(p.name)}’s data</h2>
     <p class="muted" style="margin:0 0 10px;font-size:14px">One .zip with everything linked to this person: conversations as readable Markdown plus the original JSON, and the original files for everything else.</p>
     <ul style="margin:0 0 10px;padding-left:20px;font-size:14px">
       <li>${plural(p.conversations.length, 'conversation')}</li><li>${plural(p.artifacts.length, 'artifact')}</li>
@@ -325,10 +330,20 @@ async function exportPerson(p) {
     <div class="actions"><button class="btn" type="button" id="exp-cancel">Cancel</button><button class="btn primary" type="button" id="exp-go">Download .zip</button></div>
   </div>`;
   document.body.appendChild(back);
+  const undo = isolate(back);
   let cancelled = false;
-  const close = () => { cancelled = true; back.remove(); };
+  const close = () => {
+    if (cancelled) return;
+    cancelled = true;
+    back.remove();
+    undo();
+    if (opener && opener.isConnected) opener.focus();
+  };
+  VIEW.ac.signal.addEventListener('abort', close, { once: true });
   back.addEventListener('click', e => { if (e.target === back) close(); });
+  back.addEventListener('keydown', e => { if (e.key === 'Escape') { e.stopPropagation(); close(); } });
   $('#exp-cancel', back).addEventListener('click', close);
+  $('#exp-allv', back).focus();
   $('#exp-go', back).addEventListener('click', async () => {
     const go = $('#exp-go', back);
     go.disabled = true;
@@ -341,6 +356,7 @@ async function exportPerson(p) {
     } catch (err) {
       console.error(err);
       prog.textContent = 'Failed: ' + (err.message || err);
+      announce(prog.textContent);
       go.disabled = false;
     }
   });

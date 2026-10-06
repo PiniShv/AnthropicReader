@@ -132,7 +132,7 @@ function designMessageHtml(m, d, receipts) {
   }
   // assistant
   if (c.kind === 'question-record' && c.questionRecord) {
-    return `<article class="msg assistant" id="m-${esc(m.uuid)}"><div class="msg-head"><span class="avatar sm" style="--h:20">C</span><span class="who">Claude</span><span>${esc(time)}</span></div>
+    return `<article class="msg assistant" id="m-${esc(m.uuid)}"><div class="msg-head"><span class="avatar sm" style="--h:20" aria-hidden="true">C</span><span class="who">Claude</span><span>${esc(time)}</span></div>
       <div class="msg-body">${designQuestionCard(c.questionRecord.spec, receipts.get(c.questionRecord.questionId))}</div></article>`;
   }
   if (c.kind === 'chat-summary') {
@@ -174,7 +174,7 @@ function designMessageHtml(m, d, receipts) {
     if (rows.length) out.push(`<div class="files-row" style="font-size:12.5px">${rows.join(' ')}</div>`);
   }
   const failed = !c.turnInputTokens && blocks && blocks.length && blocks[blocks.length - 1].type === 'error';
-  return `<article class="msg assistant" id="m-${esc(m.uuid)}"><div class="msg-head"><span class="avatar sm" style="--h:20">C</span><span class="who">Claude</span><span>${esc(time)}</span>${c.turnInputTokens ? `<span class="faint">· ${fmtNum(Math.round(c.turnInputTokens / 1000))}k context</span>` : ''}${failed ? ' <span class="chip err">turn failed</span>' : ''}${snip}</div>
+  return `<article class="msg assistant" id="m-${esc(m.uuid)}"><div class="msg-head"><span class="avatar sm" style="--h:20" aria-hidden="true">C</span><span class="who">Claude</span><span>${esc(time)}</span>${c.turnInputTokens ? `<span class="faint">· ${fmtNum(Math.round(c.turnInputTokens / 1000))}k context</span>` : ''}${failed ? ' <span class="chip err">turn failed</span>' : ''}${snip}</div>
     <div class="msg-body">${out.join('') || '<span class="faint">(no text)</span>'}</div></article>`;
 }
 
