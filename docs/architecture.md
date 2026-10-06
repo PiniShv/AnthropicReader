@@ -30,7 +30,7 @@ For the format of the export itself, see [export-format.md](export-format.md).
 | `src/export.js` | Files made for download: a conversation as Markdown (`convToMarkdown()`) and the per-person zip (`buildPersonZip()`). |
 | `src/preview.js` | Artifact previews: `buildVersionHtml()` turns a version's files into one HTML document for a sandboxed frame (multi-file HTML, `buildSlides()`, `buildDesign()`), with file inlining (`inlineRefs()`, `assetLookup()`) and a small cache of built previews (`getBuilt()`). |
 | `src/views.js` | The kind registry (`KINDS`: routes, labels, icons, counts and views of the five record kinds), router dispatch (`renderRoute`), sidebar, the shared sortable table, start page, people list and person page. |
-| `src/views-conv.js` | Conversation list and thread: message and tool rendering, branch arrows, the "What Claude produced here" box. |
+| `src/views-conv.js` | Conversation list and thread: message and tool rendering, the tool cards (`TOOL_CARDS`: tools drawn as their own card, and their chips), branch arrows, the "What Claude produced here" box. |
 | `src/views-art.js` | Artifact list and page, version viewer (Preview, Source and Files tabs), Claude Docs pages, artifact comments. |
 | `src/views-design.js` | Claude Design chats: list and thread (prompts, tool calls, questions, attachments). |
 | `src/views-misc.js` | Projects, memory, the search page, "About this export", manifest download links, and the per-person download dialog. |

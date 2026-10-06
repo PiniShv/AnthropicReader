@@ -146,19 +146,15 @@ function cpToUnits(text, cp) {
 
 /* ---------- Outputs ---------- */
 
-// The files, artifacts, widgets and drafts Claude produced, then the published artifacts the
-// chat links to: the "What Claude produced here" box.
+// What the "What Claude produced here" box lists: the tool calls that made an output (isOutput),
+// as { use, msg }, then the published artifacts the chat links to, as { art: id }.
 function collectOutputs(conv) {
   const out = [];
   for (const m of conv.raw.chat_messages || []) {
     for (const b of (Array.isArray(m.content) ? m.content : [])) {
-      const o = b && b.type === 'tool_use' && outputOf(b);
-      if (o) out.push({ id: b.id, msg: m.uuid, ...o });
+      if (b && b.type === 'tool_use' && isOutput(b)) out.push({ use: b, msg: m.uuid });
     }
   }
-  for (const id of conv.artRefs || []) {
-    const a = DB.artifactById.get(id);
-    out.push({ art: id, ico: '◧', label: a ? artifactTitle(a) : 'Published artifact ' + id.slice(0, 8), kind: 'published' });
-  }
+  for (const id of conv.artRefs || []) out.push({ art: id });
   return out;
 }

@@ -853,3 +853,13 @@ test('the branch and output badges count what the thread and the outputs box sho
   assert.equal(got.outputCount, api.collectOutputs(got).length);
   assert.equal(got.outputCount, 1);
 });
+
+test('every tool the model counts as an output has a card and a chip in TOOL_CARDS', () => {
+  const { api } = loadApp();
+  for (const name of api.OUTPUTS.keys()) {
+    const t = api.TOOL_CARDS.get(name);
+    assert.ok(t && typeof t.chip === 'function', `${name}: no chip, so the outputs box would fail`);
+    const c = t.chip({ path: '/tmp/out/plan.md' });
+    assert.ok(c.ico && c.label && c.kind, `${name}: the chip needs an icon, a label and a kind`);
+  }
+});

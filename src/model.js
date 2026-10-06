@@ -130,19 +130,19 @@ function addUser(u) {
   if (u.verified_phone_number) p.phone = u.verified_phone_number;
 }
 
-/* Tools whose output the person saw: name -> a function that gives the output's chip in the
- * "What Claude produced here" box (collectOutputs), or null. */
+/* Tools whose output the person saw (files, artifacts, widgets, drafts): name -> whether one
+ * call's input made an output. The list badge counts these calls, and the "What Claude produced
+ * here" box (collectOutputs) lists them, so the two always agree. Each one also needs a chip in
+ * TOOL_CARDS (views-conv.js). */
 const OUTPUTS = new Map([
-  ['create_file', i => (i.path ? { ico: '📄', label: String(i.path).split('/').pop(), kind: 'file' } : null)],
-  ['artifacts', i => ({ ico: '◧', label: i.title || i.id || 'Artifact', kind: 'artifact' })],
-  ['visualize:show_widget', i => ({ ico: '▦', label: i.title || 'Widget', kind: 'widget' })],
-  ['message_compose_v1', i => ({ ico: '✉', label: i.summary_title || 'Draft', kind: 'draft' })],
+  ['create_file', i => !!i.path],
+  ['artifacts', () => true],
+  ['visualize:show_widget', () => true],
+  ['message_compose_v1', () => true],
 ]);
-// The chip of a tool_use block that produced an output, or null. The list badge and the box
-// both use it, so they always agree.
-function outputOf(b) {
-  const chip = OUTPUTS.get(b.name);
-  return chip ? chip(b.input || {}) : null;
+function isOutput(b) {
+  const made = OUTPUTS.get(b.name);
+  return !!made && made(b.input || {});
 }
 
 // Artifact ids referenced from chat JSON: published links and tool result ids.
@@ -168,7 +168,7 @@ function addConversation(c, source, rawText) {
     if (blocks.length || (m.text && m.text.trim()) || (m.files && m.files.length) || (m.attachments && m.attachments.length)) contentful++;
     if (m.sender === 'human') files += (m.files ? m.files.length : 0);   // assistant files are tool screenshots
     for (const b of blocks) {
-      if (b && b.type === 'tool_use') { tools++; if (outputOf(b)) outputs++; }
+      if (b && b.type === 'tool_use') { tools++; if (isOutput(b)) outputs++; }
       else if (!firstHuman && m.sender === 'human' && b && b.type === 'text' && b.text && b.text.trim()) firstHuman = b.text;
       else if (!firstReply && m.sender === 'assistant' && b && b.type === 'text' && b.text && b.text.trim()) firstReply = b.text;
     }
