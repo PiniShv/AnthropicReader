@@ -179,7 +179,7 @@ function finishMarkdown(html, finish) {
   // computer, or on Windows a network share. Every href is checked, whatever its element.
   root.querySelectorAll('[href]').forEach(a => {
     const href = a.getAttribute('href');
-    if (href.trim().startsWith('#')) return;
+    if (href.trim().startsWith('#/')) return;
     if (safeUrl(href) === '#') { a.removeAttribute('href'); return; }
     a.setAttribute('target', '_blank');
     a.setAttribute('rel', 'noopener noreferrer');

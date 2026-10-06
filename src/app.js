@@ -158,7 +158,9 @@ function setupLanding() {
 function parseHash() {
   const raw = location.hash.replace(/^#\/?/, '');
   const [pathPart, queryPart] = raw.split('?');
-  const path = pathPart.split('/').filter(Boolean).map(decodeURIComponent);
+  // A malformed % (say, from a link in export text) cannot be decoded: show "not found".
+  let path;
+  try { path = pathPart.split('/').filter(Boolean).map(decodeURIComponent); } catch (e) { path = ['not-found']; }
   // fromEntries defines own properties, so a key such as "__proto__" in a link stays a key.
   const query = Object.fromEntries(new URLSearchParams(queryPart || ''));
   return { path, query };

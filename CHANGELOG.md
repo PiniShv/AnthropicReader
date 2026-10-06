@@ -35,6 +35,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - **Reopen last export** in Chrome and Edge, and with it the File System Access pickers: **Choose files…** and **Choose a folder…** now use the browser's normal file picker in every browser. See **Security**.
 
 ### Fixed
+- A link in export text with a broken `%` code shows "not found" instead of doing nothing, and links to a `#section` no longer send the reader to a missing page.
+- Comments on Docs pages and artifacts get the same Markdown styles as messages (wide tables scroll, big images fit).
 - The ".json (original)" download of a chat, and the chats in the per-person zip, are the original export again. Cleaning malformed messages for display no longer changes them.
 
 - In the preview of a multi-file artifact, an image or script path that the artifact builds while it runs (`img.src = 'icons/' + name`) is swapped for the exported file before the browser tries to load it. Before, the browser tried the path first, which logged errors such as "Not allowed to load local resource".

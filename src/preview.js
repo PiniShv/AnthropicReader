@@ -102,7 +102,7 @@ async function inlineRefs(html, files, enc, opts) {
     const ref = (m[1] || m[2] || m[3] || '').trim().replace(/^\.\//, '');
     if (ref && !/^(https?:|data:|blob:|mailto:|javascript:|\/)/i.test(ref) && files.has(ref) && !skip(ref)) refs.add(ref);
   }
-  const inlined = {};
+  const inlined = new Map();
   let total = 0, skippedMedia = 0, skippedBig = false;
   for (const ref of refs) {
     const node = files.get(ref);
@@ -110,11 +110,10 @@ async function inlineRefs(html, files, enc, opts) {
     if (total + node.size > INLINE_TOTAL_CAP) { skippedBig = true; continue; }
     const e = fileExt(ref) === 'css' ? await encodeCss(node, ref, files, enc) : await encodeFile(node, ref, enc);
     total += e.len;
-    inlined[ref] = e.url;
+    inlined.set(ref, e.url);
   }
   let out = html;
-  for (const ref of Object.keys(inlined).sort((x, y) => y.length - x.length)) {
-    const url = inlined[ref];
+  for (const [ref, url] of Array.from(inlined).sort((x, y) => y[0].length - x[0].length)) {
     out = out.split('"' + ref + '"').join('"' + url + '"')
       .split("'" + ref + "'").join("'" + url + "'")
       .split('"./' + ref + '"').join('"' + url + '"')
@@ -131,12 +130,12 @@ async function inlineRefs(html, files, enc, opts) {
 // assetLookupScript() serves these to fetch, XHR and src/href attributes in the frame.
 async function assetLookup(files, inlined, enc, opts) {
   const skip = (opts && opts.skip) || (() => false);
-  const lookup = {};
+  const lookup = new Map();
   let total = 0;
   for (const [p, node] of files) {
-    if (inlined[p] || skip(p) || isPlumbing(p) || /\.(md|dc\.html)$/i.test(p) || isMedia(p)) continue;
+    if (inlined.has(p) || skip(p) || isPlumbing(p) || /\.(md|dc\.html)$/i.test(p) || isMedia(p)) continue;
     if (node.size > LOOKUP_FILE_CAP || total + node.size > LOOKUP_TOTAL_CAP) continue;
-    lookup[p] = (await encodeFile(node, p, enc)).url;
+    lookup.set(p, (await encodeFile(node, p, enc)).url);
     total += node.size;
   }
   return lookup;
@@ -146,9 +145,10 @@ async function assetLookup(files, inlined, enc, opts) {
  * (img.src = …, setAttribute) is swapped before the browser tries to load it; one written into
  * HTML is swapped by the MutationObserver, after the browser may have tried. */
 function assetLookupScript(lookup) {
-  if (!lookup || !Object.keys(lookup).length) return '';
-  const json = JSON.stringify(lookup).replace(/</g, '\\u003c');
-  return '<script>/* Claude Export Reader: local files */(function(){var M=' + json + ';' +
+  if (!lookup || !lookup.size) return '';
+  // JSON.parse, not an object literal: a file named "__proto__" stays a plain key.
+  const json = JSON.stringify(JSON.stringify(Object.fromEntries(lookup))).replace(/</g, '\\u003c');
+  return '<script>/* Claude Export Reader: local files */(function(){var M=JSON.parse(' + json + ');' +
     'function k(u){if(typeof u!=="string"||/^(data:|blob:|https?:|\\/\\/|#|mailto:|javascript:)/i.test(u))return null;' +
     'u=u.replace(/^\\.\\//,"").split("#")[0].split("?")[0];return Object.prototype.hasOwnProperty.call(M,u)?M[u]:null}' +
     'var F=window.fetch;if(F)window.fetch=function(u,o){var d=k(typeof u==="string"?u:(u&&u.url));return d?F.call(this,d,o):F.apply(this,arguments)};' +
@@ -274,7 +274,7 @@ async function buildDesign(f, boardWanted) {
   const board = present.includes(boardWanted) ? boardWanted : (present.includes(launch) ? launch : firstReal);
   const notesList = canvas && canvas.notes ? Object.values(canvas.notes).filter(x => x && x.text) : [];
   // Plain data, not markup: the result is cached across pages, and the picker's handler is not.
-  const picker = present.length > 1 ? { list: present.map(b => ({ file: b, title: (boards[b] && boards[b].title) || b })), current: board } : null;
+  const picker = present.length > 1 ? { list: present.map(b => ({ file: b, title: (Object.hasOwn(boards, b) && boards[b] && boards[b].title) || b })), current: board } : null;
   if (!board) return { html: null, source: canvas ? JSON.stringify(canvas, null, 2) : null, notes: [], empty: 'The design’s board files are not in the export.' };
   let html = await f.get('project/' + board).text();
   // Boards load ./support.js from the platform; it is not exported, so give them an empty stub.

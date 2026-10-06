@@ -288,7 +288,7 @@ function pageCommentsHtml(a, threads) {
     ${t.comments.map(c => {
       const au = c.author && c.author.uuid ? DB.people.get(c.author.uuid) : null;
       const who = c.posted_by_agent ? `Claude <span class="faint">for ${au ? esc(au.name) : 'the owner'}</span>` : (au ? personLink(au) : '<span class="faint">Unknown</span>');
-      return `<div class="reply"><div style="font-size:13px"><b>${who}</b> <span class="faint">${esc(fmtDateTime(c.created_at))}</span></div><div dir="auto">${mdToHtml(c.body || '')}</div></div>`;
+      return `<div class="reply"><div style="font-size:13px"><b>${who}</b> <span class="faint">${esc(fmtDateTime(c.created_at))}</span></div><div class="md" dir="auto">${mdToHtml(c.body || '')}</div></div>`;
     }).join('')}
   </div>`).join('') || '<p class="faint">No comments.</p>';
 }
@@ -302,7 +302,7 @@ function threadCommentsHtml(a) {
         : c.author_is_artifact_owner ? (a.owner && !a.owner.system ? esc(a.owner.name) : 'Owner')
         : 'Commenter #' + esc(c.author_index);
       const text = String(c.text || '').replace(/<mention:[^>]+>/g, '@someone');
-      return `<div class="reply"><div style="font-size:13px"><b>${who}</b> <span class="faint">${esc(fmtDateTime(c.created_at))}</span>${c.to_claude_at ? ' <span class="chip" style="font-size:11px">sent to Claude</span>' : ''}</div><div dir="auto">${mdToHtml(text)}</div></div>`;
+      return `<div class="reply"><div style="font-size:13px"><b>${who}</b> <span class="faint">${esc(fmtDateTime(c.created_at))}</span>${c.to_claude_at ? ' <span class="chip" style="font-size:11px">sent to Claude</span>' : ''}</div><div class="md" dir="auto">${mdToHtml(text)}</div></div>`;
     }).join('')}
   </div>`).join('');
 }

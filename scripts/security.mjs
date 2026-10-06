@@ -45,6 +45,8 @@ const X = name => `__xss('${name}')`;
 const LEAK = 'https://leak.invalid';
 
 const CORPUS = [
+  // A plain fragment would send the reader's router to a page that does not exist
+  '[jump](#section) and [ok](#/people)',
   // Event handlers
   `<img src=x onerror="${X('img-onerror')}">`,
   `<p onclick="${X('p-onclick')}" onmouseover="${X('p-onmouseover')}">hover me</p>`,
@@ -311,7 +313,7 @@ function pageKit(cfg) {
         const v = value.trim();
         if (name === 'class') { if (!classes.includes(v) && !(READER_CLASSES[tag] || []).includes(v)) out.push(`${where}: <${tag} class="${v.slice(0, 60)}"> uses a class`); }
         else if (!cfg.attrs['*'].includes(name) && !(cfg.attrs[tag] || []).includes(name)) out.push(`${where}: <${tag} ${name}="${v.slice(0, 60)}"> is not on the allow-list`);
-        else if (name === 'href' && !/^(https?:\/\/|mailto:|#)/i.test(v)) out.push(`${where}: <a href="${v.slice(0, 60)}"> is not a web, mail or in-app link`);
+        else if (name === 'href' && !/^(https?:\/\/|mailto:|#\/)/i.test(v)) out.push(`${where}: <a href="${v.slice(0, 60)}"> is not a web, mail or in-app (#/…) link`);
         else if (name === 'src' && !/^(data:|blob:)/i.test(v)) out.push(`${where}: <img src="${v.slice(0, 60)}"> would load`);
         else if (name === 'target' && v !== '_blank') out.push(`${where}: target="${v}"`);
       }

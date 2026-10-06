@@ -503,10 +503,10 @@ function activityChart(stamps) {
     const k = d.getFullYear() * 12 + d.getMonth();
     months.set(k, (months.get(k) || 0) + 1);
   }
-  const keys = Array.from(months.keys());
-  let lo = Math.min(...keys), hi = Math.max(...keys);
+  // Loops, not Math.min(...list): Chrome allows only about 120,000 arguments in one call.
+  let lo = Infinity, hi = -Infinity, max = 0;
+  for (const [k, v] of months) { lo = Math.min(lo, k); hi = Math.max(hi, k); max = Math.max(max, v); }
   if (hi - lo > 35) lo = hi - 35;
-  const max = Math.max(...Array.from(months.values()));
   const label = k => MONTH_FMT.format(new Date(Math.floor(k / 12), k % 12, 1));
   const bars = [], said = [];
   for (let k = lo; k <= hi; k++) {
@@ -533,7 +533,7 @@ function personComments(p) {
         <span class="faint">${esc(fmtDateTime(cm.created_at))}</span>
       </div>
       ${quote ? `<div class="quote" dir="auto">“${esc(quote)}”</div>` : ''}
-      <div dir="auto">${mdToHtml(text)}</div>
+      <div class="md" dir="auto">${mdToHtml(text)}</div>
     </div>`;
   }).join('')}</div>`;
 }

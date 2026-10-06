@@ -169,7 +169,7 @@ function addProject(p, source) {
 // Frontmatter is parsed line by line: some values contain ": " which breaks strict YAML.
 function parseFrontmatter(text) {
   const { front, body } = splitFrontmatter(text || '');
-  const meta = {};
+  const meta = Object.create(null);   // keys come from the export
   if (front) {
     for (const line of front.split(/\r?\n/)) {
       const m = /^([A-Za-z_][\w-]*):\s?(.*)$/.exec(line);

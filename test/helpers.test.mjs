@@ -69,6 +69,9 @@ test('names from the export never find something on Object.prototype', () => {
   const { query } = app.api.parseHash();
   assert.deepEqual(Object.keys(query), ['q', '__proto__', 'constructor']);
   assert.equal(Object.getPrototypeOf(query), app.run('Object.prototype'));
+  // A malformed % in a link cannot be decoded: the route becomes a page that does not exist.
+  app.window.location.hash = '#/c/%E0%A4%A';
+  assert.deepEqual(plain(app.api.parseHash().path), ['not-found']);
 });
 
 test('esc escapes the five HTML characters', () => {
@@ -352,10 +355,9 @@ test('a stylesheet gets only its own url() paths inlined, never the same text el
   assert.equal(out, `.a{background:url(${png('PNG-A')})} .b{background:url("${png('PNG-D')}")} .c{content:"a.png"} .d{background:url( '${png('PNG-A')}' )} .e{background:url(a.png?v=1)}`);
 });
 
-test('the lookup script swaps a path set from a script before the browser loads it', () => {
-  const html = api.assetLookupScript({ 'icons/a.png': 'data:image/png;base64,QQ==' });
-  const code = html.slice('<script>'.length, -'</script>'.length);
-  // A stand-in for the frame: every src the "browser" sees is a load it would start.
+// Runs the lookup script in a stand-in frame: every src the "browser" sees is a load it would start.
+function lookupFrame(lookup) {
+  const code = api.assetLookupScript(lookup).slice('<script>'.length, -'</script>'.length);
   const loads = [];
   class Element { setAttribute(n, v) { loads.push(n + '=' + v); } getAttribute() { return null; } }
   class HTMLImageElement extends Element {}
@@ -363,12 +365,24 @@ test('the lookup script swaps a path set from a script before the browser loads 
   const frame = { Element, HTMLImageElement, XMLHttpRequest: class { open() {} }, MutationObserver: class { observe() {} }, document: { documentElement: {} } };
   frame.window = frame;
   vm.runInNewContext(code, frame);
-  const img = new HTMLImageElement();
+  return { img: new HTMLImageElement(), loads };
+}
+
+test('the lookup script swaps a path set from a script before the browser loads it', () => {
+  const { img, loads } = lookupFrame(new Map([['icons/a.png', 'data:image/png;base64,QQ==']]));
   img.src = './icons/a.png?v=2';
   img.setAttribute('src', 'icons/a.png');
   img.setAttribute('alt', 'icons/a.png');
   img.src = 'https://example.com/other.png';
   assert.deepEqual(loads, ['src=data:image/png;base64,QQ==', 'src=data:image/png;base64,QQ==', 'alt=icons/a.png', 'src=https://example.com/other.png']);
+});
+
+test('the lookup script serves a file named like an object key, such as "__proto__"', () => {
+  const { img, loads } = lookupFrame(new Map([['__proto__', 'data:text/plain;base64,QQ=='], ['constructor', 'data:text/plain;base64,Qg==']]));
+  img.src = '__proto__';
+  img.src = 'constructor';
+  img.src = 'toString';
+  assert.deepEqual(loads, ['src=data:text/plain;base64,QQ==', 'src=data:text/plain;base64,Qg==', 'src=toString']);
 });
 
 /* ---------- Conversation branches ---------- */
