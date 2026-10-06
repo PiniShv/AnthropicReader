@@ -34,6 +34,15 @@ test('records that are not objects are skipped with one warning each, and the re
   assert.deepEqual(plain(api.DB.warnings), [2, 3, 4].map(n => `x/conversations.json: record ${n} was skipped: it is not an object`));
 });
 
+test('a time no Date can hold is unknown, so the person page and the per-person zip still work', async () => {
+  const far = { ...conversation(1, 'far future', [{ ...message(11, 'hi'), created_at: 1e20 }]), created_at: 1e20, updated_at: -1e20 };
+  const { api } = await importFiles([users(), looseFile('x/conversations.json', [far])]);
+  const c = api.DB.convById.get(U(1));
+  assert.deepEqual([c.created, c.updated, c.lastTs], [0, 0, 0]);
+  const blob = await api.buildPersonZip(api.DB.people.get(PERSON), { allVersions: false }, () => {}, () => false);
+  assert.ok(blob.size > 0);
+});
+
 test('a record with a JSON syntax error is skipped with a warning, and the rest of the file loads', async () => {
   const P2 = U(101), P3 = U(102);
   const text = `[{"uuid":"${PERSON}","full_name":"Ada"},{"uuid":"${P2}","x":NaN},{"uuid":"${P3}","full_name":"After the broken one"}]`;

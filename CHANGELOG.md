@@ -45,6 +45,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - One broken record, such as `null` where a chat, a message or a comment should be, or a record with a JSON syntax error, no longer stops the rest of its file from loading, or the whole load. It is skipped and named in a warning. When a load fails anyway, the export that was open stays as it was, and **Back to the open export** returns to it.
 - A browser that cannot unpack zip files (before Chrome and Edge 103, Firefox 113 and Safari 16.4) now says so when you pick a zip, and suggests the unzipped folder. Before, it showed one engine error per file, or the wrong message "No Claude export data found". When nothing at all could be read, the message now names the first problem.
 - The start page no longer fails in Chrome and Edge for an export with more than about 120,000 conversations.
+- A time that no date can hold, such as `1e20`, counts as unknown. Before, it broke the person page ("Invalid time value") and the per-person zip.
 - The users, projects, memories and design chat files are read one record at a time, like `conversations.json`, so a very large old-format `projects.json` or `memories.json` also loads in Chrome and Edge.
 - "Copied" is shown only when the copy worked, and **Copy Markdown** on a Docs page also works in Safari.
 - On phones, the end of the page no longer sits under the browser's toolbar.

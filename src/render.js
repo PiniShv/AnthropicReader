@@ -16,10 +16,14 @@ const compareText = new Intl.Collator().compare;
 
 // A time in ms, or 0 when unknown. Takes Unix seconds or ms, and ISO strings with 0-9
 // fraction digits and either Z or +00:00. Safari rejects more than 3 fraction digits
-// ("…58.888842Z"), so they are cut first.
+// ("…58.888842Z"), so they are cut first. A number outside what a Date can hold (±8.64e15 ms)
+// is unknown too: formatting it would throw.
 function parseTime(v) {
   if (v == null || v === '') return 0;
-  if (typeof v === 'number') return v < 1e12 ? v * 1000 : v;
+  if (typeof v === 'number') {
+    const t = v < 1e12 ? v * 1000 : v;
+    return Math.abs(t) <= 8.64e15 ? t : 0;
+  }
   const s = String(v).replace(/(\.\d{3})\d+/, '$1');
   const t = Date.parse(s);
   return isNaN(t) ? 0 : t;

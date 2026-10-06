@@ -62,6 +62,9 @@ test('parseTime accepts long fractions, offsets and Unix seconds', () => {
   assert.equal(parseTime(''), 0);
   assert.equal(parseTime(null), 0);
   assert.equal(parseTime('not a date'), 0);
+  // Outside what a Date can hold, a time is unknown: formatting it would throw.
+  for (const v of [1e20, -1e20, 8.64e15 + 1, NaN, Infinity]) assert.equal(parseTime(v), 0, String(v));
+  assert.equal(parseTime(8.64e15), 8.64e15);
 });
 
 test('toDate reads times like parseTime, and an unknown time (0) is no date, not 1 Jan 1970', () => {
