@@ -1,0 +1,7 @@
+name: CodeQL config
+
+# Default queries, on our own code only. vendor/ holds third-party libraries
+# that we do not change, and dist/ is only a build of src/ and vendor/.
+paths-ignore:
+  - vendor
+  - dist
