@@ -1297,8 +1297,10 @@ if (window.DOMPurify && typeof DOMPurify.addHook === 'function') {
   });
 }
 
+// Fails closed: a DOMPurify that cannot work in this browser returns the HTML unchanged, so
+// then the HTML is shown as text.
 function sanitize(html) {
-  if (!window.DOMPurify) return esc(html);
+  if (!window.DOMPurify || !DOMPurify.isSupported) return esc(html);
   return DOMPurify.sanitize(html, PURIFY_CONFIG);
 }
 

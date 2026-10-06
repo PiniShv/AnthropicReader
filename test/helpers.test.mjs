@@ -12,6 +12,13 @@ test('every script loads without a DOM, with app.js, the vendored libraries and 
   assert.equal(typeof full.window.DOMPurify, 'function');
   assert.equal(typeof full.api.importExport, 'function');
 });
+test('sanitize fails closed when DOMPurify cannot work', () => {
+  // Without a real DOM, DOMPurify says it is not supported and would return its input as it is.
+  const full = loadApp({ vendor: true });
+  assert.equal(full.window.DOMPurify.isSupported, false);
+  assert.equal(full.api.sanitize('<img src=x onerror=alert(1)>'), '&lt;img src=x onerror=alert(1)&gt;');
+  assert.equal(api.sanitize('<b>x</b>'), '&lt;b&gt;x&lt;/b&gt;', 'no DOMPurify at all');
+});
 const {
   decodeEntities, searchTerms, snippetHtml, safeUrl, withFrameShim, composeVariants, cpToUnits,
   splitTabs, parseFrontmatter, classify, parseTime, toDate, fmtDate, fmtDateTime, esc, truncate, fmtBytes,
