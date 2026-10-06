@@ -459,12 +459,15 @@ try {
   await sleep(1500);
   const popup = await tab.evaluate(`window.__popups.map(w => w && w.document ? Array.from(w.document.querySelectorAll('iframe'), f => f.getAttribute('sandbox')) : null)`);
   const popupProblems = [];
+  // Its title is fixed: the browser keeps titles in its history, so they hold no export data.
+  const popupTitle = await tab.evaluate(`window.__popups.map(w => w && w.document && w.document.title).join()`);
+  if (popupTitle !== 'Artifact preview') popupProblems.push(`new tab: the title is "${popupTitle}", not "Artifact preview"`);
   if (popup.length !== 1 || !popup[0] || popup[0].length !== 1) popupProblems.push('expected one new window with one iframe, got ' + JSON.stringify(popup));
   for (const s of (popup[0] || [])) {
     if (s == null) popupProblems.push('new tab: iframe without a sandbox');
     else for (const t of s.split(/\s+/).filter(Boolean)) if (!FRAME_SANDBOX.includes(t)) popupProblems.push(`new tab: iframe sandbox has "${t}"`);
   }
-  report('the "Open in new tab" frame is sandboxed', popupProblems);
+  report('the "Open in new tab" frame is sandboxed, and its title is fixed', popupProblems);
 
   await sleep(1000);
   const hits = await tab.evaluate('window.__xssHits.slice()');

@@ -5064,12 +5064,13 @@ function threadCommentsHtml(a) {
 /* ---------- Artifact actions ---------- */
 
 // Open the window first (inside the click, so pop-up blockers allow it), then fill it.
-// The artifact runs inside a sandboxed frame there too, so it cannot reach this reader.
+// The artifact runs inside a sandboxed frame there too, so it cannot reach this reader. The
+// tab's title is fixed, like the reader's own: the browser keeps titles in its history.
 async function openPreviewTab(a, vid, board) {
   const w = window.open('', '_blank');
   if (!w) { toast('Pop-up blocked. Allow pop-ups for this page, or use Download.'); return; }
   w.document.open();
-  w.document.write(`<!doctype html><html lang="en"><head><meta charset="utf-8"><title>${esc(artifactTitle(a))}</title><style>html,body,iframe{margin:0;border:0;width:100%;height:100%;display:block;font-family:system-ui,sans-serif}</style></head><body><p style="padding:20px">Opening ${esc(artifactTitle(a))}…</p></body></html>`);
+  w.document.write(`<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Artifact preview</title><style>html,body,iframe{margin:0;border:0;width:100%;height:100%;display:block;font-family:system-ui,sans-serif}</style></head><body><p style="padding:20px">Opening ${esc(artifactTitle(a))}…</p></body></html>`);
   w.document.close();
   try {
     const built = await getBuilt(a, vid, versionInfo(a, vid), board);

@@ -44,6 +44,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Security
 
+- **Open in new tab** names the new tab "Artifact preview" instead of the artifact's title, so the title does not end up in the browser history.
 - Markdown from the export could make the reader load files from the internet, which would tell a server when the export was opened. SVG attributes such as `mask`, `fill`, `filter`, `clip-path` and `marker-end` with a `url(…)` got through the sanitizer. It now keeps only an allow-list of HTML tags and attributes: SVG and MathML in Markdown show as their plain text, and `id`, `name` and `background` attributes are removed.
 - In a browser where the sanitizer cannot run, Markdown from the export is now shown as plain text. Before, it was shown as HTML without cleaning.
 - Links in Markdown from the export are clickable only for web and mail addresses. A relative or `//host` link opened a path on your computer, or on Windows a network share. Export text can also no longer change the Tab order of the page (`tabindex`).
