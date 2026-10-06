@@ -155,7 +155,8 @@ src/
   load.js            file picking, drag and drop, streaming JSON parser
   render.js          escaping, Markdown, sanitizing, formatting helpers
   ui.js              app state, the lifetime of one drawn page, on(), blk(), preHtml()
-  model.js           classifies files and builds the in-memory model
+  model.js           the in-memory model: people, links and derived data, queries
+  ingest.js          classifies files and reads each record into the model
   conversation.js    message tree, branches, tool helpers, outputs
   search.js          search engine and its index
   export.js          Markdown export and the per-person zip

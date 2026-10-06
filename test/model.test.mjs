@@ -1,4 +1,4 @@
-// The import pipeline (importExport in src/model.js) on small, made-up exports.
+// The import pipeline (importExport in src/ingest.js) and the model it fills, on small, made-up exports.
 // Everything here is fictional: the company "Northwind Labs" and its people do not exist.
 import test from 'node:test';
 import assert from 'node:assert/strict';

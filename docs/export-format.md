@@ -83,7 +83,7 @@ artifacts/<artifact uuid>/comments.json                Claude Docs pages only
 artifacts/<artifact uuid>/artifact_comments.json       comment threads (some artifacts)
 ```
 
-How the reader recognises files (`classify()` in `src/model.js`), first match wins:
+How the reader recognises files (`classify()` in `src/ingest.js`), first match wins:
 
 | Rule | Kind |
 |---|---|

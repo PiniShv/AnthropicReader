@@ -1,4 +1,4 @@
-// Small pure helpers from src/render.js, src/model.js and the view scripts.
+// Small pure helpers from src/render.js, src/model.js, src/ingest.js and the view scripts.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { loadApp, plain, BUILD_ORDER } from './harness.mjs';

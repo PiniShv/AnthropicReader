@@ -580,7 +580,7 @@ function artifactLinkHtml(id, title, action) {
  *   card(input, res, tid): the call as an open, prominent card with id tid (the outputs box and
  *     "show content" scroll to it), or '' to draw it as a normal tool block.
  *   chip(input): its chip in the "What Claude produced here" box, for the tools that OUTPUTS
- *     (model.js) counts as outputs.
+ *     (ingest.js) counts as outputs.
  * A new tool with its own look is added here, and only here in the view. */
 const TOOL_CARDS = new Map([
   ['artifacts', {

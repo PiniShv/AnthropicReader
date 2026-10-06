@@ -17,7 +17,7 @@ const parentKey = (ids, m) => (m.parent_message_uuid && ids.has(m.parent_message
 
 /* The branch rule: parent key -> child messages, in array order. null when no message has a
  * parent, because then the array order is the conversation. The thread (buildTree) and the
- * fork count (addConversation in model.js) both use it, so the "branch points" chip always
+ * fork count (addConversation in ingest.js) both use it, so the "branch points" chip always
  * matches the branch arrows. */
 function childrenByParent(msgs) {
   if (!msgs.some(m => m.parent_message_uuid)) return null;
