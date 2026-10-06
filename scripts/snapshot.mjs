@@ -27,8 +27,6 @@ const PAGE = pathToFileURL(DIST).href + '?demo';
 
 const QUIET_MS = 400;          // a page is settled when #main and #sidebar have not changed for this long
 const SETTLE_TIMEOUT = 20000;
-const PERSON_TABS = ['', 'conversations', 'artifacts', 'projects', 'design', 'memory', 'comments'];
-const SEARCH_TYPES = ['all', 'conversations', 'artifacts', 'projects', 'design', 'memory', 'people'];
 // One query that finds conversations, one that finds artifacts and design chats, one with quotes.
 const QUERIES = ['onboarding', 'campaign', '"week 4"'];
 
@@ -206,14 +204,18 @@ function pageHelpers(cfg) {
   };
 }
 
-// Every page of the sample data, in a fixed order (ids sorted, not model order).
+// Every page of the sample data, in a fixed order (ids sorted, not model order). The list
+// pages, person tabs and search types come from the page's own lists (KINDS), so a new kind
+// is visited too.
 const ROUTES_EXPR = `(() => {
   const DB = ExportReader.DB();
+  const personTabs = ['', ...PERSON_SECTIONS.map(s => s.key)];
+  const searchTypes = ['all', ...KINDS.map(k => k.key), 'people'];
   const enc = encodeURIComponent;
   const ids = list => list.map(x => x.id).sort();
-  const routes = ['#/', '#/people', '#/conversations', '#/artifacts', '#/projects', '#/design', '#/memories'];
+  const routes = ['#/', '#/people', ...KINDS.map(k => '#/' + k.list)];
   for (const id of [...DB.people.keys()].sort()) {
-    for (const tab of ${JSON.stringify(PERSON_TABS)}) routes.push('#/person/' + enc(id) + (tab ? '/' + tab : ''));
+    for (const tab of personTabs) routes.push('#/person/' + enc(id) + (tab ? '/' + tab : ''));
   }
   for (const id of ids(DB.conversations)) routes.push('#/c/' + enc(id));
   for (const a of DB.artifacts.slice().sort((x, y) => (x.id < y.id ? -1 : 1))) {
@@ -230,7 +232,7 @@ const ROUTES_EXPR = `(() => {
   routes.push('#/search');
   for (const q of ${JSON.stringify(QUERIES)}) {
     for (const deep of [false, true]) {
-      for (const t of ${JSON.stringify(SEARCH_TYPES)}) routes.push('#/search?q=' + enc(q) + (deep ? '&deep=1' : '') + '&t=' + t);
+      for (const t of searchTypes) routes.push('#/search?q=' + enc(q) + (deep ? '&deep=1' : '') + '&t=' + t);
     }
   }
   routes.push('#/about');
