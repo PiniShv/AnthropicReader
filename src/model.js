@@ -39,22 +39,17 @@ class Person {
     this.messageCount = 0;
     this.first = 0;
     this.last = 0;
+    // One definition of each count, used by every card, tile, tab and sidebar badge. finalize()
+    // works them out.
+    this.convCount = 0;          // chats with content
+    this.emptyConvCount = 0;     // chats the export left empty
+    this.memoryCount = 0;        // memory files, the chat summary and project memories
+    this.total = 0;              // every item: chats, projects, design chats, artifacts, memory, own comments
   }
   touch(t) {
     if (!t) return;
     if (!this.first || t < this.first) this.first = t;
     if (t > this.last) this.last = t;
-  }
-  // One definition of each count, used by every card, tile, tab and sidebar badge.
-  convCount() { return withContent(this.conversations).length; }
-  emptyConvCount() { return this.conversations.length - this.convCount(); }
-  memoryCount() {
-    const m = this.memory;
-    return m ? m.files.length + (m.conversationsMemory ? 1 : 0) + m.projectMemories.length : 0;
-  }
-  total() {
-    return this.convCount() + this.projects.length + this.designChats.length +
-      this.artifacts.length + (this.memory ? 1 : 0) + this.comments.filter(c => !c.byAgent).length;
   }
   emailLocal() { return (this.email || '').split('@')[0]; }
 }
@@ -285,6 +280,16 @@ function finalize() {
     }
   }
 
+  // The counts of each person, worked out once per load: lists sort people by them on every key press.
+  for (const p of DB.people.values()) {
+    const m = p.memory;
+    p.convCount = withContent(p.conversations).length;
+    p.emptyConvCount = p.conversations.length - p.convCount;
+    p.memoryCount = m ? m.files.length + (m.conversationsMemory ? 1 : 0) + m.projectMemories.length : 0;
+    p.total = p.convCount + p.projects.length + p.designChats.length + p.artifacts.length + (m ? 1 : 0) +
+      p.comments.filter(c => !c.byAgent).length;
+  }
+
   // Display names: users.json name → name seen in data → email local part → short id.
   for (const p of DB.people.values()) {
     if (p.system) { p.name = 'No owner'; continue; }
@@ -353,7 +358,7 @@ function realPeople() {
 
 // Most data first, then by name.
 function peopleSorted() {
-  return realPeople().sort((a, b) => (b.total() - a.total()) || a.name.localeCompare(b.name));
+  return realPeople().sort((a, b) => (b.total - a.total) || compareText(a.name, b.name));
 }
 
 // q is lower case and trimmed: part of the name or email, or the start of the id.

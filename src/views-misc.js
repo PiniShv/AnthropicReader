@@ -184,6 +184,9 @@ function memoryText(text, mem) {
 
 /* ======================= Search page ======================= */
 
+// How many hits of one kind the page draws: a few of each on "Everything", more on a kind's tab.
+const searchLimit = t => (t === 'all' ? 5 : 200);
+
 // Every search URL is made here, with its parameters in this order. t is encoded too: a t typed
 // into the URL comes back here, and could otherwise add parameters or break out of markup.
 const searchHref = ({ q, deep, t }) => '#/search?q=' + encodeURIComponent(q) + (deep ? '&deep=1' : '') + (t ? '&t=' + encodeURIComponent(t) : '');
@@ -198,7 +201,7 @@ function viewSearch(q, t) {
     if (!q.trim()) { box.innerHTML = '<div class="empty">Type in the search box above. Use quotes for exact phrases, e.g. <code>"design system"</code>.</div>'; return; }
     box.innerHTML = '<div class="empty" id="search-progress">Searching…</div>';
     const onProgress = msg => { const p = $('#search-progress'); if (p) p.textContent = msg; };
-    const res = await runSearch(q, { deep, scope: s, signal: VIEW.ac.signal, onProgress });
+    const res = await runSearch(q, { deep, scope: s, signal: VIEW.ac.signal, onProgress, shown: searchLimit(t) });
     if (!res) return;
     drawSearchResults(res, q, t, deep);
   });
@@ -219,7 +222,7 @@ function drawSearchResults(res, q, t, deep) {
   const total = KINDS.reduce((n, k) => n + res[k.key].length, res.people.length);
   const tab = (k, label, n) => `<a class="chip${t === k ? ' on' : ''}" href="${searchHref({ q, deep, t: k })}"${t === k ? ' aria-current="page"' : ''}>${label} <b>${fmtNum(n)}</b></a>`;
   $('#search-tabs').innerHTML = tab('all', 'Everything', total) + KINDS.map(k => tab(k.key, esc(k.searchTab || k.label), res[k.key].length)).join('') + tab('people', 'People', res.people.length);
-  const limit = t === 'all' ? 5 : 200;
+  const limit = searchLimit(t);
   const qs = '?q=' + encodeURIComponent(q);
   const sec = (k, title, items, fn) => {
     if (t !== 'all' && t !== k) return '';
@@ -229,7 +232,7 @@ function drawSearchResults(res, q, t, deep) {
       ${t !== 'all' && items.length > limit ? `<p class="muted">Showing the first ${limit}. Add more words to narrow it down.</p>` : ''}`;
   };
   // Each result reads only its hit: { item } plus what runSearch found (see search.js).
-  const ppl = ({ item: p }) => `<a class="result" href="#/person/${encodeURIComponent(p.id)}"><div class="r-title">${avatarHtml(p, 'sm')}<span>${esc(p.name)}</span></div><div class="r-meta"><span>${esc(p.email || '')}</span><span>${plural(p.total(), 'item')}</span></div></a>`;
+  const ppl = ({ item: p }) => `<a class="result" href="#/person/${encodeURIComponent(p.id)}"><div class="r-title">${avatarHtml(p, 'sm')}<span>${esc(p.name)}</span></div><div class="r-meta"><span>${esc(p.email || '')}</span><span>${plural(p.total, 'item')}</span></div></a>`;
   $('#search-results').innerHTML = (total ? '' : `<div class="card empty">Nothing found for “${esc(q)}”.${deep ? '' : ' Try ticking “Deep search”.'}</div>`) +
     sec('people', 'People', res.people, ppl) + KINDS.map(k => sec(k.key, esc(k.label), res[k.key], hit => k.searchResult(hit, terms, qs))).join('');
   announce(total ? plural(total, 'result') + ' found' : 'Nothing found');
@@ -243,10 +246,10 @@ function projectResult({ item: x }, terms) {
     <div class="r-meta">${avatarHtml(x.owner, 'sm')}<span>${esc(x.owner.name)}</span></div></a>`;
 }
 
-function memoryResult({ item: m, text }, terms) {
+function memoryResult({ item: m }, terms) {
   const f = m.files.find(ff => terms.every(tt => ff.content.toLowerCase().includes(tt)));
   return `<a class="result" href="#/memory/${encodeURIComponent(m.id)}"><div class="r-title">${avatarHtml(m.owner, 'sm')}<span>${esc(KIND.memory.title(m))}</span>${f ? `<span class="chip mono">${esc(f.path)}</span>` : ''}</div>
-    <div class="r-snip" dir="auto">${snippetHtml(f ? f.body : text, terms)}</div></a>`;
+    <div class="r-snip" dir="auto">${snippetHtml(f ? f.body : memorySearchText(m), terms)}</div></a>`;
 }
 
 /* ======================= About ======================= */

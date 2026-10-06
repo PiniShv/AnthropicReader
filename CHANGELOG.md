@@ -25,6 +25,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   - Icon-only buttons have names, status messages ("Copied", the number of results) are read out by screen readers, and the system setting for less motion turns off animations and smooth scrolling.
 - The shortcut to the search box is now `Ctrl+K` (`⌘K` on a Mac) instead of `/`. A one-key shortcut can fire by accident for people who use speech input.
 - Building and testing need Node.js 22 or newer, because Node 20 reached its end of life in April 2026. CI tests on Node 22 and 24, with the current major versions of `actions/checkout` and `actions/setup-node` (they run on Node 24, not the deprecated Node 20 runtime).
+- Deep search keeps about a third less in memory on a large export, and a new search no longer copies the text of every chat first. The search index holds one lower-case text per item; snippets are cut from the item itself when they are shown. Sorting tables and the people list is faster too.
 - An item without a title shows the same fallback everywhere, in plain text, such as "Untitled conversation" or "Untitled project". The breadcrumb and the download names of such a chat use it too.
 - In Chrome and Edge, **Choose a folder…** and **Reopen last export** open the files of a big folder 16 at a time instead of one by one, so loading starts sooner. The files are still read in the same order, so the result does not change.
 

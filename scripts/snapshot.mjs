@@ -237,7 +237,7 @@ const ROUTES_EXPR = `(() => {
   }
   routes.push('#/about');
   const busiest = realPeople()
-    .sort((a, b) => b.total() - a.total() || (a.id < b.id ? -1 : 1))[0];
+    .sort((a, b) => b.total - a.total || (a.id < b.id ? -1 : 1))[0];
   return { routes, focus: { id: busiest.id, name: busiest.name } };
 })()`;
 

@@ -11,6 +11,8 @@ const DATE_FMT = new Intl.DateTimeFormat(undefined, { year: 'numeric', month: 's
 const DATETIME_FMT = new Intl.DateTimeFormat(undefined, { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
 const MONTH_FMT = new Intl.DateTimeFormat(undefined, { year: 'numeric', month: 'short' });
 const NUM_FMT = new Intl.NumberFormat();
+// Sorts text like localeCompare(), but much faster on long lists.
+const compareText = new Intl.Collator().compare;
 
 // A time in ms, or 0 when unknown. Takes Unix seconds or ms, and ISO strings with 0-9
 // fraction digits and either Z or +00:00. Safari rejects more than 3 fraction digits

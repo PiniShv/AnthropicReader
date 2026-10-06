@@ -72,8 +72,8 @@ test('links conversations to people from users.json', async () => {
   assert.equal(ada.email, 'ada.fernsby@northwind.example');
   assert.equal(ada.phone, '+1 555 0100');
   assert.equal(ada.conversations.length, 2);
-  assert.equal(ada.convCount(), 1, 'the empty chat is not counted');
-  assert.equal(ada.emptyConvCount(), 1);
+  assert.equal(ada.convCount, 1, 'the empty chat is not counted');
+  assert.equal(ada.emptyConvCount, 1);
   assert.equal(ada.messageCount, 2);
 
   // An account that is not in users.json still gets a person, marked unknown.
@@ -194,7 +194,7 @@ test('old formats: projects.json, memories.json and messages without parents', a
   assert.equal(ada.memory.conversationsMemory, 'Ada runs operations at Northwind Labs.');
   assert.deepEqual(plain(ada.memory.projectMemories), [{ projectId: proj(1), text: 'Use the blue palette.' }]);
   assert.equal(ada.memory.files.length, 0);
-  assert.equal(ada.memoryCount(), 2);
+  assert.equal(ada.memoryCount, 2);
 
   // Messages without parent_message_uuid are one straight line, in array order.
   const c = DB.convById.get(conv(1));
@@ -239,12 +239,12 @@ test('search finds text from files added to an open export', async () => {
   await api.importExport([second], { set() {} });
   const res = await search('zebra');
   assert.equal(res.memory.length, 1);
-  assert.match(res.memory[0].text, /zebra crossing/);
+  assert.match(api.memoryResult(res.memory[0], res.terms), /<mark>zebra<\/mark> crossing/);
 });
 
 test('every kind is a full search contract: a list of hits and a result renderer', async () => {
   const { api } = await importFiles([looseFile('users.json', USERS)]);
-  const fields = ['key', 'list', 'item', 'icon', 'label', 'noun', 'allCount', 'personCount', 'listView', 'itemView', 'personTab', 'searchResult'];
+  const fields = ['key', 'list', 'item', 'icon', 'label', 'noun', 'title', 'allCount', 'personCount', 'listView', 'itemView', 'personTab', 'searchResult'];
   for (const k of api.KINDS) for (const f of fields) assert.ok(k[f], `KINDS.${k.key} has no ${f}`);
   // A new kind that the engine does not search yet still gets an (empty) list, so the search
   // page can draw its tab. Both with and without hits.
@@ -469,7 +469,7 @@ test('memory file frontmatter: values with ": " and quoted aliases', async () =>
   assert.deepEqual(plain(mem.files[1].meta), {});
   assert.equal(mem.files[1].body, 'No frontmatter here.');
   assert.equal(mem.updated, Date.parse('2026-05-02T08:00:00Z'));
-  assert.equal(person(api, ADA).memoryCount(), 2);
+  assert.equal(person(api, ADA).memoryCount, 2);
 });
 
 /* ---------- Artifacts ---------- */
@@ -719,8 +719,8 @@ test('comments: thread copies of page comments are not counted twice', async () 
   assert.deepEqual(texts(ada), ['Owner note to Claude', 'Summary of the thread.', 'Yes.']);
   assert.deepEqual(texts(bram), ['Is this date fixed?', 'Move the legend']);
   assert.equal(ada.comments.find(c => c.comment.posted_by_agent).byAgent, true);
-  // total(): 1 artifact + 2 comments typed by Ada (the agent's one is not hers).
-  assert.equal(ada.total(), 3);
+  // total: 1 artifact + 2 comments typed by Ada (the agent's one is not hers).
+  assert.equal(ada.total, 3);
   // Newest first.
   assert.equal(ada.comments[0].comment.text, 'Owner note to Claude');
 });
@@ -765,17 +765,17 @@ test('finalize() is idempotent: loading more files never double-counts', async (
   assert.deepEqual(snapshot(), before, 'new projects and memory do not change existing counts');
   assert.equal(DB.people.get(ADA).projects.length, 1);
   assert.ok(DB.people.get(ADA).memory);
-  const total = DB.people.get(ADA).total();
+  const total = DB.people.get(ADA).total;
 
   finalize();
   finalize();
   assert.deepEqual(snapshot(), before);
-  assert.equal(DB.people.get(ADA).total(), total);
+  assert.equal(DB.people.get(ADA).total, total);
 
   // The very same zip again: everything is already known.
   await importExport([first], { set() {} });
   assert.deepEqual(snapshot(), before);
-  assert.equal(DB.people.get(ADA).total(), total);
+  assert.equal(DB.people.get(ADA).total, total);
 });
 
 /* ---------- Display names ---------- */

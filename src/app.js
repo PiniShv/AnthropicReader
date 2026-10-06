@@ -324,7 +324,7 @@ function openPicker() {
     const rows = (App.focus ? [{ id: '', html: '<span class="avatar sm unknown" aria-hidden="true">×</span><span>Show everyone</span>' }] : [])
       .concat(peopleMatching(input.value).slice(0, 60).map(p => ({ id: p.id, html: `${avatarHtml(p, 'sm')}
           <span class="grow"><span>${esc(p.name)}</span> <span class="em">${esc(p.email || '')}</span></span>
-          <span class="badge" title="items">${fmtNum(p.total())}<span class="sr-only"> items</span></span>` })));
+          <span class="badge" title="items">${fmtNum(p.total)}<span class="sr-only"> items</span></span>` })));
     hl = Math.min(hl, Math.max(0, rows.length - 1));
     $('#picker-list').innerHTML = rows.map((r, i) =>
       `<div class="picker-item${i === hl ? ' hl' : ''}" id="pick-${i}" role="option" aria-selected="${i === hl}" data-pick="${esc(r.id)}">${r.html}</div>`).join('');

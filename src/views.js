@@ -14,7 +14,7 @@ const ICONS = { home: '⌂', people: '👥', search: '⌕', about: 'ⓘ' };
 const KINDS = [
   {
     key: 'conversations', list: 'conversations', item: 'c', icon: '💬', label: 'Conversations', noun: ['chat', 'chats'], title: convTitle,
-    allCount: () => withContent(DB.conversations).length, personCount: p => p.convCount(),
+    allCount: () => withContent(DB.conversations).length, personCount: p => p.convCount,
     listView: () => viewConversations(), itemView: b => viewConversation(b), personTab: p => convTable(p.conversations, 'pc-' + p.id, false),
     searchResult: (hit, terms, qs) => convResult(hit, terms, qs),
   },
@@ -39,7 +39,7 @@ const KINDS = [
   {
     // Without focus the badge counts people with memory; with focus, that person's memory items.
     key: 'memory', list: 'memories', item: 'memory', icon: '🧠', label: 'Memory', noun: ['memory item', 'memory items'],
-    title: m => m.owner.name, allCount: () => DB.memories.length, personCount: p => p.memoryCount(),
+    title: m => m.owner.name, allCount: () => DB.memories.length, personCount: p => p.memoryCount,
     listView: () => viewMemories(), itemView: b => viewMemory(b),
     personTab: p => (p.memory ? memoryBody(p.memory) : '<div class="card empty">No memory for this person in this export.</div>'),
     searchResult: (hit, terms) => memoryResult(hit, terms),
@@ -227,7 +227,7 @@ function tableRows({ spec, st, ft }) {
     const dir = st.dir;
     rows = rows.slice().sort((a, b) => {
       const x = col.sortVal(a), y = col.sortVal(b);
-      if (typeof x === 'string' || typeof y === 'string') return dir * String(x || '').localeCompare(String(y || ''));
+      if (typeof x === 'string' || typeof y === 'string') return dir * compareText(String(x || ''), String(y || ''));
       return dir * ((x || 0) - (y || 0));
     });
   }
@@ -276,7 +276,7 @@ function viewHome() {
   const fp = focusPerson();
   if (fp) return viewPerson(fp.id, 'overview');
   const people = peopleSorted();
-  const active = people.filter(p => p.total() > 0);
+  const active = people.filter(p => p.total > 0);
   const totalMsgs = DB.conversations.reduce((a, c) => a + c.msgCount, 0);
   const convs = KIND.conversations.allCount(), emptyConvs = DB.conversations.length - convs;
   const manifest = latestManifest();
@@ -290,7 +290,7 @@ function viewHome() {
   after(() => {
     const inp = $('#home-person-q');
     const draw = () => {
-      const list = peopleMatching(inp.value).filter(p => p.total() > 0 || inp.value).slice(0, 12);
+      const list = peopleMatching(inp.value).filter(p => p.total > 0 || inp.value).slice(0, 12);
       $('#home-people').innerHTML = list.map(personCardHtml).join('') || '<div class="empty">No one matches.</div>';
     };
     inp.addEventListener('input', draw);
@@ -349,7 +349,7 @@ function stripMd(s) {
 
 function personCardHtml(p) {
   const counts = PERSON_SECTIONS.map(s => [s.personCount(p), ...s.noun]).filter(x => x[0]);
-  return `<a class="person-card${p.total() ? '' : ' inactive'}" href="#/person/${encodeURIComponent(p.id)}">
+  return `<a class="person-card${p.total ? '' : ' inactive'}" href="#/person/${encodeURIComponent(p.id)}">
     ${avatarHtml(p)}
     <div class="grow">
       <div class="name ellipsis">${esc(p.name)}</div>
@@ -360,10 +360,10 @@ function personCardHtml(p) {
 }
 
 const PEOPLE_SORTS = {
-  total: ['Most data', (a, b) => b.total() - a.total()],
+  total: ['Most data', (a, b) => b.total - a.total],
   recent: ['Recently active', (a, b) => b.last - a.last],
-  name: ['Name A–Z', (a, b) => a.name.localeCompare(b.name)],
-  conv: ['Most conversations', (a, b) => b.convCount() - a.convCount()],
+  name: ['Name A–Z', (a, b) => compareText(a.name, b.name)],
+  conv: ['Most conversations', (a, b) => b.convCount - a.convCount],
   msgs: ['Most messages', (a, b) => b.messageCount - a.messageCount],
   art: ['Most artifacts', (a, b) => b.artifacts.length - a.artifacts.length],
   proj: ['Most projects', (a, b) => b.projects.length - a.projects.length],
@@ -372,14 +372,14 @@ const PEOPLE_STATE = { q: '', sort: 'total', showEmpty: false };
 
 function viewPeople() {
   const all = realPeople();
-  const empty = all.filter(p => !p.total()).length;
+  const empty = all.filter(p => !p.total).length;
   const unknown = all.filter(p => !p.known).length;
   const none = DB.people.get(NO_OWNER);
   after(() => {
     const draw = () => {
       const q = PEOPLE_STATE.q.toLowerCase().trim();
-      let list = all.filter(p => (PEOPLE_STATE.showEmpty || p.total() > 0 || q) && (!q || personMatches(p, q)));
-      list.sort((a, b) => PEOPLE_SORTS[PEOPLE_STATE.sort][1](a, b) || a.name.localeCompare(b.name));
+      let list = all.filter(p => (PEOPLE_STATE.showEmpty || p.total > 0 || q) && (!q || personMatches(p, q)));
+      list.sort((a, b) => PEOPLE_SORTS[PEOPLE_STATE.sort][1](a, b) || compareText(a.name, b.name));
       $('#people-grid').innerHTML = list.map(personCardHtml).join('') || '<div class="empty">No one matches.</div>';
       const count = `${fmtNum(list.length)} shown`;
       if ($('#people-count').textContent !== count) $('#people-count').textContent = count;
@@ -402,7 +402,7 @@ function viewPeople() {
       <span class="count-note" id="people-count" role="status"></span>
     </div>
     <div class="people-grid" id="people-grid"></div>
-    ${none && none.total() ? `<p class="muted" style="margin-top:18px;font-size:14px">${plural(none.total(), 'item')} have no owner (agent-made artifacts, empty design chats). <a href="#/person/${NO_OWNER}">See them</a>.</p>` : ''}
+    ${none && none.total ? `<p class="muted" style="margin-top:18px;font-size:14px">${plural(none.total, 'item')} have no owner (agent-made artifacts, empty design chats). <a href="#/person/${NO_OWNER}">See them</a>.</p>` : ''}
   </div>`;
 }
 
@@ -457,7 +457,7 @@ function personOverview(p, counts) {
   const shared = p.artifacts.filter(a => a.visibility === 'organization' || a.visibility === 'invited').length;
   const docs = p.projects.reduce((a, x) => a + x.docs.length, 0);
   const tiles = [
-    ['conversations', counts.conversations, 'conversations', plural(p.messageCount, 'message') + (p.emptyConvCount() ? ` · ${fmtNum(p.emptyConvCount())} more without content` : '')],
+    ['conversations', counts.conversations, 'conversations', plural(p.messageCount, 'message') + (p.emptyConvCount ? ` · ${fmtNum(p.emptyConvCount)} more without content` : '')],
     ['artifacts', counts.artifacts, 'artifacts & pages', shared ? `${fmtNum(shared)} shared` : ''],
     ['projects', counts.projects, 'projects', docs ? plural(docs, 'doc') : ''],
     ['design', counts.design, 'design chats', ''],

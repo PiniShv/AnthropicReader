@@ -1196,6 +1196,8 @@ const DATE_FMT = new Intl.DateTimeFormat(undefined, { year: 'numeric', month: 's
 const DATETIME_FMT = new Intl.DateTimeFormat(undefined, { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
 const MONTH_FMT = new Intl.DateTimeFormat(undefined, { year: 'numeric', month: 'short' });
 const NUM_FMT = new Intl.NumberFormat();
+// Sorts text like localeCompare(), but much faster on long lists.
+const compareText = new Intl.Collator().compare;
 
 // A time in ms, or 0 when unknown. Takes Unix seconds or ms, and ISO strings with 0-9
 // fraction digits and either Z or +00:00. Safari rejects more than 3 fraction digits
@@ -1758,22 +1760,17 @@ class Person {
     this.messageCount = 0;
     this.first = 0;
     this.last = 0;
+    // One definition of each count, used by every card, tile, tab and sidebar badge. finalize()
+    // works them out.
+    this.convCount = 0;          // chats with content
+    this.emptyConvCount = 0;     // chats the export left empty
+    this.memoryCount = 0;        // memory files, the chat summary and project memories
+    this.total = 0;              // every item: chats, projects, design chats, artifacts, memory, own comments
   }
   touch(t) {
     if (!t) return;
     if (!this.first || t < this.first) this.first = t;
     if (t > this.last) this.last = t;
-  }
-  // One definition of each count, used by every card, tile, tab and sidebar badge.
-  convCount() { return withContent(this.conversations).length; }
-  emptyConvCount() { return this.conversations.length - this.convCount(); }
-  memoryCount() {
-    const m = this.memory;
-    return m ? m.files.length + (m.conversationsMemory ? 1 : 0) + m.projectMemories.length : 0;
-  }
-  total() {
-    return this.convCount() + this.projects.length + this.designChats.length +
-      this.artifacts.length + (this.memory ? 1 : 0) + this.comments.filter(c => !c.byAgent).length;
   }
   emailLocal() { return (this.email || '').split('@')[0]; }
 }
@@ -2004,6 +2001,16 @@ function finalize() {
     }
   }
 
+  // The counts of each person, worked out once per load: lists sort people by them on every key press.
+  for (const p of DB.people.values()) {
+    const m = p.memory;
+    p.convCount = withContent(p.conversations).length;
+    p.emptyConvCount = p.conversations.length - p.convCount;
+    p.memoryCount = m ? m.files.length + (m.conversationsMemory ? 1 : 0) + m.projectMemories.length : 0;
+    p.total = p.convCount + p.projects.length + p.designChats.length + p.artifacts.length + (m ? 1 : 0) +
+      p.comments.filter(c => !c.byAgent).length;
+  }
+
   // Display names: users.json name → name seen in data → email local part → short id.
   for (const p of DB.people.values()) {
     if (p.system) { p.name = 'No owner'; continue; }
@@ -2072,7 +2079,7 @@ function realPeople() {
 
 // Most data first, then by name.
 function peopleSorted() {
-  return realPeople().sort((a, b) => (b.total() - a.total()) || a.name.localeCompare(b.name));
+  return realPeople().sort((a, b) => (b.total - a.total) || compareText(a.name, b.name));
 }
 
 // q is lower case and trimmed: part of the name or email, or the start of the id.
@@ -2959,16 +2966,63 @@ function msgDeep(m) {
   return s;
 }
 
-function countHits(hay, terms) {
+// How often the terms are in the texts together (at most 50 times each), or -1 when a term is
+// in none of them.
+function countHits(texts, terms) {
   let n = 0;
   for (const t of terms) {
-    let i = hay.indexOf(t);
-    if (i < 0) return -1;
     let k = 0;
-    while (i >= 0 && k < 50) { k++; i = hay.indexOf(t, i + t.length); }
+    for (const text of texts) {
+      for (let i = text.indexOf(t); i >= 0 && k < 50; i = text.indexOf(t, i + t.length)) k++;
+    }
+    if (!k) return -1;
     n += k;
   }
   return n;
+}
+
+/* Parts of a record's text, in lower case, joined with "\n" into one string (text), and where
+ * each part starts in it (starts). One string per record: a search runs over it without
+ * building anything, and finds the part of a match with partOf(). */
+function joinLower(parts) {
+  const lower = parts.map(p => p.toLowerCase());
+  const starts = new Uint32Array(lower.length);
+  for (let i = 1; i < lower.length; i++) starts[i] = starts[i - 1] + lower[i - 1].length + 1;
+  return { text: lower.join('\n'), starts };
+}
+
+// The first part, from part `from` on, that holds t; -1 when none does.
+function partOf(joined, t, from) {
+  if (from >= joined.starts.length) return -1;
+  const at = joined.text.indexOf(t, joined.starts[from]);
+  if (at < 0) return -1;
+  let lo = from, hi = joined.starts.length - 1;
+  while (lo < hi) {
+    const mid = (lo + hi + 1) >> 1;
+    if (joined.starts[mid] <= at) lo = mid; else hi = mid - 1;
+  }
+  return lo;
+}
+
+// The part of a long text that a result's snippet can show (snippetHtml() cuts 90 characters
+// before the first match and 180 after it), so a hit does not keep a whole file's text.
+function snippetWindow(text, terms) {
+  const re = termsRegex(terms);
+  const m = re && re.exec(text);
+  const at = m ? m.index : 0;
+  return text.slice(Math.max(0, at - 200), at + 400);
+}
+
+// Text of a person's memory: the chat summary, project memories and memory files.
+function memorySearchText(mem) {
+  return [mem.conversationsMemory, ...mem.projectMemories.map(x => x.text), ...mem.files.map(f => f.content)].join('\n');
+}
+
+// Text of an artifact, without its files: title, descriptions, doc page and comments.
+function artifactSearchText(a, page) {
+  return [artifactTitle(a), a.description, a.contentType, ...a.versions.map(v => v.title + ' ' + v.description), page,
+    ...(a.comments || []).flatMap(t => [t.quoted_text, ...(t.comments || []).map(c => c.body)]),
+    ...(a.threads || []).flatMap(t => (t.comments || []).map(c => c.text))].join('\n');
 }
 
 // Text of a design chat: prompts, replies and comments on the design.
@@ -2987,9 +3041,11 @@ function designSearchText(d) {
   })].join('\n');
 }
 
-/* The search index: text per record, made the first time a search needs it, so later searches
- * are fast. Adding files to an open export changes some records in place (merged memory,
- * artifact metadata, owner names), so the index starts again whenever finalize() runs. */
+/* The search index: the lower-case text of each record, made the first time a search needs
+ * it, so later searches are fast. It keeps no original text: a result cuts its snippet from
+ * the record when it is drawn. Adding files to an open export changes some records in place
+ * (merged memory, artifact metadata, owner names), so the index starts again whenever
+ * finalize() runs. */
 const searchIndex = genCache(() => new WeakMap());
 
 function searchEntry(x) {
@@ -2999,26 +3055,22 @@ function searchEntry(x) {
   return e;
 }
 
-// The items whose text holds every term, as hits { item }. keepText adds the text itself
-// (hit.text), for the snippet under the result.
-function findByText(items, terms, textOf, keepText) {
+// The items whose text holds every term, as hits { item }.
+function findByText(items, terms, textOf) {
   const hits = [];
   for (const item of items) {
     const e = searchEntry(item);
-    if (!e.lc) {
-      const text = textOf(item);
-      e.lc = text.toLowerCase();
-      if (keepText) e.text = text;
-    }
-    if (terms.every(t => e.lc.includes(t))) hits.push(keepText ? { item, text: e.text } : { item });
+    if (e.lc == null) e.lc = textOf(item).toLowerCase();
+    if (terms.every(t => e.lc.includes(t))) hits.push({ item });
   }
   return hits;
 }
 
 /* Every hit is { item, … }. scope (scopeOf()) holds the records to search: one person's or
- * everyone's. People are always searched in full. Returns null when `signal` aborts (the page
- * changed) before the search ends. */
-async function runSearch(q, { deep, scope, signal, onProgress }) {
+ * everyone's. People are always searched in full. shown: how many hits of a kind the page
+ * draws; the artifact hits among them get their snippet text (hit.text). Returns null when
+ * `signal` aborts (the page changed) before the search ends. */
+async function runSearch(q, { deep, scope, signal, onProgress, shown = 200 }) {
   const terms = searchTerms(q);
   // One list of hits per kind of record (KINDS in views.js, by key), plus people. Every kind
   // gets a list, even one this engine does not search yet, so the search page can draw it.
@@ -3030,22 +3082,23 @@ async function runSearch(q, { deep, scope, signal, onProgress }) {
   // People
   for (const p of realPeople()) if (has(p.name + ' ' + p.email + ' ' + p.id)) res.people.push({ item: p });
 
-  // Conversations (chunked to keep the tab responsive)
+  // Conversations (chunked to keep the tab responsive). Part 0 of e.prose is the title and
+  // summary, part i + 1 is message i; part i of e.deep is message i.
   const convs = scope.conversations;
   for (let ci = 0; ci < convs.length; ci++) {
     const c = convs[ci];
     const e = searchEntry(c);
-    if (!e.lcMsgs) e.lcMsgs = (c.raw.chat_messages || []).map(m => msgProse(m).toLowerCase());
-    if (deep && !e.lcDeep) e.lcDeep = (c.raw.chat_messages || []).map(m => msgDeep(m).toLowerCase());
-    const head = (convTitle(c) + '\n' + c.summary).toLowerCase();
-    const msgs = e.lcMsgs;
-    const joined = head + '\n' + msgs.join('\n') + (deep ? '\n' + e.lcDeep.join('\n') : '');
-    const score = countHits(joined, terms);
+    const msgs = c.raw.chat_messages || [];
+    if (!e.prose) e.prose = joinLower([convTitle(c) + '\n' + c.summary, ...msgs.map(msgProse)]);
+    if (deep && !e.deep) e.deep = joinLower(msgs.map(msgDeep));
+    const score = countHits(deep ? [e.prose.text, e.deep.text] : [e.prose.text], terms);
     if (score >= 0) {
-      let hitIdx = msgs.findIndex(x => x.includes(terms[0]));
+      const inHead = terms.every(t => partOf(e.prose, t, 0) === 0);
+      let hitIdx = partOf(e.prose, terms[0], 1);
+      if (hitIdx > 0) hitIdx--;
       let hitDeep = false;
-      if (hitIdx < 0 && deep) { hitIdx = e.lcDeep.findIndex(x => x.includes(terms[0])); hitDeep = hitIdx >= 0; }
-      res.conversations.push({ item: c, score: score + (countHits(head, terms) >= 0 ? 20 : 0), hitIdx, hitDeep });
+      if (hitIdx < 0 && deep) { hitIdx = partOf(e.deep, terms[0], 0); hitDeep = hitIdx >= 0; }
+      res.conversations.push({ item: c, score: score + (inHead ? 20 : 0), hitIdx, hitDeep });
     }
     if (ci % 40 === 39) {
       onProgress && onProgress(`Searching conversations… ${ci + 1} / ${convs.length}`);
@@ -3056,37 +3109,44 @@ async function runSearch(q, { deep, scope, signal, onProgress }) {
   res.conversations.sort((a, b) => b.score - a.score || b.item.lastTs - a.item.lastTs);
 
   res.projects = findByText(scope.projects, terms, x => [x.name, x.description, x.promptTemplate, ...x.docs.map(d => d.filename + '\n' + d.content)].join('\n'));
-  res.design = findByText(scope.designChats, terms, designSearchText, true);
-  res.memory = findByText(scope.memories, terms, mem => [mem.conversationsMemory, ...mem.projectMemories.map(x => x.text), ...mem.files.map(f => f.content)].join('\n'), true);
+  res.design = findByText(scope.designChats, terms, designSearchText);
+  res.memory = findByText(scope.memories, terms, memorySearchText);
 
-  // Artifacts: titles, descriptions, docs text, comments
+  // Artifacts: titles, descriptions, docs text, comments. The doc page is read once.
   onProgress && onProgress('Searching artifacts…');
   const arts = scope.artifacts;
-  const needPages = arts.filter(a => a.pageNode && searchEntry(a).pageText == null);
-  await mapLimit(needPages, 8, async a => { const e = searchEntry(a); try { e.pageText = await a.pageNode.text(); } catch (err) { e.pageText = ''; } });
+  const readText = async node => { try { return await node.text(); } catch (err) { return ''; } };
+  await mapLimit(arts.filter(a => searchEntry(a).lc == null), 8, async a => {
+    searchEntry(a).lc = artifactSearchText(a, a.pageNode ? await readText(a.pageNode) : '').toLowerCase();
+  });
   if (signal.aborted) return null;
   if (deep) {
     // Read each artifact's current version once (text only) so its content is searchable too.
-    const todo = arts.filter(a => searchEntry(a).contentLc == null);
+    const todo = arts.filter(a => searchEntry(a).content == null);
     let done = 0;
     await mapLimit(todo, 6, async a => {
-      const e = searchEntry(a);
-      try { e.contentText = await artifactPlainText(a); } catch (err) { e.contentText = ''; }
-      e.contentLc = e.contentText.toLowerCase();
+      let text = '';
+      try { text = await artifactPlainText(a); } catch (err) { /* unreadable: no content */ }
+      searchEntry(a).content = text.toLowerCase();
       if (++done % 25 === 0) onProgress && onProgress(`Reading artifact content… ${done} / ${todo.length}`);
     });
     if (signal.aborted) return null;
   }
   for (const a of arts) {
     const e = searchEntry(a);
-    if (!e.lc) {
-      e.lc = [artifactTitle(a), a.description, a.contentType, ...a.versions.map(v => v.title + ' ' + v.description), e.pageText || '',
-        ...(a.comments || []).flatMap(t => [t.quoted_text, ...(t.comments || []).map(c => c.body)]),
-        ...(a.threads || []).flatMap(t => (t.comments || []).map(c => c.text))].join('\n').toLowerCase();
-    }
-    if (terms.every(t => e.lc.includes(t))) res.artifacts.push({ item: a, text: [artifactTitle(a), a.description, e.pageText].join(' — ') });
-    else if (deep && e.contentLc && terms.every(t => e.lc.includes(t) || e.contentLc.includes(t))) res.artifacts.push({ item: a, text: e.contentText, inContent: true });
+    if (terms.every(t => e.lc.includes(t))) res.artifacts.push({ item: a });
+    else if (deep && e.content && terms.every(t => e.lc.includes(t) || e.content.includes(t))) res.artifacts.push({ item: a, inContent: true });
   }
+  // The text of the hits the page shows is read again, because the index keeps lower case only.
+  await mapLimit(res.artifacts.slice(0, shown), 6, async hit => {
+    const a = hit.item;
+    let text = '';
+    try {
+      text = hit.inContent ? await artifactPlainText(a) : [artifactTitle(a), a.description, a.pageNode ? await readText(a.pageNode) : ''].join(' — ');
+    } catch (err) { /* unreadable: no snippet */ }
+    hit.text = snippetWindow(text, terms);
+  });
+  if (signal.aborted) return null;
   return res;
 }
 
@@ -3564,7 +3624,7 @@ const ICONS = { home: '⌂', people: '👥', search: '⌕', about: 'ⓘ' };
 const KINDS = [
   {
     key: 'conversations', list: 'conversations', item: 'c', icon: '💬', label: 'Conversations', noun: ['chat', 'chats'], title: convTitle,
-    allCount: () => withContent(DB.conversations).length, personCount: p => p.convCount(),
+    allCount: () => withContent(DB.conversations).length, personCount: p => p.convCount,
     listView: () => viewConversations(), itemView: b => viewConversation(b), personTab: p => convTable(p.conversations, 'pc-' + p.id, false),
     searchResult: (hit, terms, qs) => convResult(hit, terms, qs),
   },
@@ -3589,7 +3649,7 @@ const KINDS = [
   {
     // Without focus the badge counts people with memory; with focus, that person's memory items.
     key: 'memory', list: 'memories', item: 'memory', icon: '🧠', label: 'Memory', noun: ['memory item', 'memory items'],
-    title: m => m.owner.name, allCount: () => DB.memories.length, personCount: p => p.memoryCount(),
+    title: m => m.owner.name, allCount: () => DB.memories.length, personCount: p => p.memoryCount,
     listView: () => viewMemories(), itemView: b => viewMemory(b),
     personTab: p => (p.memory ? memoryBody(p.memory) : '<div class="card empty">No memory for this person in this export.</div>'),
     searchResult: (hit, terms) => memoryResult(hit, terms),
@@ -3777,7 +3837,7 @@ function tableRows({ spec, st, ft }) {
     const dir = st.dir;
     rows = rows.slice().sort((a, b) => {
       const x = col.sortVal(a), y = col.sortVal(b);
-      if (typeof x === 'string' || typeof y === 'string') return dir * String(x || '').localeCompare(String(y || ''));
+      if (typeof x === 'string' || typeof y === 'string') return dir * compareText(String(x || ''), String(y || ''));
       return dir * ((x || 0) - (y || 0));
     });
   }
@@ -3826,7 +3886,7 @@ function viewHome() {
   const fp = focusPerson();
   if (fp) return viewPerson(fp.id, 'overview');
   const people = peopleSorted();
-  const active = people.filter(p => p.total() > 0);
+  const active = people.filter(p => p.total > 0);
   const totalMsgs = DB.conversations.reduce((a, c) => a + c.msgCount, 0);
   const convs = KIND.conversations.allCount(), emptyConvs = DB.conversations.length - convs;
   const manifest = latestManifest();
@@ -3840,7 +3900,7 @@ function viewHome() {
   after(() => {
     const inp = $('#home-person-q');
     const draw = () => {
-      const list = peopleMatching(inp.value).filter(p => p.total() > 0 || inp.value).slice(0, 12);
+      const list = peopleMatching(inp.value).filter(p => p.total > 0 || inp.value).slice(0, 12);
       $('#home-people').innerHTML = list.map(personCardHtml).join('') || '<div class="empty">No one matches.</div>';
     };
     inp.addEventListener('input', draw);
@@ -3899,7 +3959,7 @@ function stripMd(s) {
 
 function personCardHtml(p) {
   const counts = PERSON_SECTIONS.map(s => [s.personCount(p), ...s.noun]).filter(x => x[0]);
-  return `<a class="person-card${p.total() ? '' : ' inactive'}" href="#/person/${encodeURIComponent(p.id)}">
+  return `<a class="person-card${p.total ? '' : ' inactive'}" href="#/person/${encodeURIComponent(p.id)}">
     ${avatarHtml(p)}
     <div class="grow">
       <div class="name ellipsis">${esc(p.name)}</div>
@@ -3910,10 +3970,10 @@ function personCardHtml(p) {
 }
 
 const PEOPLE_SORTS = {
-  total: ['Most data', (a, b) => b.total() - a.total()],
+  total: ['Most data', (a, b) => b.total - a.total],
   recent: ['Recently active', (a, b) => b.last - a.last],
-  name: ['Name A–Z', (a, b) => a.name.localeCompare(b.name)],
-  conv: ['Most conversations', (a, b) => b.convCount() - a.convCount()],
+  name: ['Name A–Z', (a, b) => compareText(a.name, b.name)],
+  conv: ['Most conversations', (a, b) => b.convCount - a.convCount],
   msgs: ['Most messages', (a, b) => b.messageCount - a.messageCount],
   art: ['Most artifacts', (a, b) => b.artifacts.length - a.artifacts.length],
   proj: ['Most projects', (a, b) => b.projects.length - a.projects.length],
@@ -3922,14 +3982,14 @@ const PEOPLE_STATE = { q: '', sort: 'total', showEmpty: false };
 
 function viewPeople() {
   const all = realPeople();
-  const empty = all.filter(p => !p.total()).length;
+  const empty = all.filter(p => !p.total).length;
   const unknown = all.filter(p => !p.known).length;
   const none = DB.people.get(NO_OWNER);
   after(() => {
     const draw = () => {
       const q = PEOPLE_STATE.q.toLowerCase().trim();
-      let list = all.filter(p => (PEOPLE_STATE.showEmpty || p.total() > 0 || q) && (!q || personMatches(p, q)));
-      list.sort((a, b) => PEOPLE_SORTS[PEOPLE_STATE.sort][1](a, b) || a.name.localeCompare(b.name));
+      let list = all.filter(p => (PEOPLE_STATE.showEmpty || p.total > 0 || q) && (!q || personMatches(p, q)));
+      list.sort((a, b) => PEOPLE_SORTS[PEOPLE_STATE.sort][1](a, b) || compareText(a.name, b.name));
       $('#people-grid').innerHTML = list.map(personCardHtml).join('') || '<div class="empty">No one matches.</div>';
       const count = `${fmtNum(list.length)} shown`;
       if ($('#people-count').textContent !== count) $('#people-count').textContent = count;
@@ -3952,7 +4012,7 @@ function viewPeople() {
       <span class="count-note" id="people-count" role="status"></span>
     </div>
     <div class="people-grid" id="people-grid"></div>
-    ${none && none.total() ? `<p class="muted" style="margin-top:18px;font-size:14px">${plural(none.total(), 'item')} have no owner (agent-made artifacts, empty design chats). <a href="#/person/${NO_OWNER}">See them</a>.</p>` : ''}
+    ${none && none.total ? `<p class="muted" style="margin-top:18px;font-size:14px">${plural(none.total, 'item')} have no owner (agent-made artifacts, empty design chats). <a href="#/person/${NO_OWNER}">See them</a>.</p>` : ''}
   </div>`;
 }
 
@@ -4007,7 +4067,7 @@ function personOverview(p, counts) {
   const shared = p.artifacts.filter(a => a.visibility === 'organization' || a.visibility === 'invited').length;
   const docs = p.projects.reduce((a, x) => a + x.docs.length, 0);
   const tiles = [
-    ['conversations', counts.conversations, 'conversations', plural(p.messageCount, 'message') + (p.emptyConvCount() ? ` · ${fmtNum(p.emptyConvCount())} more without content` : '')],
+    ['conversations', counts.conversations, 'conversations', plural(p.messageCount, 'message') + (p.emptyConvCount ? ` · ${fmtNum(p.emptyConvCount)} more without content` : '')],
     ['artifacts', counts.artifacts, 'artifacts & pages', shared ? `${fmtNum(shared)} shared` : ''],
     ['projects', counts.projects, 'projects', docs ? plural(docs, 'doc') : ''],
     ['design', counts.design, 'design chats', ''],
@@ -5207,9 +5267,9 @@ function viewDesignChats() {
 }
 
 // One design chat in the search results; it opens with the words highlighted (qs).
-function designResult({ item: d, text }, terms, qs) {
+function designResult({ item: d }, terms, qs) {
   return `<a class="result" href="#/d/${encodeURIComponent(d.id)}${qs}"><div class="r-title"><span dir="auto">${esc(designTitle(d))}</span><span class="chip">✎ ${esc(d.project.name || 'design project')}</span></div>
-    <div class="r-snip" dir="auto">${snippetHtml(text, terms)}</div>
+    <div class="r-snip" dir="auto">${snippetHtml(designSearchText(d), terms)}</div>
     <div class="r-meta">${avatarHtml(d.owner, 'sm')}<span>${esc(d.owner.name)}</span><span>${esc(fmtDate(d.lastTs))}</span></div></a>`;
 }
 
@@ -5569,6 +5629,9 @@ function memoryText(text, mem) {
 
 /* ======================= Search page ======================= */
 
+// How many hits of one kind the page draws: a few of each on "Everything", more on a kind's tab.
+const searchLimit = t => (t === 'all' ? 5 : 200);
+
 // Every search URL is made here, with its parameters in this order. t is encoded too: a t typed
 // into the URL comes back here, and could otherwise add parameters or break out of markup.
 const searchHref = ({ q, deep, t }) => '#/search?q=' + encodeURIComponent(q) + (deep ? '&deep=1' : '') + (t ? '&t=' + encodeURIComponent(t) : '');
@@ -5583,7 +5646,7 @@ function viewSearch(q, t) {
     if (!q.trim()) { box.innerHTML = '<div class="empty">Type in the search box above. Use quotes for exact phrases, e.g. <code>"design system"</code>.</div>'; return; }
     box.innerHTML = '<div class="empty" id="search-progress">Searching…</div>';
     const onProgress = msg => { const p = $('#search-progress'); if (p) p.textContent = msg; };
-    const res = await runSearch(q, { deep, scope: s, signal: VIEW.ac.signal, onProgress });
+    const res = await runSearch(q, { deep, scope: s, signal: VIEW.ac.signal, onProgress, shown: searchLimit(t) });
     if (!res) return;
     drawSearchResults(res, q, t, deep);
   });
@@ -5604,7 +5667,7 @@ function drawSearchResults(res, q, t, deep) {
   const total = KINDS.reduce((n, k) => n + res[k.key].length, res.people.length);
   const tab = (k, label, n) => `<a class="chip${t === k ? ' on' : ''}" href="${searchHref({ q, deep, t: k })}"${t === k ? ' aria-current="page"' : ''}>${label} <b>${fmtNum(n)}</b></a>`;
   $('#search-tabs').innerHTML = tab('all', 'Everything', total) + KINDS.map(k => tab(k.key, esc(k.searchTab || k.label), res[k.key].length)).join('') + tab('people', 'People', res.people.length);
-  const limit = t === 'all' ? 5 : 200;
+  const limit = searchLimit(t);
   const qs = '?q=' + encodeURIComponent(q);
   const sec = (k, title, items, fn) => {
     if (t !== 'all' && t !== k) return '';
@@ -5614,7 +5677,7 @@ function drawSearchResults(res, q, t, deep) {
       ${t !== 'all' && items.length > limit ? `<p class="muted">Showing the first ${limit}. Add more words to narrow it down.</p>` : ''}`;
   };
   // Each result reads only its hit: { item } plus what runSearch found (see search.js).
-  const ppl = ({ item: p }) => `<a class="result" href="#/person/${encodeURIComponent(p.id)}"><div class="r-title">${avatarHtml(p, 'sm')}<span>${esc(p.name)}</span></div><div class="r-meta"><span>${esc(p.email || '')}</span><span>${plural(p.total(), 'item')}</span></div></a>`;
+  const ppl = ({ item: p }) => `<a class="result" href="#/person/${encodeURIComponent(p.id)}"><div class="r-title">${avatarHtml(p, 'sm')}<span>${esc(p.name)}</span></div><div class="r-meta"><span>${esc(p.email || '')}</span><span>${plural(p.total, 'item')}</span></div></a>`;
   $('#search-results').innerHTML = (total ? '' : `<div class="card empty">Nothing found for “${esc(q)}”.${deep ? '' : ' Try ticking “Deep search”.'}</div>`) +
     sec('people', 'People', res.people, ppl) + KINDS.map(k => sec(k.key, esc(k.label), res[k.key], hit => k.searchResult(hit, terms, qs))).join('');
   announce(total ? plural(total, 'result') + ' found' : 'Nothing found');
@@ -5628,10 +5691,10 @@ function projectResult({ item: x }, terms) {
     <div class="r-meta">${avatarHtml(x.owner, 'sm')}<span>${esc(x.owner.name)}</span></div></a>`;
 }
 
-function memoryResult({ item: m, text }, terms) {
+function memoryResult({ item: m }, terms) {
   const f = m.files.find(ff => terms.every(tt => ff.content.toLowerCase().includes(tt)));
   return `<a class="result" href="#/memory/${encodeURIComponent(m.id)}"><div class="r-title">${avatarHtml(m.owner, 'sm')}<span>${esc(KIND.memory.title(m))}</span>${f ? `<span class="chip mono">${esc(f.path)}</span>` : ''}</div>
-    <div class="r-snip" dir="auto">${snippetHtml(f ? f.body : text, terms)}</div></a>`;
+    <div class="r-snip" dir="auto">${snippetHtml(f ? f.body : memorySearchText(m), terms)}</div></a>`;
 }
 
 /* ======================= About ======================= */
@@ -8158,7 +8221,7 @@ function openPicker() {
     const rows = (App.focus ? [{ id: '', html: '<span class="avatar sm unknown" aria-hidden="true">×</span><span>Show everyone</span>' }] : [])
       .concat(peopleMatching(input.value).slice(0, 60).map(p => ({ id: p.id, html: `${avatarHtml(p, 'sm')}
           <span class="grow"><span>${esc(p.name)}</span> <span class="em">${esc(p.email || '')}</span></span>
-          <span class="badge" title="items">${fmtNum(p.total())}<span class="sr-only"> items</span></span>` })));
+          <span class="badge" title="items">${fmtNum(p.total)}<span class="sr-only"> items</span></span>` })));
     hl = Math.min(hl, Math.max(0, rows.length - 1));
     $('#picker-list').innerHTML = rows.map((r, i) =>
       `<div class="picker-item${i === hl ? ' hl' : ''}" id="pick-${i}" role="option" aria-selected="${i === hl}" data-pick="${esc(r.id)}">${r.html}</div>`).join('');
