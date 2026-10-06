@@ -6,7 +6,7 @@ They are vendored (not loaded from a CDN) because the reader must work offline a
 
 | Library | Version | File | Official file (npm package / path) | License |
 |---|---|---|---|---|
-| [marked](https://github.com/markedjs/marked) | 15.0.12 | `vendor/marked.min.js` | `marked@15.0.12/marked.min.js` | MIT |
+| [marked](https://github.com/markedjs/marked) | 18.1.0 | `vendor/marked.min.js` | `marked@18.1.0/lib/marked.umd.js` | MIT |
 | [DOMPurify](https://github.com/cure53/DOMPurify) | 3.4.16 | `vendor/purify.min.js` | `dompurify@3.4.16/dist/purify.min.js` | Apache-2.0 OR MPL-2.0 |
 
 What they do in the reader:
@@ -19,7 +19,7 @@ What they do in the reader:
 Each file in `vendor/` is byte for byte the official file from its npm package, and the package matches the `integrity` value of the npm registry. These are the SHA-256 checksums of the files:
 
 ```text
-3e7e7d7feb3e5d58cb6c804f68ab5c24cc7e5eb6270fd6e5cbb9124739217d0c  vendor/marked.min.js
+f424dcb508fdf93e0137a970cfce8f3207ea2e3f37eca5f7556a52875683632a  vendor/marked.min.js
 2c90a9b46d6463f26038a29b686e82bc91de01fdac9d5229e7cfe3b360134ea2  vendor/purify.min.js
 ```
 
@@ -29,12 +29,12 @@ Each file in `vendor/` is byte for byte the official file from its npm package, 
 
 ---
 
-## marked 15.0.12
+## marked 18.1.0
 
-Copyright (c) Christopher Jeffrey and the marked contributors.
-Source: <https://github.com/markedjs/marked/tree/v15.0.12>
+Copyright (c) 2018+, MarkedJS, and (c) 2011-2018, Christopher Jeffrey.
+Source: <https://github.com/markedjs/marked/tree/v18.1.0>
 
-This project redistributes the official minified build (`marked.min.js` from the `marked@15.0.12` npm package) without changes. The license below is copied from marked's [`LICENSE.md`](https://github.com/markedjs/marked/blob/v15.0.12/LICENSE.md).
+This project redistributes the official minified browser build (`lib/marked.umd.js` from the `marked@18.1.0` npm package) without changes, under the name `vendor/marked.min.js`. The license below is copied from marked's [`LICENSE`](https://github.com/markedjs/marked/blob/v18.1.0/LICENSE).
 
 ```text
 ## Marked

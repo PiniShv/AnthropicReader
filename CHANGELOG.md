@@ -28,6 +28,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Deep search keeps about a third less in memory on a large export, and a new search no longer copies the text of every chat first. The search index holds one lower-case text per item; snippets are cut from the item itself when they are shown. Sorting tables and the people list is faster too.
 - An item without a title shows the same fallback everywhere, in plain text, such as "Untitled conversation" or "Untitled project". The breadcrumb and the download names of such a chat use it too.
 - After a reload, focus mode starts with everyone again. The person you focused on is kept in memory only, not in the browser's storage.
+- marked, the library that turns Markdown into HTML, is updated from 15.0.12 to 18.1.0, because the 15.x line gets no more fixes. Some unusual Markdown now shows the way the CommonMark and GFM specs say: links with brackets in their text, `mailto:` links, and headings and code blocks with extra spaces or tabs. Common Markdown looks the same as before.
 
 ### Removed
 
