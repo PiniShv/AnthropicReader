@@ -39,3 +39,35 @@ jobs:
 
       - name: Check that dist/ matches the sources
         run: npm run build:check
+
+  # The checks that need a real browser (ubuntu-latest comes with Google Chrome): hostile
+  # export text must not run scripts or reach the network (npm run security), and the pages
+  # must pass axe-core and the keyboard checks (npm run a11y). Each exits 1 on any finding.
+  browser-checks:
+    name: Security and accessibility checks (headless Chrome)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24.x
+
+      - name: Show the Chrome version
+        run: google-chrome --version
+
+      # Both checks open dist/, so test the build of these sources.
+      - name: Build the page
+        id: build
+        run: npm run build
+
+      - name: Security check
+        run: npm run security
+
+      # Runs even when the security check failed, so one run shows every finding.
+      - name: Accessibility check
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        run: npm run a11y
