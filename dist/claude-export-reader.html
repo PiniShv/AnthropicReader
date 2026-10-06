@@ -955,12 +955,15 @@ class FileNode {
 
 /* ---------- Gathering inputs ---------- */
 
-// Turn picked File objects (plain or with webkitRelativePath) plus zips into nodes.
-async function nodesFromFiles(files, onStatus) {
+/* Turns what was picked into nodes. An item is a File (its path is webkitRelativePath, from a
+ * folder picker, or its name), or { file, path } when the path is known another way (drag and
+ * drop, saved handles). Zips become one node per entry. */
+async function nodesFromFiles(items, onStatus) {
   const nodes = [];
   const sources = [];
-  for (const f of files) {
-    const path = normPath(f.relPath || f.webkitRelativePath || f.name);
+  const picked = items.map(x => (x.file ? x : { file: x, path: x.webkitRelativePath || x.name }));
+  for (const { file: f, path: p } of picked) {
+    const path = normPath(p);
     if (/\.zip$/i.test(f.name)) {
       onStatus && onStatus('Reading index of ' + f.name + '…');
       try {
@@ -975,17 +978,18 @@ async function nodesFromFiles(files, onStatus) {
       nodes.push(new FileNode(path, f, path.split('/')[0]));
     }
   }
-  const looseCount = files.filter(f => !/\.zip$/i.test(f.name)).length;
+  const looseCount = picked.filter(x => !/\.zip$/i.test(x.file.name)).length;
   if (looseCount) sources.push({ name: looseCount + ' loose file' + (looseCount === 1 ? '' : 's'), kind: 'files', entries: looseCount });
   return { nodes, sources };
 }
 
-// The files of a drag-and-drop entry (webkitGetAsEntry API), in folder order. The files are
-// read in parallel, but the order does not depend on which read finishes first, so dropping
-// the same folder twice gives the same result (the import keeps the first copy of a file).
+// The files of a drag-and-drop entry (webkitGetAsEntry API) as { file, path }, in folder order.
+// The files are read in parallel, but the order does not depend on which read finishes first,
+// so dropping the same folder twice gives the same result (the import keeps the first copy of
+// a file).
 async function readDropEntry(entry) {
   if (entry.isFile) {
-    return new Promise(resolve => entry.file(f => { f.relPath = entry.fullPath; resolve([f]); }, () => resolve([])));
+    return new Promise(resolve => entry.file(file => resolve([{ file, path: entry.fullPath }]), () => resolve([])));
   }
   if (!entry.isDirectory) return [];
   const reader = entry.createReader();
@@ -1028,11 +1032,8 @@ async function filesFromHandles(handles) {
   const files = [];
   const visit = n => (n.h.kind === 'file' ? files.push(n) : n.kids.forEach(visit));
   roots.forEach(visit);
-  await mapLimit(files, HANDLE_READS, async n => {
-    n.file = await n.h.getFile();
-    n.file.relPath = n.prefix + n.file.name;
-  });
-  return files.map(n => n.file);
+  await mapLimit(files, HANDLE_READS, async n => { n.file = await n.h.getFile(); });
+  return files.map(n => ({ file: n.file, path: n.prefix + n.file.name }));
 }
 
 const HandleStore = {
@@ -4923,7 +4924,8 @@ async function drawVersion(a, vid, view, board, pickBoard) {
 }
 
 /* Full screen works like a modal dialog: the rest of the page is inert until Esc or ⤢, and the
- * focus goes back to ⤢. Leaving the page ends it too. */
+ * focus goes back to ⤢. Leaving the page ends it too. FULL_UNDO keeps the way back per box. */
+const FULL_UNDO = new WeakMap();
 function setFull(box, full) {
   if (!box || box.classList.contains('full') === full) return;
   const btn = box.querySelector('[aria-pressed]');
@@ -4931,10 +4933,11 @@ function setFull(box, full) {
   btn.setAttribute('aria-pressed', String(full));
   if (full) {
     const undo = isolate(box);
-    box.undoFull = undo;
+    FULL_UNDO.set(box, undo);
     VIEW.ac.signal.addEventListener('abort', undo, { once: true });
   } else {
-    box.undoFull();
+    FULL_UNDO.get(box)();
+    FULL_UNDO.delete(box);
     btn.focus();
   }
 }

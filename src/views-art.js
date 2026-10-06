@@ -167,7 +167,8 @@ async function drawVersion(a, vid, view, board, pickBoard) {
 }
 
 /* Full screen works like a modal dialog: the rest of the page is inert until Esc or ⤢, and the
- * focus goes back to ⤢. Leaving the page ends it too. */
+ * focus goes back to ⤢. Leaving the page ends it too. FULL_UNDO keeps the way back per box. */
+const FULL_UNDO = new WeakMap();
 function setFull(box, full) {
   if (!box || box.classList.contains('full') === full) return;
   const btn = box.querySelector('[aria-pressed]');
@@ -175,10 +176,11 @@ function setFull(box, full) {
   btn.setAttribute('aria-pressed', String(full));
   if (full) {
     const undo = isolate(box);
-    box.undoFull = undo;
+    FULL_UNDO.set(box, undo);
     VIEW.ac.signal.addEventListener('abort', undo, { once: true });
   } else {
-    box.undoFull();
+    FULL_UNDO.get(box)();
+    FULL_UNDO.delete(box);
     btn.focus();
   }
 }

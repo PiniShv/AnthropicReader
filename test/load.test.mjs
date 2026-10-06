@@ -36,7 +36,7 @@ test('a dropped folder gives its files in folder order, however fast each file a
     fileEntry('/export/conversations.json', 10),
   ]);
   const files = await api.filesFromDataTransfer(dropOf(tree, fileEntry('/manifest.json', 0)));
-  assert.deepEqual(Array.from(files, f => f.relPath), [
+  assert.deepEqual(Array.from(files, f => f.path), [
     '/export/users.json',
     '/export/artifacts/a.json', '/export/artifacts/b.json', '/export/artifacts/c.json',
     '/export/conversations.json',
@@ -73,7 +73,7 @@ test('saved handles give their files in folder order, however fast each read is'
     file('conversations.json', 10),
   ]);
   const files = await api.filesFromHandles([tree, file('manifest.json', 0)]);
-  assert.deepEqual(Array.from(files, f => f.relPath), [
+  assert.deepEqual(Array.from(files, f => f.path), [
     'export/users.json',
     'export/artifacts/a.json', 'export/artifacts/v/x.html', 'export/artifacts/v/y.html', 'export/artifacts/b.json',
     'export/conversations.json',
@@ -87,8 +87,9 @@ test('saved handles are read a few at a time, not one by one and not all at once
   const tree = dir('big', [...many(60), ...Array.from({ length: 40 }, (_, i) => dir('d' + i, many(2)))]);
   const files = await api.filesFromHandles([tree]);
   assert.equal(files.length, 140);
-  assert.equal(files[0].relPath, 'big/f000.json');
-  assert.equal(files[139].relPath, 'big/d39/f001.json');
+  assert.equal(files[0].path, 'big/f000.json');
+  assert.equal(files[139].path, 'big/d39/f001.json');
+  assert.ok(files.every(f => f.file instanceof File && !('relPath' in f.file)), 'the File objects are left as they are');
   assert.ok(busy.max > 1, 'reads run in parallel');
   assert.ok(busy.max <= api.HANDLE_READS, `at most ${api.HANDLE_READS} reads at once, saw ${busy.max}`);
 });

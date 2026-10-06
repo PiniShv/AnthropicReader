@@ -178,13 +178,10 @@ export function plain(v) {
 // A progress reporter that ignores everything (importExport's `ui` argument).
 export const quietUi = { set: noop };
 
-// A File whose path inside a picked folder is `relPath` (what folder pickers and
-// drag-and-drop give the app).
-export function looseFile(relPath, content) {
+// A File and its path inside a picked folder, as drag and drop and saved folders give them.
+export function looseFile(path, content) {
   const data = typeof content === 'string' || content instanceof Uint8Array ? content : JSON.stringify(content);
-  const f = new File([data], relPath.split('/').pop());
-  f.relPath = relPath;
-  return f;
+  return { file: new File([data], path.split('/').pop()), path };
 }
 
 // Build a .zip File with the app's own ZipWriter. `entries` maps path -> string | object | bytes.
