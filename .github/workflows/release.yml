@@ -21,12 +21,25 @@ jobs:
     timeout-minutes: 10
     permissions:
       contents: write # create the release and upload its files
+      id-token: write # sign the build provenance (Sigstore)
+      attestations: write # store the build provenance
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          fetch-depth: 0 # the whole history, for the check below
 
-      - uses: actions/setup-node@v7
+      # A tag can point to any commit, also one that nobody reviewed. So publish only
+      # commits that are on main, and check it before any code of the commit runs here.
+      - name: Check that the tag is on main
+        run: |
+          git fetch --no-tags origin +refs/heads/main:refs/remotes/origin/main
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
+            echo "::error::Tag $GITHUB_REF_NAME points to $GITHUB_SHA, which is not on main. Push main first, or tag a commit that is on main."
+            exit 1
+          fi
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 24.x
           # No cache in a job that can write releases, so nothing cached can sneak in.
@@ -67,6 +80,13 @@ jobs:
       - name: Write the checksum file
         working-directory: dist
         run: sha256sum claude-export-reader.html > claude-export-reader.html.sha256
+
+      # Signed proof that this workflow built the page from this commit. Anyone can
+      # check it with "gh attestation verify" (see "Check the download" in README.md).
+      - name: Attest the build provenance
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: dist/claude-export-reader.html
 
       - name: Create the GitHub release
         env:

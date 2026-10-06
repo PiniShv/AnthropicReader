@@ -1,4 +1,6 @@
-# Keeps the GitHub Actions in .github/workflows/ current.
+# Keeps the GitHub Actions in .github/workflows/ current. The workflows pin each action
+# to a full commit SHA (a tag can be moved, a SHA cannot), with the version in a comment.
+# Dependabot updates the SHA and the comment together.
 # The project has no npm dependencies, so actions are the only thing to update.
 version: 2
 updates:

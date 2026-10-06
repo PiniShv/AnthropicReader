@@ -39,6 +39,14 @@ No export at hand? Click **Try it with sample data** on the start page. It loads
 
 **Check the download (optional).** Each release also has a `claude-export-reader.html.sha256` file. Save it in the same folder as the reader and run `sha256sum -c claude-export-reader.html.sha256` (on macOS: `shasum -a 256 -c claude-export-reader.html.sha256`). It prints `OK` when your file is exactly the one the release published. On Windows, run `Get-FileHash claude-export-reader.html` in PowerShell and compare the hash with the one in the `.sha256` file.
 
+The release workflow also signs a build provenance attestation for the reader: a signed record of the workflow run that built the file and the commit it came from. The workflow publishes only commits that are on `main`. With the [GitHub CLI](https://cli.github.com/), check it in the folder where you saved the file:
+
+```bash
+gh attestation verify claude-export-reader.html --repo PiniShv/AnthropicReader --signer-workflow PiniShv/AnthropicReader/.github/workflows/release.yml
+```
+
+It fails if the file was changed, or if this release workflow did not build it.
+
 ### Which files to load
 
 The export email has one link per part, plus a `manifest-….json` file:

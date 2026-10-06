@@ -8,7 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
-- Each GitHub release has the reader (`claude-export-reader.html`) and a `.sha256` file to check the download. A release workflow publishes them when a version tag is pushed, but only after the tests and the build check pass and the tag matches `package.json`.
+- Each GitHub release has the reader (`claude-export-reader.html`) and a `.sha256` file to check the download. A release workflow publishes them when a version tag is pushed, but only after the tests and the build check pass, the tag matches `package.json` and the tagged commit is on `main`. The workflow also signs a build provenance attestation for the reader, so `gh attestation verify` can show which workflow run and commit made the file (see README).
 - CodeQL code scanning of the JavaScript (not the vendored libraries or `dist/`), on every push to `main`, on every pull request and once a week.
 - `npm run a11y` (`scripts/a11y.mjs`): an accessibility check for maintainers. It runs axe-core (downloaded at run time, checked by SHA-256, not a dependency) and keyboard checks on the sample data in headless Chrome, in light and dark mode, at desktop and phone width.
 
@@ -39,6 +39,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 - Markdown from the export could make the reader load files from the internet, which would tell a server when the export was opened. SVG attributes such as `mask`, `fill`, `filter`, `clip-path` and `marker-end` with a `url(…)` got through the sanitizer. It now keeps only an allow-list of HTML tags and attributes: SVG and MathML in Markdown show as their plain text, and `id`, `name` and `background` attributes are removed.
 - DOMPurify, the library that cleans HTML from the export before it is shown, is updated from 3.2.6 to 3.4.16. This brings the fixes for the 20 security advisories published against 3.2.6. Most of them need options or modes the reader does not use, but the sanitizer should never lag behind.
+- The GitHub workflows pin every action to a full commit SHA instead of a version tag, because a tag can be moved to other code. Dependabot keeps the pins current.
 
 ## [1.0.0] - 2026-10-05
 

@@ -168,7 +168,7 @@ The maintainer makes releases from `main`. A release is a version tag; a workflo
 
 1. Choose the new version ([Semantic Versioning](https://semver.org/)) and set it in `package.json`.
 2. In [CHANGELOG.md](CHANGELOG.md), turn the **Unreleased** notes into a `## [x.y.z] - YYYY-MM-DD` section, put an empty `## [Unreleased]` heading above it, and update the links at the bottom of the file.
-3. Run `npm run build` (the page shows the version, so `dist/` changes) and `npm test`, and commit.
+3. Run `npm run build` (the page shows the version, so `dist/` changes) and `npm test`, commit, and push `main`. The release workflow publishes only commits that are already on `main`.
 4. Tag that commit and push the tag:
 
 ```bash
@@ -179,7 +179,7 @@ git tag -a vx.y.z -m vx.y.z
 git push origin vx.y.z
 ```
 
-The [release workflow](.github/workflows/release.yml) then checks that the tag matches the version in `package.json`, runs `npm test` and `npm run build:check`, and creates the GitHub release. The release has `claude-export-reader.html`, a `claude-export-reader.html.sha256` checksum file, and the CHANGELOG section as its notes. If a check fails, nothing is published: fix the problem, delete the tag (`git push origin :vx.y.z` and `git tag -d vx.y.z`) and tag again. A version with a hyphen, such as `1.1.0-rc.1`, becomes a pre-release, so it never replaces the latest release.
+The [release workflow](.github/workflows/release.yml) then checks that the tag is on `main` and matches the version in `package.json`, runs `npm test` and `npm run build:check`, signs a build provenance attestation for the page, and creates the GitHub release. The release has `claude-export-reader.html`, a `claude-export-reader.html.sha256` checksum file, and the CHANGELOG section as its notes. If a check fails, nothing is published: fix the problem, delete the tag (`git push origin :vx.y.z` and `git tag -d vx.y.z`) and tag again. A version with a hyphen, such as `1.1.0-rc.1`, becomes a pre-release, so it never replaces the latest release.
 
 ## Reporting bugs and asking for features
 
