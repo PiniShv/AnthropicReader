@@ -298,6 +298,15 @@ test('bytes() rejects an unsupported compression method the same way stream() do
   await assert.rejects(zip.entries[0].bytes(), /Unsupported ZIP compression method 12/);
 });
 
+test('ZipWriter makes every part of a path a name that works on every system', async () => {
+  const z = new ZipWriter();
+  z.add('docs/Q3: plan?/notes. ', 'a');
+  z.add('con/aux.txt', 'b');
+  z.add('a\\b/' + 'x'.repeat(120) + '.md', 'c');
+  const zip = await ZipArchive.open(new File([await z.blob().arrayBuffer()], 'clean.zip'));
+  assert.deepEqual(names(zip), ['docs/Q3 plan/notes', '_con/_aux.txt', 'a/b/' + 'x'.repeat(90) + '.md']);
+});
+
 test('ZipWriter keeps every path inside the zip (no "." or ".." segments)', async () => {
   const z = new ZipWriter();
   z.add('artifacts/x/../../../etc/passwd', 'a');

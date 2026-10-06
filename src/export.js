@@ -71,10 +71,10 @@ function datePrefix(t) {
 async function buildPersonZip(p, opts, progress, isCancelled) {
   const z = new ZipWriter();
   const short = id => String(id || '').slice(0, 8);
-  // "<date> <title> (<id8>)" with the title cut first, so the id is never lost.
-  const nameOf = (t, title, id) => datePrefix(t) + safeFilename(title, 'Untitled').slice(0, 70).trim() + ' (' + short(id) + ')';
-  // Keep in-zip paths inside their folder: "." and ".." segments become "_".
-  const cleanPath = p => String(p).split('/').filter(Boolean).map(x => (x === '.' || x === '..') ? '_' : safeFilename(x, 'file')).join('/');
+  // "<date> <title> (<id8>)": one path part (a "/" in the title is not a folder), with the
+  // title cut first, so the name stays within safeFilename's 90 characters and keeps the id.
+  // ZipWriter cleans every part of every path.
+  const nameOf = (t, title, id) => datePrefix(t) + safeFilename(title, 'Untitled').slice(0, 68).trim() + ' (' + short(id) + ')';
   z.add('README.txt', [
     `Claude data for ${p.name}${p.email ? ' <' + p.email + '>' : ''}`,
     `Account id: ${p.id}`,
@@ -105,7 +105,7 @@ async function buildPersonZip(p, opts, progress, isCancelled) {
   for (const x of p.projects) {
     const base = 'projects/' + nameOf(0, projectTitle(x), x.id) + '/';
     z.add(base + 'project.json', JSON.stringify(x.raw, null, 2));
-    for (const d of x.docs) z.add(base + 'docs/' + cleanPath(d.filename), d.content);
+    for (const d of x.docs) z.add(base + 'docs/' + d.filename, d.content);
   }
   for (const d of p.designChats) {
     z.add('design_chats/' + nameOf(d.created, (d.project.name ? d.project.name + ' - ' : '') + designTitle(d), d.id) + '.json', JSON.stringify(d.raw, null, 2));
@@ -114,7 +114,7 @@ async function buildPersonZip(p, opts, progress, isCancelled) {
     const m = p.memory;
     if (m.conversationsMemory) z.add('memory/chat-memory.md', m.conversationsMemory);
     for (const pm of m.projectMemories) z.add('memory/project-memories/' + safeFilename(projectName(pm.projectId) || pm.projectId, 'project') + '.md', pm.text);
-    for (const f of m.files) z.add('memory/files/' + cleanPath(f.path), f.content);
+    for (const f of m.files) z.add('memory/files/' + f.path, f.content);
   }
   if (p.comments.length) {
     z.add('comments.json', JSON.stringify(p.comments.map(c => ({ artifactId: c.artifact.id, artifactTitle: artifactTitle(c.artifact), tab: c.thread && c.thread.tab, quoted: c.thread && c.thread.quoted_text, postedByClaude: c.byAgent, comment: c.comment })), null, 2));
@@ -128,7 +128,7 @@ async function buildPersonZip(p, opts, progress, isCancelled) {
       if (v && v.part === 'folder' && isPlumbing(v.sub)) continue;   // the app's runtime, like the Files tab
       // Only the current version's files, unless every version was asked for.
       if (!opts.allVersions && rel.startsWith('versions/') && !(v && v.vid === a.activeVersion)) continue;
-      z.add(base + cleanPath(rel), await node.bytes());
+      z.add(base + rel, await node.bytes());
     }
     progress(`Artifacts ${++i} / ${p.artifacts.length}`);
   }

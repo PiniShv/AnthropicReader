@@ -27,6 +27,19 @@ function canInflate() {
   try { new DecompressionStream('deflate-raw'); return true; } catch (e) { return false; }
 }
 
+/* A file name that works on every system: none of the characters Windows, macOS or Linux
+ * reject, no dot or space at the end (Windows drops them), and not a name Windows keeps for a
+ * device (CON, NUL, COM1, LPT1, …, also with an extension such as "con.txt"). A long name is
+ * cut to 90 characters before its extension, so ".md" stays. ZipWriter cleans every part of
+ * a path with it, and downloadBlob() (render.js) every download name. */
+function safeFilename(s, fallback) {
+  const v = String(s || '').replace(/[\\/:*?"<>|\x00-\x1f]+/g, ' ').replace(/\s+/g, ' ').trim();
+  const dot = v.lastIndexOf('.');
+  const ext = dot > 0 && /^\.[a-z0-9]{1,10}$/i.test(v.slice(dot)) ? v.slice(dot) : '';
+  const name = (v.slice(0, v.length - ext.length).slice(0, 90).replace(/[. ]+$/, '') || fallback || 'untitled') + ext;
+  return /^(con|prn|aux|nul|com[0-9¹²³]|lpt[0-9¹²³])(\.|$)/i.test(name) ? '_' + name : name;
+}
+
 async function readSlice(blob, start, end) {
   return new Uint8Array(await blob.slice(start, end).arrayBuffer());
 }
@@ -110,8 +123,9 @@ class ZipWriter {
   add(name, data) {
     const enc = new TextEncoder();
     const bytes = typeof data === 'string' ? enc.encode(data) : data;
-    // Paths can come from the export itself: never let "." or ".." escape the zip's folder.
-    let n = String(name).split(/[\\/]+/).filter(s => s && s !== '.').map(s => (s === '..' ? '_' : s)).join('/') || 'file';
+    // Paths can come from the export itself: every part becomes a name that works on every
+    // system, and "." or ".." never leave the zip's folder ("." goes, ".." becomes "_").
+    let n = String(name).split(/[\\/]+/).filter(s => s && s !== '.').map(s => safeFilename(s, '_')).join('/') || 'file';
     // Keep names unique: "a.md", "a (2).md", …
     if (this.names.has(n)) {
       const dot = n.lastIndexOf('.');

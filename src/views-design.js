@@ -52,7 +52,7 @@ function viewDesignChat(id) {
         ${d.authors.map(p => `<span class="row" style="gap:6px">${avatarHtml(p, 'sm')}${personLink(p)}</span>`).join('') || '<span class="faint">No author (empty chat)</span>'}
         <span>Started ${esc(fmtDateTime(d.created))}</span><span>Last ${esc(fmtDateTime(d.lastTs))}</span><span>${plural(d.msgCount, 'message')}</span>
         ${tokens ? `<span class="faint" title="Sum of input context over all turns">${fmtNum(Math.round(tokens / 1000))}k context tokens</span>` : ''}</div>
-    </div><div class="row"><button class="btn small" type="button" ${on(() => downloadText(safeFilename(d.project.name + ' ' + d.id.slice(0, 8), 'design-chat') + '.json', jsonPretty(d.raw)))}>Download .json</button></div></div>
+    </div><div class="row"><button class="btn small" type="button" ${on(() => downloadText(d.project.name + ' ' + d.id.slice(0, 8) + '.json', jsonPretty(d.raw)))}>Download .json</button></div></div>
     <div class="conv-toolbar"><button class="chip" type="button" ${on(expandAll)}>Expand all</button><button class="chip" type="button" ${on(collapseAll)}>Collapse all</button></div>
     <div class="thread" id="thread">${msgs.length ? msgs.map(m => designMessageHtml(m, d, receipts)).join('') : '<div class="empty">This design chat has no messages in the export.</div>'}</div>
   </div>`;

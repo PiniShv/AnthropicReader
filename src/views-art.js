@@ -261,7 +261,7 @@ async function drawPage(a, want) {
     ${tabs.length > 1 ? `<div class="tabs" style="margin:0;padding:0 12px">${tabs.map((t, i) => `<button class="tab${i === idx ? ' active' : ''}" type="button" id="doc-tab-${i}"${i === idx ? ' aria-current="true"' : ''} ${on(() => navigate('#/a/' + encodeURIComponent(a.id) + '?tab=' + encodeURIComponent(t.title), true))} dir="auto">${esc(t.title || 'Untitled')}</button>`).join('')}</div>` : ''}
     <div class="card-pad" id="page-body">${mdBlock(body)}</div>
     <div class="frame-bar" style="border-top:1px solid var(--border);border-bottom:0">
-      <button class="btn small" type="button" ${on(() => a.pageNode.blob('text/markdown').then(b => downloadBlob(b, safeFilename(artifactTitle(a), 'page') + '.md')))}>Download page.md</button>
+      <button class="btn small" type="button" ${on(() => a.pageNode.blob('text/markdown').then(b => downloadBlob(b, artifactTitle(a) + '.md')))}>Download page.md</button>
       <button class="btn small" type="button" ${on(() => copyText(md))}>Copy Markdown</button>
     </div>
   </div>
@@ -332,9 +332,9 @@ async function downloadVersion(a, vid) {
   const info = versionInfo(a, vid);
   const s = info.slot;
   if (!s) return;
-  if (s.single) { downloadBlob(await s.single.blob('text/html'), safeFilename(artifactTitle(a), 'artifact') + '.html'); return; }
+  if (s.single) { downloadBlob(await s.single.blob('text/html'), artifactTitle(a) + '.html'); return; }
   const zip = new ZipWriter();
   for (const [p, node] of s.folder) zip.add(p, await node.bytes());
   if (s.manifest) zip.add('files.json', await s.manifest.bytes());
-  downloadBlob(zip.blob(), safeFilename(artifactTitle(a), 'artifact') + ' (' + vid + ').zip');
+  downloadBlob(zip.blob(), artifactTitle(a) + ' (' + vid + ').zip');
 }

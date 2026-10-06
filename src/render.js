@@ -374,10 +374,11 @@ async function copyText(text) {
   }
 }
 
+// Every download goes through here, so every name works on every system (safeFilename in zip.js).
 function downloadBlob(blob, filename) {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
-  a.href = url; a.download = filename;
+  a.href = url; a.download = safeFilename(filename, 'download');
   document.body.appendChild(a); a.click(); a.remove();
   setTimeout(() => URL.revokeObjectURL(url), 60000);
 }
@@ -385,15 +386,6 @@ function downloadBlob(blob, filename) {
 // Text the export holds (created files, project docs), saved as a file with a type from its name.
 function downloadText(name, text) {
   downloadBlob(new Blob([text], { type: mimeFor(name) }), name || 'file.txt');
-}
-
-/* A file name that works on every system: none of the characters Windows, macOS or Linux
- * reject, no dot or space at the end (Windows drops them), and not a name Windows keeps for a
- * device (CON, NUL, COM1, LPT1, …, also with an extension such as "con.txt"). */
-function safeFilename(s, fallback) {
-  let v = String(s || '').replace(/[\\/:*?"<>|\x00-\x1f]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 90).replace(/[. ]+$/, '');
-  if (/^(con|prn|aux|nul|com[0-9¹²³]|lpt[0-9¹²³])(\.|$)/i.test(v)) v = '_' + v;
-  return v || fallback || 'untitled';
 }
 
 function fileExt(name) {

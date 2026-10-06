@@ -20,7 +20,7 @@ For the format of the export itself, see [export-format.md](export-format.md).
 |---|---|
 | `vendor/marked.min.js` | Markdown to HTML. |
 | `vendor/purify.min.js` | DOMPurify: HTML sanitizer. |
-| `src/zip.js` | `ZipArchive` / `ZipEntry`: random-access zip reader. `ZipWriter`: small zip writer for downloads. |
+| `src/zip.js` | `ZipArchive` / `ZipEntry`: random-access zip reader. `ZipWriter`: small zip writer for downloads. `safeFilename()`: a name that works on every file system, for every download and every path part in a zip the reader writes. |
 | `src/load.js` | `FileNode`: a loose file with the same interface as a `ZipEntry` (`path`, `size`, `container`, `stream()`, `bytes()`, `text()`, `blob()`). File and folder picking, drag and drop, `parseJsonArrayStream()`, and `mapLimit()` (async work a few at a time, used by the import and search too). |
 | `src/render.js` | Escaping (`esc`), reading and formatting of dates (`parseTime`; 0 means unknown and shows as nothing), numbers and sizes, Markdown (`mdToHtml`, `mdBlock`), sanitizing, search highlighting, sandboxed frames (`FRAME_SANDBOX`, `sandboxFrame()`, `withFrameShim()`), small helpers (toast, `announce()` for screen readers, copy, download, MIME types). Pure formatting and sanitizing: it binds no handlers and keeps no page state. A code block's Copy button carries no key; one click listener in `app.js` handles every `.copy-code` button. |
 | `src/ui.js` | `App` (route and focus), `focusPerson()` / `focusScope()`, the `$` / `$$` shortcuts, and the lifetime of one drawn page: `VIEW`, `after()`, `viewKey()`, `on()` for click behaviour, `blk()` for collapsible blocks, and `preHtml()` for long text with a **Show all** button. Focus helpers: `refocus()` and `isolate()` (see [Accessibility](#accessibility)). |
@@ -128,7 +128,7 @@ A browser without `'deflate-raw'` (before Chrome and Edge 103, Firefox 113 and S
 
 Entries are available as a stream (`stream()`), bytes, text or a `Blob`. Only STORED (0) and DEFLATE (8) are supported.
 
-`ZipWriter` builds the per-person download and multi-file version downloads. It writes STORED entries with CRC-32 and UTF-8 names, makes repeated names unique (`a.md`, `a (2).md`), and refuses archives over 4 GB or 65,535 files.
+`ZipWriter` builds the per-person download and multi-file version downloads. It writes STORED entries with CRC-32 and UTF-8 names, cleans every part of every path with `safeFilename()` (so `..` and names Windows rejects never reach a disk), makes repeated names unique (`a.md`, `a (2).md`), and refuses archives over 4 GB or 65,535 files. `downloadBlob()` in `render.js` cleans every download name the same way, so callers pass names as they are.
 
 ## Streaming JSON parser
 
@@ -246,7 +246,7 @@ The aim is WCAG 2.2 level AA. The rules the code follows:
 
 ## Per-person download
 
-`buildPersonZip()` (in `src/export.js`) writes one zip with a README, `person.json`, every conversation as Markdown and JSON (the Markdown follows the newest branch, whatever branches are open in the tab), projects with their docs, design chats, memory, comments, and artifact files (only the current version unless you tick "every version"). Folder and file names are `<date> <title> (<short id>)`, cleaned so they work on every file system. Paths of project docs, memory files and artifact files are cleaned too, part by part (`safeFilename()`), so they cannot escape their folder and work on Windows. Artifact files keep the shape of their path from the export (`versions/<vid>/…`).
+`buildPersonZip()` (in `src/export.js`) writes one zip with a README, `person.json`, every conversation as Markdown and JSON (the Markdown follows the newest branch, whatever branches are open in the tab), projects with their docs, design chats, memory, comments, and artifact files (only the current version unless you tick "every version"). Folder and file names are `<date> <title> (<short id>)`: the title becomes one path part, cut so the whole part fits in `safeFilename()`'s 90 characters with the id. `ZipWriter` cleans every part of every path (titles, project docs, memory files and artifact files), so no path can escape its folder and every name works on Windows. Artifact files keep the shape of their path from the export (`versions/<vid>/…`).
 
 ## Performance choices, in short
 

@@ -135,6 +135,10 @@ test('safeFilename makes names that work on every system', () => {
   for (const n of ['console', 'NULL', 'com10', 'lpt', 'prn-notes']) assert.equal(safeFilename(n), n, n);
   assert.equal(safeFilename('..'), 'untitled');
   assert.equal(safeFilename('...', 'file'), 'file');
+  assert.equal(safeFilename('Q3: plan / draft?.md'), 'Q3 plan draft.md', 'the name is cleaned before its extension');
+  assert.equal(safeFilename('y'.repeat(200) + '.json'), 'y'.repeat(90) + '.json', 'a long name keeps its extension');
+  assert.equal(safeFilename('.gitignore'), '.gitignore', 'a name that starts with a dot is not an extension');
+  assert.equal(safeFilename('', 'download'), 'download');
 });
 
 test('searchHref encodes every value it puts in the URL', () => {

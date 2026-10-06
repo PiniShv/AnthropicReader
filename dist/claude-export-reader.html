@@ -692,6 +692,19 @@ function canInflate() {
   try { new DecompressionStream('deflate-raw'); return true; } catch (e) { return false; }
 }
 
+/* A file name that works on every system: none of the characters Windows, macOS or Linux
+ * reject, no dot or space at the end (Windows drops them), and not a name Windows keeps for a
+ * device (CON, NUL, COM1, LPT1, …, also with an extension such as "con.txt"). A long name is
+ * cut to 90 characters before its extension, so ".md" stays. ZipWriter cleans every part of
+ * a path with it, and downloadBlob() (render.js) every download name. */
+function safeFilename(s, fallback) {
+  const v = String(s || '').replace(/[\\/:*?"<>|\x00-\x1f]+/g, ' ').replace(/\s+/g, ' ').trim();
+  const dot = v.lastIndexOf('.');
+  const ext = dot > 0 && /^\.[a-z0-9]{1,10}$/i.test(v.slice(dot)) ? v.slice(dot) : '';
+  const name = (v.slice(0, v.length - ext.length).slice(0, 90).replace(/[. ]+$/, '') || fallback || 'untitled') + ext;
+  return /^(con|prn|aux|nul|com[0-9¹²³]|lpt[0-9¹²³])(\.|$)/i.test(name) ? '_' + name : name;
+}
+
 async function readSlice(blob, start, end) {
   return new Uint8Array(await blob.slice(start, end).arrayBuffer());
 }
@@ -775,8 +788,9 @@ class ZipWriter {
   add(name, data) {
     const enc = new TextEncoder();
     const bytes = typeof data === 'string' ? enc.encode(data) : data;
-    // Paths can come from the export itself: never let "." or ".." escape the zip's folder.
-    let n = String(name).split(/[\\/]+/).filter(s => s && s !== '.').map(s => (s === '..' ? '_' : s)).join('/') || 'file';
+    // Paths can come from the export itself: every part becomes a name that works on every
+    // system, and "." or ".." never leave the zip's folder ("." goes, ".." becomes "_").
+    let n = String(name).split(/[\\/]+/).filter(s => s && s !== '.').map(s => safeFilename(s, '_')).join('/') || 'file';
     // Keep names unique: "a.md", "a (2).md", …
     if (this.names.has(n)) {
       const dot = n.lastIndexOf('.');
@@ -1498,10 +1512,11 @@ async function copyText(text) {
   }
 }
 
+// Every download goes through here, so every name works on every system (safeFilename in zip.js).
 function downloadBlob(blob, filename) {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
-  a.href = url; a.download = filename;
+  a.href = url; a.download = safeFilename(filename, 'download');
   document.body.appendChild(a); a.click(); a.remove();
   setTimeout(() => URL.revokeObjectURL(url), 60000);
 }
@@ -1509,15 +1524,6 @@ function downloadBlob(blob, filename) {
 // Text the export holds (created files, project docs), saved as a file with a type from its name.
 function downloadText(name, text) {
   downloadBlob(new Blob([text], { type: mimeFor(name) }), name || 'file.txt');
-}
-
-/* A file name that works on every system: none of the characters Windows, macOS or Linux
- * reject, no dot or space at the end (Windows drops them), and not a name Windows keeps for a
- * device (CON, NUL, COM1, LPT1, …, also with an extension such as "con.txt"). */
-function safeFilename(s, fallback) {
-  let v = String(s || '').replace(/[\\/:*?"<>|\x00-\x1f]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 90).replace(/[. ]+$/, '');
-  if (/^(con|prn|aux|nul|com[0-9¹²³]|lpt[0-9¹²³])(\.|$)/i.test(v)) v = '_' + v;
-  return v || fallback || 'untitled';
 }
 
 function fileExt(name) {
@@ -3202,10 +3208,10 @@ function datePrefix(t) {
 async function buildPersonZip(p, opts, progress, isCancelled) {
   const z = new ZipWriter();
   const short = id => String(id || '').slice(0, 8);
-  // "<date> <title> (<id8>)" with the title cut first, so the id is never lost.
-  const nameOf = (t, title, id) => datePrefix(t) + safeFilename(title, 'Untitled').slice(0, 70).trim() + ' (' + short(id) + ')';
-  // Keep in-zip paths inside their folder: "." and ".." segments become "_".
-  const cleanPath = p => String(p).split('/').filter(Boolean).map(x => (x === '.' || x === '..') ? '_' : safeFilename(x, 'file')).join('/');
+  // "<date> <title> (<id8>)": one path part (a "/" in the title is not a folder), with the
+  // title cut first, so the name stays within safeFilename's 90 characters and keeps the id.
+  // ZipWriter cleans every part of every path.
+  const nameOf = (t, title, id) => datePrefix(t) + safeFilename(title, 'Untitled').slice(0, 68).trim() + ' (' + short(id) + ')';
   z.add('README.txt', [
     `Claude data for ${p.name}${p.email ? ' <' + p.email + '>' : ''}`,
     `Account id: ${p.id}`,
@@ -3236,7 +3242,7 @@ async function buildPersonZip(p, opts, progress, isCancelled) {
   for (const x of p.projects) {
     const base = 'projects/' + nameOf(0, projectTitle(x), x.id) + '/';
     z.add(base + 'project.json', JSON.stringify(x.raw, null, 2));
-    for (const d of x.docs) z.add(base + 'docs/' + cleanPath(d.filename), d.content);
+    for (const d of x.docs) z.add(base + 'docs/' + d.filename, d.content);
   }
   for (const d of p.designChats) {
     z.add('design_chats/' + nameOf(d.created, (d.project.name ? d.project.name + ' - ' : '') + designTitle(d), d.id) + '.json', JSON.stringify(d.raw, null, 2));
@@ -3245,7 +3251,7 @@ async function buildPersonZip(p, opts, progress, isCancelled) {
     const m = p.memory;
     if (m.conversationsMemory) z.add('memory/chat-memory.md', m.conversationsMemory);
     for (const pm of m.projectMemories) z.add('memory/project-memories/' + safeFilename(projectName(pm.projectId) || pm.projectId, 'project') + '.md', pm.text);
-    for (const f of m.files) z.add('memory/files/' + cleanPath(f.path), f.content);
+    for (const f of m.files) z.add('memory/files/' + f.path, f.content);
   }
   if (p.comments.length) {
     z.add('comments.json', JSON.stringify(p.comments.map(c => ({ artifactId: c.artifact.id, artifactTitle: artifactTitle(c.artifact), tab: c.thread && c.thread.tab, quoted: c.thread && c.thread.quoted_text, postedByClaude: c.byAgent, comment: c.comment })), null, 2));
@@ -3259,7 +3265,7 @@ async function buildPersonZip(p, opts, progress, isCancelled) {
       if (v && v.part === 'folder' && isPlumbing(v.sub)) continue;   // the app's runtime, like the Files tab
       // Only the current version's files, unless every version was asked for.
       if (!opts.allVersions && rel.startsWith('versions/') && !(v && v.vid === a.activeVersion)) continue;
-      z.add(base + cleanPath(rel), await node.bytes());
+      z.add(base + rel, await node.bytes());
     }
     progress(`Artifacts ${++i} / ${p.artifacts.length}`);
   }
@@ -4216,8 +4222,8 @@ function viewConversation(id) {
       </div>
       <div class="row wrap">
         <button class="btn small" type="button" ${on(() => copyText(convToMarkdown(conv, currentPath(conv))))}>Copy as Markdown</button>
-        <button class="btn small" type="button" ${on(() => downloadText(safeFilename(convTitle(conv), 'conversation') + '.md', convToMarkdown(conv, currentPath(conv))))}>Download .md</button>
-        <button class="btn small" type="button" ${on(() => downloadText(safeFilename(convTitle(conv), 'conversation') + '.json', jsonPretty(conv.raw)))}>.json</button>
+        <button class="btn small" type="button" ${on(() => downloadText(convTitle(conv) + '.md', convToMarkdown(conv, currentPath(conv))))}>Download .md</button>
+        <button class="btn small" type="button" ${on(() => downloadText(convTitle(conv) + '.json', jsonPretty(conv.raw)))}>.json</button>
         <button class="btn small ghost" type="button" ${on(() => window.print())} title="Print or save as PDF" aria-label="Print or save as PDF">⎙</button>
       </div>
     </div>
@@ -5114,7 +5120,7 @@ async function drawPage(a, want) {
     ${tabs.length > 1 ? `<div class="tabs" style="margin:0;padding:0 12px">${tabs.map((t, i) => `<button class="tab${i === idx ? ' active' : ''}" type="button" id="doc-tab-${i}"${i === idx ? ' aria-current="true"' : ''} ${on(() => navigate('#/a/' + encodeURIComponent(a.id) + '?tab=' + encodeURIComponent(t.title), true))} dir="auto">${esc(t.title || 'Untitled')}</button>`).join('')}</div>` : ''}
     <div class="card-pad" id="page-body">${mdBlock(body)}</div>
     <div class="frame-bar" style="border-top:1px solid var(--border);border-bottom:0">
-      <button class="btn small" type="button" ${on(() => a.pageNode.blob('text/markdown').then(b => downloadBlob(b, safeFilename(artifactTitle(a), 'page') + '.md')))}>Download page.md</button>
+      <button class="btn small" type="button" ${on(() => a.pageNode.blob('text/markdown').then(b => downloadBlob(b, artifactTitle(a) + '.md')))}>Download page.md</button>
       <button class="btn small" type="button" ${on(() => copyText(md))}>Copy Markdown</button>
     </div>
   </div>
@@ -5185,11 +5191,11 @@ async function downloadVersion(a, vid) {
   const info = versionInfo(a, vid);
   const s = info.slot;
   if (!s) return;
-  if (s.single) { downloadBlob(await s.single.blob('text/html'), safeFilename(artifactTitle(a), 'artifact') + '.html'); return; }
+  if (s.single) { downloadBlob(await s.single.blob('text/html'), artifactTitle(a) + '.html'); return; }
   const zip = new ZipWriter();
   for (const [p, node] of s.folder) zip.add(p, await node.bytes());
   if (s.manifest) zip.add('files.json', await s.manifest.bytes());
-  downloadBlob(zip.blob(), safeFilename(artifactTitle(a), 'artifact') + ' (' + vid + ').zip');
+  downloadBlob(zip.blob(), artifactTitle(a) + ' (' + vid + ').zip');
 }
 
 </script>
@@ -5248,7 +5254,7 @@ function viewDesignChat(id) {
         ${d.authors.map(p => `<span class="row" style="gap:6px">${avatarHtml(p, 'sm')}${personLink(p)}</span>`).join('') || '<span class="faint">No author (empty chat)</span>'}
         <span>Started ${esc(fmtDateTime(d.created))}</span><span>Last ${esc(fmtDateTime(d.lastTs))}</span><span>${plural(d.msgCount, 'message')}</span>
         ${tokens ? `<span class="faint" title="Sum of input context over all turns">${fmtNum(Math.round(tokens / 1000))}k context tokens</span>` : ''}</div>
-    </div><div class="row"><button class="btn small" type="button" ${on(() => downloadText(safeFilename(d.project.name + ' ' + d.id.slice(0, 8), 'design-chat') + '.json', jsonPretty(d.raw)))}>Download .json</button></div></div>
+    </div><div class="row"><button class="btn small" type="button" ${on(() => downloadText(d.project.name + ' ' + d.id.slice(0, 8) + '.json', jsonPretty(d.raw)))}>Download .json</button></div></div>
     <div class="conv-toolbar"><button class="chip" type="button" ${on(expandAll)}>Expand all</button><button class="chip" type="button" ${on(collapseAll)}>Collapse all</button></div>
     <div class="thread" id="thread">${msgs.length ? msgs.map(m => designMessageHtml(m, d, receipts)).join('') : '<div class="empty">This design chat has no messages in the export.</div>'}</div>
   </div>`;
@@ -5775,7 +5781,7 @@ async function exportPerson(p) {
     try {
       const blob = await buildPersonZip(p, { allVersions: $('#exp-allv', back).checked }, msg => { prog.textContent = msg; }, () => cancelled);
       if (cancelled) return;
-      downloadBlob(blob, safeFilename(p.name, 'person') + ' - Claude data.zip');
+      downloadBlob(blob, p.name + ' - Claude data.zip');
       close();
     } catch (err) {
       console.error(err);

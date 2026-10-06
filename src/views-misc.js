@@ -375,7 +375,7 @@ async function exportPerson(p) {
     try {
       const blob = await buildPersonZip(p, { allVersions: $('#exp-allv', back).checked }, msg => { prog.textContent = msg; }, () => cancelled);
       if (cancelled) return;
-      downloadBlob(blob, safeFilename(p.name, 'person') + ' - Claude data.zip');
+      downloadBlob(blob, p.name + ' - Claude data.zip');
       close();
     } catch (err) {
       console.error(err);

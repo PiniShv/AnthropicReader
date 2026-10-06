@@ -2,7 +2,7 @@
 // load that fails anyway must leave the export that was open as it was. All data is made up.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { loadApp, importFiles, looseFile, plain, quietUi, zipFile, BUILD_ORDER } from './harness.mjs';
+import { loadApp, importFiles, looseFile, plain, quietUi, BUILD_ORDER } from './harness.mjs';
 
 const U = n => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const PERSON = U(100);
@@ -155,17 +155,17 @@ test('a second load while one runs is refused, with a message', async () => {
 });
 
 test('artifact files get safe names in the per-person zip', async () => {
-  const tools = loadApp({ files: ['src/zip.js'] }).api;
   const id = U(50), vid = '1790000000-a1b2';
-  const file = await zipFile(tools, 'frames-000.zip', {
-    [`artifacts/${id}/artifact.json`]: { versions: [{ id: vid, title: 'Kit' }], owner_account: PERSON, active_version: vid },
-    [`artifacts/${id}/versions/${vid}/con.js`]: 'x',
-    [`artifacts/${id}/versions/${vid}/img/a:b?.png`]: 'y',
-    [`artifacts/${id}/versions/${vid}/notes. `]: 'z',
-  });
-  const { api } = await importFiles([users(), file]);
+  // Loose files keep their names as they are; a zip made with ZipWriter would clean them already.
+  const { api } = await importFiles([
+    users(),
+    looseFile(`x/${id}/artifact.json`, { versions: [{ id: vid, title: 'Kit' }], owner_account: PERSON, active_version: vid }),
+    looseFile(`x/${id}/versions/${vid}/con.js`, 'x'),
+    looseFile(`x/${id}/versions/${vid}/img/a:b?.png`, 'y'),
+    looseFile(`x/${id}/versions/${vid}/notes. `, 'z'),
+  ]);
   const blob = await api.buildPersonZip(api.DB.people.get(PERSON), { allVersions: true }, () => {}, () => false);
   const out = await api.ZipArchive.open(new File([blob], 'person.zip'));
   const names = Array.from(out.entries, e => e.name.split(`/versions/${vid}/`)[1]).filter(Boolean).sort();
-  assert.deepEqual(names, ['_con.js', 'img/a b .png', 'notes']);
+  assert.deepEqual(names, ['_con.js', 'img/a b.png', 'notes']);
 });
