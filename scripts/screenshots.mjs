@@ -40,7 +40,7 @@ try {
   // Choose showcase items from the sample data itself, so the script survives demo changes.
   ids = await evaluate(`(() => {
     const DB = ExportReader.DB();
-    const people = [...DB.people.values()].filter(p => !p.system).sort((a, b) => b.total() - a.total());
+    const people = realPeople().sort((a, b) => b.total() - a.total());
     const conv = DB.conversations.filter(c => !c.empty).sort((a, b) => (b.toolCount + b.forks * 5) - (a.toolCount + a.forks * 5))[0];
     const slides = DB.artifacts.find(a => a.contentType === 'Slides') || DB.artifacts[0];
     return { 'busiest-person': people[0].id, 'rich-conversation': conv.id, 'slides-artifact': slides.id };

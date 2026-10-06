@@ -253,7 +253,7 @@ function memoryResult({ item: m, text }, terms) {
 
 function viewAbout() {
   const m = latestManifest();
-  const people = Array.from(DB.people.values()).filter(p => !p.system);
+  const people = realPeople();
   return `<div class="page narrow"><div class="page-head"><div class="grow"><h1>About this export</h1></div></div>
     ${m ? `<div class="card card-pad"><dl class="kv"><dt>Exported</dt><dd>${esc(fmtDateTime(m.createdAt))}</dd><dt>Files in export</dt><dd>${esc(m.totalFiles)} (${m.files.map(f => esc(f.filename)).join(', ')})</dd></dl></div>` : ''}
     <h2 class="section-title">What was loaded</h2>

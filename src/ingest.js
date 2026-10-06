@@ -71,7 +71,7 @@ function isOutput(b) {
 }
 
 // Artifact ids referenced from chat JSON: published links and tool result ids.
-const RE_ART_REF = /(?:\/artifact\/|artifact_id\\?"\s*:\s*\\?")([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/g;
+const RE_ART_REF = new RegExp('(?:/artifact/|artifact_id\\\\?"\\s*:\\s*\\\\?")(' + UUID_PAT + ')', 'g');
 
 // A chat's messages as the views read them (from raw): objects only, and their lists of blocks,
 // attachments and files hold objects only. The list itself comes back when it is clean already.
@@ -360,7 +360,8 @@ function artifactMeta(j) {
   return m;
 }
 
-// Descriptions arrive HTML-escaped (e.g. "&amp;"); decode for display as text (views-art.js uses it too).
+// Descriptions arrive HTML-escaped (e.g. "&amp;"); decode for display as text (views-art.js and
+// the search use it too).
 const NAMED_ENTITIES = {
   amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", nbsp: '\u00a0', mdash: '—', ndash: '–',
   hellip: '…', lsquo: '‘', rsquo: '’', ldquo: '“', rdquo: '”', middot: '·', bull: '•', copy: '©', reg: '®', trade: '™',

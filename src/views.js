@@ -110,7 +110,7 @@ function renderSidebar() {
     return `<a class="nav-link${active ? ' active' : ''}" href="${href}"${active ? ' aria-current="page"' : ''}><span class="ico" aria-hidden="true">${ico}</span>${esc(label)}${count != null ? `<span class="badge">${fmtNum(count)}</span>` : ''}</a>`;
   };
   const activeFor = (...names) => names.includes(sec);
-  const peopleCount = Array.from(DB.people.values()).filter(p => !p.system).length;
+  const peopleCount = realPeople().length;
   $('#sidebar').innerHTML = `
     ${fp ? `<div class="focus-box">
       <div class="lbl">Showing only</div>
@@ -274,7 +274,7 @@ const COL = {
 function viewHome() {
   const fp = focusPerson();
   if (fp) return viewPerson(fp.id, 'overview');
-  const people = peopleSorted().filter(p => !p.system);
+  const people = peopleSorted();
   const active = people.filter(p => p.total() > 0);
   const totalMsgs = DB.conversations.reduce((a, c) => a + c.msgCount, 0);
   const convs = KIND.conversations.allCount(), emptyConvs = DB.conversations.length - convs;
@@ -370,7 +370,7 @@ const PEOPLE_SORTS = {
 const PEOPLE_STATE = { q: '', sort: 'total', showEmpty: false };
 
 function viewPeople() {
-  const all = Array.from(DB.people.values()).filter(p => !p.system);
+  const all = realPeople();
   const empty = all.filter(p => !p.total()).length;
   const unknown = all.filter(p => !p.known).length;
   const none = DB.people.get(NO_OWNER);

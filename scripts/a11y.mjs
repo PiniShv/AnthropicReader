@@ -84,7 +84,7 @@ const PICK = `(() => {
   const art = DB.artifacts.filter(a => a.kind !== 'page');
   const html = art.find(a => a.contentType !== 'Slides' && a.contentType !== 'Design') || art[0];
   return {
-    person: by([...DB.people.values()].filter(p => !p.system), p => p.total()).id,
+    person: by(realPeople(), p => p.total()).id,
     conv: by(DB.conversations.filter(c => !c.empty), c => c.toolCount + c.forks * 5).id,
     html: html.id, htmlVersion: html.activeVersion,
     slides: (DB.artifacts.find(a => a.contentType === 'Slides') || html).id,

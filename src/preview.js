@@ -6,19 +6,18 @@
 // versions, so switching between Preview / Source / Files must not redo it.
 // Files added later can complete a version (one version can be split across two zips), so
 // the cache starts again whenever finalize() runs, like the search index.
-const BUILD_CACHE = new Map();
+const buildCache = genCache(() => new Map());
 const BUILD_CACHE_MAX = 4;
-let BUILD_GEN = -1;
 
 async function getBuilt(a, vid, info, board) {
-  if (BUILD_GEN !== DB.generation) { BUILD_CACHE.clear(); BUILD_GEN = DB.generation; }
+  const cache = buildCache();
   const key = a.id + '|' + vid + '|' + (board || '');
-  if (BUILD_CACHE.has(key)) return BUILD_CACHE.get(key);
+  if (cache.has(key)) return cache.get(key);
   const p = buildVersionHtml(a, vid, info, board);
-  BUILD_CACHE.set(key, p);
-  // A build that fails after the cache started again must not remove a newer entry.
-  p.catch(() => { if (BUILD_CACHE.get(key) === p) BUILD_CACHE.delete(key); });
-  while (BUILD_CACHE.size > BUILD_CACHE_MAX) BUILD_CACHE.delete(BUILD_CACHE.keys().next().value);
+  cache.set(key, p);
+  // A failed build leaves the cache, unless a newer build took its place.
+  p.catch(() => { if (cache.get(key) === p) cache.delete(key); });
+  while (cache.size > BUILD_CACHE_MAX) cache.delete(cache.keys().next().value);
   return p;
 }
 

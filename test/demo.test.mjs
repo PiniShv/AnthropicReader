@@ -35,7 +35,7 @@ test('the sample export loads without warnings', async () => {
 
 test('the sample export has every kind of data', async () => {
   const DB = await loaded();
-  const people = Array.from(DB.people.values()).filter(p => !p.system);
+  const people = api.realPeople();
   assert.ok(people.filter(p => p.known).length >= 2, 'people from users.json');
   assert.ok(DB.conversations.filter(c => !c.empty).length >= 1, 'conversations');
   assert.ok(DB.projects.length >= 1, 'projects');

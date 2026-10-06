@@ -569,14 +569,17 @@ function prettyMaybeJson(t) {
   return t;
 }
 
+// A claude.ai chat link, with the chat id in group 1.
+const RE_CHAT_URL = new RegExp('claude\\.ai/chat/(' + UUID_PAT + ')');
+
 function chatHref(url) {
-  const m = /claude\.ai\/chat\/([0-9a-f-]{36})/.exec(url || '');
+  const m = RE_CHAT_URL.exec(url || '');
   return m && DB.convById.has(m[1]) ? '#/c/' + m[1] : '';
 }
 
 // Turn claude.ai chat links inside escaped text into local links.
 function linkifyChats(html) {
-  return html.replace(/https:\/\/claude\.ai\/chat\/([0-9a-f-]{36})/g, (all, id) => DB.convById.has(id) ? `<a href="#/c/${id}">${all}</a>` : all);
+  return html.replace(new RegExp('https://' + RE_CHAT_URL.source, 'g'), (all, id) => DB.convById.has(id) ? `<a href="#/c/${id}">${all}</a>` : all);
 }
 
 function artifactLinkHtml(id, title, action) {
@@ -655,7 +658,7 @@ const TOOL_CARDS = new Map([
     card: (input, res, tid) => {
       const dc = res && res.display_content;
       const sc = res && res.structured_content;
-      const artId = (dc && dc.published_artifact_id) || (sc && sc.artifact_id) || ((/\/artifact\/([0-9a-f-]{36})/.exec(input.url || '') || [])[1]);
+      const artId = (dc && dc.published_artifact_id) || (sc && sc.artifact_id) || ((new RegExp('/artifact/(' + UUID_PAT + ')').exec(input.url || '') || [])[1]);
       return artId ? `<div id="${esc(tid)}">${artifactLinkHtml(artId, (dc && dc.title) || input.title, input.action || (dc && dc.published_action))}</div>` : '';
     },
   }],

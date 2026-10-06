@@ -73,13 +73,13 @@ function designSearchText(d) {
 
 /* The search index: text per record, made the first time a search needs it, so later searches
  * are fast. Adding files to an open export changes some records in place (merged memory,
- * artifact metadata, owner names), so the index is dropped whenever finalize() runs again. */
-let INDEX = new WeakMap(), INDEX_GEN = -1;
+ * artifact metadata, owner names), so the index starts again whenever finalize() runs. */
+const searchIndex = genCache(() => new WeakMap());
 
 function searchEntry(x) {
-  if (INDEX_GEN !== DB.generation) { INDEX = new WeakMap(); INDEX_GEN = DB.generation; }
-  let e = INDEX.get(x);
-  if (!e) INDEX.set(x, e = {});
+  const index = searchIndex();
+  let e = index.get(x);
+  if (!e) index.set(x, e = {});
   return e;
 }
 
@@ -112,7 +112,7 @@ async function runSearch(q, { deep, scope, signal, onProgress }) {
   const has = s => { const l = String(s || '').toLowerCase(); return terms.every(t => l.includes(t)); };
 
   // People
-  for (const p of DB.people.values()) if (!p.system && has(p.name + ' ' + p.email + ' ' + p.id)) res.people.push({ item: p });
+  for (const p of realPeople()) if (has(p.name + ' ' + p.email + ' ' + p.id)) res.people.push({ item: p });
 
   // Conversations (chunked to keep the tab responsive)
   const convs = scope.conversations;
@@ -193,12 +193,11 @@ async function artifactPlainText(a) {
   for (const node of nodes) {
     if (out.length > ARTIFACT_TEXT_CAP) break;
     const html = await node.text();
-    out += ' ' + html
+    const text = html
       .replace(/data:[a-z0-9.+\/-]+;base64,[A-Za-z0-9+\/=]+/gi, ' ')   // embedded images and fonts
       .replace(/<style[\s\S]*?<\/style>/gi, ' ')
-      .replace(/<[^>]+>/g, ' ')
-      .replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;/g, "'")
-      .replace(/\s+/g, ' ');
+      .replace(/<[^>]+>/g, ' ');
+    out += ' ' + decodeEntities(text).replace(/\s+/g, ' ');
   }
   return out.slice(0, ARTIFACT_TEXT_CAP);
 }

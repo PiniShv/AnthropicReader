@@ -1798,6 +1798,17 @@ const DB = Object.assign(emptyDB(), {
   generation: 0,   // goes up on every finalize(), so caches of derived data know to start again
 });
 
+/* A cache of derived data that starts again whenever finalize() runs, because a load can change
+ * records in place. make() gives a new, empty store; the function returned gives the store of
+ * the current generation. */
+function genCache(make) {
+  let store = null, gen = -1;
+  return () => {
+    if (gen !== DB.generation) { store = make(); gen = DB.generation; }
+    return store;
+  };
+}
+
 function personFor(id, hint) {
   id = id ? String(id) : NO_OWNER;   // an id of another type would break the name fallbacks
   let p = DB.people.get(id);
@@ -2054,8 +2065,14 @@ function isDuplicateThreadComment(a, cm) {
 
 /* ---------- Queries ---------- */
 
+// Everyone in the export, without the "No owner" person (it holds the items nobody owns).
+function realPeople() {
+  return Array.from(DB.people.values()).filter(p => !p.system);
+}
+
+// Most data first, then by name.
 function peopleSorted() {
-  return Array.from(DB.people.values()).sort((a, b) => (b.total() - a.total()) || a.name.localeCompare(b.name));
+  return realPeople().sort((a, b) => (b.total() - a.total()) || a.name.localeCompare(b.name));
 }
 
 // q is lower case and trimmed: part of the name or email, or the start of the id.
@@ -2065,7 +2082,7 @@ function personMatches(p, q) {
 
 function peopleMatching(q) {
   q = (q || '').toLowerCase().trim();
-  const all = peopleSorted().filter(p => !p.system);
+  const all = peopleSorted();
   if (!q) return all;
   return all.filter(p => personMatches(p, q));
 }
@@ -2164,7 +2181,7 @@ function isOutput(b) {
 }
 
 // Artifact ids referenced from chat JSON: published links and tool result ids.
-const RE_ART_REF = /(?:\/artifact\/|artifact_id\\?"\s*:\s*\\?")([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/g;
+const RE_ART_REF = new RegExp('(?:/artifact/|artifact_id\\\\?"\\s*:\\s*\\\\?")(' + UUID_PAT + ')', 'g');
 
 // A chat's messages as the views read them (from raw): objects only, and their lists of blocks,
 // attachments and files hold objects only. The list itself comes back when it is clean already.
@@ -2453,7 +2470,8 @@ function artifactMeta(j) {
   return m;
 }
 
-// Descriptions arrive HTML-escaped (e.g. "&amp;"); decode for display as text (views-art.js uses it too).
+// Descriptions arrive HTML-escaped (e.g. "&amp;"); decode for display as text (views-art.js and
+// the search use it too).
 const NAMED_ENTITIES = {
   amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", nbsp: '\u00a0', mdash: '—', ndash: '–',
   hellip: '…', lsquo: '‘', rsquo: '’', ldquo: '“', rdquo: '”', middot: '·', bull: '•', copy: '©', reg: '®', trade: '™',
@@ -2903,13 +2921,13 @@ function designSearchText(d) {
 
 /* The search index: text per record, made the first time a search needs it, so later searches
  * are fast. Adding files to an open export changes some records in place (merged memory,
- * artifact metadata, owner names), so the index is dropped whenever finalize() runs again. */
-let INDEX = new WeakMap(), INDEX_GEN = -1;
+ * artifact metadata, owner names), so the index starts again whenever finalize() runs. */
+const searchIndex = genCache(() => new WeakMap());
 
 function searchEntry(x) {
-  if (INDEX_GEN !== DB.generation) { INDEX = new WeakMap(); INDEX_GEN = DB.generation; }
-  let e = INDEX.get(x);
-  if (!e) INDEX.set(x, e = {});
+  const index = searchIndex();
+  let e = index.get(x);
+  if (!e) index.set(x, e = {});
   return e;
 }
 
@@ -2942,7 +2960,7 @@ async function runSearch(q, { deep, scope, signal, onProgress }) {
   const has = s => { const l = String(s || '').toLowerCase(); return terms.every(t => l.includes(t)); };
 
   // People
-  for (const p of DB.people.values()) if (!p.system && has(p.name + ' ' + p.email + ' ' + p.id)) res.people.push({ item: p });
+  for (const p of realPeople()) if (has(p.name + ' ' + p.email + ' ' + p.id)) res.people.push({ item: p });
 
   // Conversations (chunked to keep the tab responsive)
   const convs = scope.conversations;
@@ -3023,12 +3041,11 @@ async function artifactPlainText(a) {
   for (const node of nodes) {
     if (out.length > ARTIFACT_TEXT_CAP) break;
     const html = await node.text();
-    out += ' ' + html
+    const text = html
       .replace(/data:[a-z0-9.+\/-]+;base64,[A-Za-z0-9+\/=]+/gi, ' ')   // embedded images and fonts
       .replace(/<style[\s\S]*?<\/style>/gi, ' ')
-      .replace(/<[^>]+>/g, ' ')
-      .replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;/g, "'")
-      .replace(/\s+/g, ' ');
+      .replace(/<[^>]+>/g, ' ');
+    out += ' ' + decodeEntities(text).replace(/\s+/g, ' ');
   }
   return out.slice(0, ARTIFACT_TEXT_CAP);
 }
@@ -3194,19 +3211,18 @@ async function buildPersonZip(p, opts, progress, isCancelled) {
 // versions, so switching between Preview / Source / Files must not redo it.
 // Files added later can complete a version (one version can be split across two zips), so
 // the cache starts again whenever finalize() runs, like the search index.
-const BUILD_CACHE = new Map();
+const buildCache = genCache(() => new Map());
 const BUILD_CACHE_MAX = 4;
-let BUILD_GEN = -1;
 
 async function getBuilt(a, vid, info, board) {
-  if (BUILD_GEN !== DB.generation) { BUILD_CACHE.clear(); BUILD_GEN = DB.generation; }
+  const cache = buildCache();
   const key = a.id + '|' + vid + '|' + (board || '');
-  if (BUILD_CACHE.has(key)) return BUILD_CACHE.get(key);
+  if (cache.has(key)) return cache.get(key);
   const p = buildVersionHtml(a, vid, info, board);
-  BUILD_CACHE.set(key, p);
-  // A build that fails after the cache started again must not remove a newer entry.
-  p.catch(() => { if (BUILD_CACHE.get(key) === p) BUILD_CACHE.delete(key); });
-  while (BUILD_CACHE.size > BUILD_CACHE_MAX) BUILD_CACHE.delete(BUILD_CACHE.keys().next().value);
+  cache.set(key, p);
+  // A failed build leaves the cache, unless a newer build took its place.
+  p.catch(() => { if (cache.get(key) === p) cache.delete(key); });
+  while (cache.size > BUILD_CACHE_MAX) cache.delete(cache.keys().next().value);
   return p;
 }
 
@@ -3582,7 +3598,7 @@ function renderSidebar() {
     return `<a class="nav-link${active ? ' active' : ''}" href="${href}"${active ? ' aria-current="page"' : ''}><span class="ico" aria-hidden="true">${ico}</span>${esc(label)}${count != null ? `<span class="badge">${fmtNum(count)}</span>` : ''}</a>`;
   };
   const activeFor = (...names) => names.includes(sec);
-  const peopleCount = Array.from(DB.people.values()).filter(p => !p.system).length;
+  const peopleCount = realPeople().length;
   $('#sidebar').innerHTML = `
     ${fp ? `<div class="focus-box">
       <div class="lbl">Showing only</div>
@@ -3746,7 +3762,7 @@ const COL = {
 function viewHome() {
   const fp = focusPerson();
   if (fp) return viewPerson(fp.id, 'overview');
-  const people = peopleSorted().filter(p => !p.system);
+  const people = peopleSorted();
   const active = people.filter(p => p.total() > 0);
   const totalMsgs = DB.conversations.reduce((a, c) => a + c.msgCount, 0);
   const convs = KIND.conversations.allCount(), emptyConvs = DB.conversations.length - convs;
@@ -3842,7 +3858,7 @@ const PEOPLE_SORTS = {
 const PEOPLE_STATE = { q: '', sort: 'total', showEmpty: false };
 
 function viewPeople() {
-  const all = Array.from(DB.people.values()).filter(p => !p.system);
+  const all = realPeople();
   const empty = all.filter(p => !p.total()).length;
   const unknown = all.filter(p => !p.known).length;
   const none = DB.people.get(NO_OWNER);
@@ -4581,14 +4597,17 @@ function prettyMaybeJson(t) {
   return t;
 }
 
+// A claude.ai chat link, with the chat id in group 1.
+const RE_CHAT_URL = new RegExp('claude\\.ai/chat/(' + UUID_PAT + ')');
+
 function chatHref(url) {
-  const m = /claude\.ai\/chat\/([0-9a-f-]{36})/.exec(url || '');
+  const m = RE_CHAT_URL.exec(url || '');
   return m && DB.convById.has(m[1]) ? '#/c/' + m[1] : '';
 }
 
 // Turn claude.ai chat links inside escaped text into local links.
 function linkifyChats(html) {
-  return html.replace(/https:\/\/claude\.ai\/chat\/([0-9a-f-]{36})/g, (all, id) => DB.convById.has(id) ? `<a href="#/c/${id}">${all}</a>` : all);
+  return html.replace(new RegExp('https://' + RE_CHAT_URL.source, 'g'), (all, id) => DB.convById.has(id) ? `<a href="#/c/${id}">${all}</a>` : all);
 }
 
 function artifactLinkHtml(id, title, action) {
@@ -4667,7 +4686,7 @@ const TOOL_CARDS = new Map([
     card: (input, res, tid) => {
       const dc = res && res.display_content;
       const sc = res && res.structured_content;
-      const artId = (dc && dc.published_artifact_id) || (sc && sc.artifact_id) || ((/\/artifact\/([0-9a-f-]{36})/.exec(input.url || '') || [])[1]);
+      const artId = (dc && dc.published_artifact_id) || (sc && sc.artifact_id) || ((new RegExp('/artifact/(' + UUID_PAT + ')').exec(input.url || '') || [])[1]);
       return artId ? `<div id="${esc(tid)}">${artifactLinkHtml(artId, (dc && dc.title) || input.title, input.action || (dc && dc.published_action))}</div>` : '';
     },
   }],
@@ -5553,7 +5572,7 @@ function memoryResult({ item: m, text }, terms) {
 
 function viewAbout() {
   const m = latestManifest();
-  const people = Array.from(DB.people.values()).filter(p => !p.system);
+  const people = realPeople();
   return `<div class="page narrow"><div class="page-head"><div class="grow"><h1>About this export</h1></div></div>
     ${m ? `<div class="card card-pad"><dl class="kv"><dt>Exported</dt><dd>${esc(fmtDateTime(m.createdAt))}</dd><dt>Files in export</dt><dd>${esc(m.totalFiles)} (${m.files.map(f => esc(f.filename)).join(', ')})</dd></dl></div>` : ''}
     <h2 class="section-title">What was loaded</h2>

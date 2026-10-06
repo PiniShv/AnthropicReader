@@ -79,6 +79,17 @@ const DB = Object.assign(emptyDB(), {
   generation: 0,   // goes up on every finalize(), so caches of derived data know to start again
 });
 
+/* A cache of derived data that starts again whenever finalize() runs, because a load can change
+ * records in place. make() gives a new, empty store; the function returned gives the store of
+ * the current generation. */
+function genCache(make) {
+  let store = null, gen = -1;
+  return () => {
+    if (gen !== DB.generation) { store = make(); gen = DB.generation; }
+    return store;
+  };
+}
+
 function personFor(id, hint) {
   id = id ? String(id) : NO_OWNER;   // an id of another type would break the name fallbacks
   let p = DB.people.get(id);
@@ -335,8 +346,14 @@ function isDuplicateThreadComment(a, cm) {
 
 /* ---------- Queries ---------- */
 
+// Everyone in the export, without the "No owner" person (it holds the items nobody owns).
+function realPeople() {
+  return Array.from(DB.people.values()).filter(p => !p.system);
+}
+
+// Most data first, then by name.
 function peopleSorted() {
-  return Array.from(DB.people.values()).sort((a, b) => (b.total() - a.total()) || a.name.localeCompare(b.name));
+  return realPeople().sort((a, b) => (b.total() - a.total()) || a.name.localeCompare(b.name));
 }
 
 // q is lower case and trimmed: part of the name or email, or the start of the id.
@@ -346,7 +363,7 @@ function personMatches(p, q) {
 
 function peopleMatching(q) {
   q = (q || '').toLowerCase().trim();
-  const all = peopleSorted().filter(p => !p.system);
+  const all = peopleSorted();
   if (!q) return all;
   return all.filter(p => personMatches(p, q));
 }

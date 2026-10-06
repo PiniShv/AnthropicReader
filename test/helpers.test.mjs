@@ -279,6 +279,26 @@ test('parseVersionRel reads the three kinds of version path', () => {
   assert.equal(parse('page.md'), null);
 });
 
+test('genCache gives the same store until finalize() runs again', () => {
+  const { api: app } = loadApp();
+  const store = app.genCache(() => new Map());
+  const first = store();
+  first.set('k', 1);
+  assert.equal(store(), first);
+  app.finalize();
+  assert.notEqual(store(), first);
+  assert.equal(store().size, 0);
+});
+
+test('artifact ids in chat JSON and chat links use the shared UUID pattern', () => {
+  const id = '5ec00000-0000-4000-8000-0000000000aa';
+  const text = `see https://claude.ai/artifact/${id} and {\\"artifact_id\\": \\"${id.replace('aa', 'bb')}\\"} and /artifact/not-a-uuid`;
+  api.RE_ART_REF.lastIndex = 0;
+  assert.deepEqual(Array.from(text.matchAll(api.RE_ART_REF), m => m[1]), [id, id.replace('aa', 'bb')]);
+  assert.equal(api.RE_CHAT_URL.exec(`https://claude.ai/chat/${id}`)[1], id);
+  assert.equal(api.RE_CHAT_URL.exec('https://claude.ai/chat/------------------------------------'), null);
+});
+
 /* ---------- Conversation branches ---------- */
 
 // m1 → m2 → m3 → m4 is the first try; m3b is an edit of m3 with its own answer m4b.
