@@ -6,19 +6,10 @@ import { loadApp, quietUi, plain } from './harness.mjs';
 
 const { api } = loadApp();
 
-let files = null;
-let demoError = null;
-try {
-  files = await api.demoExportFiles();
-} catch (e) {
-  demoError = e;
-}
-// While src/demo.js is still the placeholder, skip instead of failing. Any other error fails.
-const skip = demoError && demoError.message === 'demo data not implemented yet' ? 'demo data not implemented' : false;
+const files = await api.demoExportFiles();
 
 let loading = null;
 function loaded() {
-  if (demoError) throw demoError;
   loading ||= api.importExport(files, quietUi).then(() => api.DB);
   return loading;
 }
@@ -26,8 +17,7 @@ function loaded() {
 // Content types the sample must show, one artifact (at least) of each.
 const CONTENT_TYPES = ['HTML', 'HTML + files', 'Slides', 'Design', 'Doc'];
 
-test('demoExportFiles returns the zip parts and the manifest as files', { skip }, async () => {
-  if (demoError) throw demoError;
+test('demoExportFiles returns the zip parts and the manifest as files', async () => {
   assert.ok(files && typeof files.length === 'number' && files.length > 0, 'a non-empty list of files');
   for (const f of files) {
     assert.ok(f instanceof Blob, `${f && f.name} is a File`);
@@ -38,12 +28,12 @@ test('demoExportFiles returns the zip parts and the manifest as files', { skip }
   assert.ok(names.some(n => /^manifest.*\.json$/i.test(n)), 'a manifest');
 });
 
-test('the sample export loads without warnings', { skip }, async () => {
+test('the sample export loads without warnings', async () => {
   const DB = await loaded();
   assert.deepEqual(plain(DB.warnings), []);
 });
 
-test('the sample export has every kind of data', { skip }, async () => {
+test('the sample export has every kind of data', async () => {
   const DB = await loaded();
   const people = Array.from(DB.people.values()).filter(p => !p.system);
   assert.ok(people.filter(p => p.known).length >= 2, 'people from users.json');
@@ -56,7 +46,7 @@ test('the sample export has every kind of data', { skip }, async () => {
   for (const t of CONTENT_TYPES) assert.ok(types.has(t), `an artifact of type "${t}" (found: ${Array.from(types).join(', ')})`);
 });
 
-test('the sample export uses only reserved example domains for email addresses', { skip }, async () => {
+test('the sample export uses only reserved example domains for email addresses', async () => {
   const DB = await loaded();
   // RFC 2606 / 6761 names cannot belong to a real person or company.
   const reserved = /@([\w-]+\.)*(example|test|invalid|localhost|example\.(com|org|net))$/i;

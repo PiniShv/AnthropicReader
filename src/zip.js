@@ -37,11 +37,10 @@ function u64(dv, off) {
 }
 
 class ZipEntry {
-  constructor(zip, name, method, flags, compSize, size, localOffset) {
+  constructor(zip, name, method, compSize, size, localOffset) {
     this.zip = zip;
     this.name = name;
     this.method = method;
-    this.flags = flags;
     this.compSize = compSize;
     this.size = size;
     this.localOffset = localOffset;
@@ -218,7 +217,6 @@ class ZipArchive {
     let p = 0;
     for (let n = 0; n < count && p + 46 <= cd.length; n++) {
       if (dv.getUint32(p, true) !== ZIP_SIG_CEN) throw new Error('Corrupt central directory in ' + this.file.name);
-      const flags = dv.getUint16(p + 8, true);
       const method = dv.getUint16(p + 10, true);
       let compSize = dv.getUint32(p + 20, true);
       let usize = dv.getUint32(p + 24, true);
@@ -248,7 +246,7 @@ class ZipArchive {
       }
 
       if (!name.endsWith('/')) {
-        this.entries.push(new ZipEntry(this, name, method, flags, compSize, usize, localOffset));
+        this.entries.push(new ZipEntry(this, name, method, compSize, usize, localOffset));
       }
       p += 46 + nameLen + extraLen + commentLen;
     }

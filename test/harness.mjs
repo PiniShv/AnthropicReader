@@ -12,18 +12,12 @@ import vm from 'node:vm';
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import * as buildModule from '../scripts/build.mjs';
+import { APP_SCRIPTS } from '../scripts/build.mjs';
 
 export const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 
-// Same order as the built page; build.mjs is the source of truth when it exports it.
-const FALLBACK_ORDER = [
-  'src/zip.js', 'src/load.js', 'src/render.js', 'src/ui.js', 'src/model.js', 'src/ingest.js',
-  'src/conversation.js', 'src/search.js', 'src/export.js', 'src/preview.js',
-  'src/views.js', 'src/views-conv.js', 'src/views-art.js', 'src/views-design.js', 'src/views-misc.js',
-  'src/demo.js', 'src/demo-chats.js', 'src/demo-records.js', 'src/demo-artifacts.js', 'src/app.js',
-];
-export const BUILD_ORDER = Array.isArray(buildModule.APP_SCRIPTS) ? buildModule.APP_SCRIPTS : FALLBACK_ORDER;
+// The scripts in the order of the built page.
+export const BUILD_ORDER = APP_SCRIPTS;
 
 // Everything except the boot script: app.js wires up the page and is rarely needed.
 export const DEFAULT_FILES = BUILD_ORDER.filter(f => f !== 'src/app.js');

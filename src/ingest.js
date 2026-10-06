@@ -96,9 +96,8 @@ function addConversation(c, source, rawText) {
   const prev = DB.convById.get(c.uuid);
   // Same chat in two exports: keep the newer / longer copy. It moves to the end, like a new chat.
   if (prev && (updated < prev.updated || (updated === prev.updated && msgs.length <= prev.msgCount))) return;
-  let human = 0, firstTs = 0, lastTs = 0, contentful = 0, files = 0, outputs = 0, tools = 0, firstHuman = '', firstReply = '';
+  let firstTs = 0, lastTs = 0, contentful = 0, files = 0, outputs = 0, tools = 0, firstHuman = '', firstReply = '';
   for (const m of msgs) {
-    if (m.sender === 'human') human++;
     const t = parseTime(m.created_at);
     if (t && (!firstTs || t < firstTs)) firstTs = t;
     if (t > lastTs) lastTs = t;
@@ -135,7 +134,6 @@ function addConversation(c, source, rawText) {
     updated,
     ownerId: (c.account && c.account.uuid) || null,
     msgCount: msgs.length,
-    humanCount: human,
     lastTs: lastTs || updated,
     empty: contentful === 0,
     fileCount: files,
@@ -206,7 +204,7 @@ function parseFrontmatter(text) {
   return { meta, body, front };
 }
 
-function addMemory(m, source) {
+function addMemory(m) {
   if (!m.account_uuid) return;
   const files = objects(m.memory_files).map(f => {
     const content = String(f.content || ''), path = String(f.path || '');
@@ -222,25 +220,23 @@ function addMemory(m, source) {
   });
   const projectMemories = Object.entries(isObj(m.project_memories) ? m.project_memories : {}).map(([projectId, text]) => ({ projectId, text: String(text || '') }));
   const prev = DB.memoryByPerson.get(m.account_uuid);
-  const mem = prev || { type: 'memory', id: m.account_uuid, ownerId: m.account_uuid, conversationsMemory: '', projectMemories: [], files: [], updated: 0, sources: [], rank: -1 };
+  const mem = prev || { type: 'memory', id: m.account_uuid, ownerId: m.account_uuid, conversationsMemory: '', projectMemories: [], files: [], updated: 0 };
   // Merge across exports. The summaries have no timestamp, so the copy whose memory files
-  // are newest counts as the newer export (old memories.json has no files: rank 0).
-  // Nothing is dropped: older text only fills gaps.
-  const rank = files.reduce((mx, f) => Math.max(mx, f.updated || 0), 0);
-  const newer = rank >= mem.rank;
+  // are newest counts as the newer export: its newest file is at least mem.updated, the
+  // newest file merged so far (old memories.json has no files: 0). Nothing is dropped:
+  // older text only fills gaps.
+  const newer = files.reduce((mx, f) => Math.max(mx, f.updated || 0), 0) >= mem.updated;
   if (m.conversations_memory && (newer || !mem.conversationsMemory)) mem.conversationsMemory = String(m.conversations_memory);
   for (const pm of projectMemories) {
     const i = mem.projectMemories.findIndex(x => x.projectId === pm.projectId);
     if (i < 0) mem.projectMemories.push(pm); else if (newer) mem.projectMemories[i] = pm;
   }
-  mem.rank = Math.max(mem.rank, rank);
   for (const f of files) {
     const i = mem.files.findIndex(x => x.path === f.path);
     if (i < 0) mem.files.push(f); else if (f.updated > mem.files[i].updated) mem.files[i] = f;
     if (f.updated > mem.updated) mem.updated = f.updated;
   }
   mem.files.sort((a, b) => a.path.localeCompare(b.path));
-  mem.sources.push(source);
   if (!prev) DB.memoryByPerson.set(mem.id, mem);
 }
 
@@ -566,7 +562,6 @@ function addManifest(v, source) {
   DB.manifests.push({
     createdAt: parseTime(v.created_at),
     totalFiles: v.total_files,
-    version: v.version,
     files: objects(v.data_files).map(f => ({
       category: f.category, part: f.part, filename: f.filename,
       url: typeof f.export_url === 'string' && /^https:\/\/claude\.ai\/export\//.test(f.export_url) ? f.export_url : '',

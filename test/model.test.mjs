@@ -80,7 +80,6 @@ test('links conversations to people from users.json', async () => {
   const gone = person(api, GONE);
   assert.equal(gone.known, false);
   assert.equal(gone.name, 'Unknown user · c0000000');
-  assert.equal(gone.nameIsFallback, true);
   assert.equal(gone.conversations.length, 1);
   assert.equal(gone.conversations[0].owner, gone);
 
@@ -790,11 +789,9 @@ test('display names: email fallback and duplicate names', async () => {
   ])]);
   const name = id => person(api, id).name;
   assert.equal(name(DANA), 'dana.whitfield');
-  assert.equal(person(api, DANA).nameIsFallback, true);
   assert.equal(name(SAM1), 'Sam Lee · sam.lee');
   assert.equal(name(SAM2), 'sam lee · samuel.lee', 'names are compared without case or outer spaces');
   assert.equal(name(LEE), 'Lee Park');
-  assert.equal(person(api, LEE).nameIsFallback, false);
 });
 
 /* ---------- Encoding and the manifest ---------- */
@@ -856,7 +853,6 @@ test('conversation stats: branch points, tool calls, outputs and links to artifa
   const { api } = await importFiles([file]);
   const got = api.DB.convById.get(conv(1));
   assert.equal(got.msgCount, 5);
-  assert.equal(got.humanCount, 3);
   assert.equal(got.fileCount, 1);
   assert.equal(got.toolCount, 2);
   assert.equal(got.forks, 1, 'k2 has two replies');

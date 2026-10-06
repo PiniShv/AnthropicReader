@@ -278,7 +278,6 @@ function finalize() {
   for (const p of DB.people.values()) {
     if (p.system) { p.name = 'No owner'; continue; }
     p.name = p.fullName || p.hints[0] || p.emailLocal() || ('Unknown user · ' + p.id.slice(0, 8));
-    p.nameIsFallback = !p.fullName;
   }
   // Disambiguate repeated names everywhere by appending the email local part.
   const groups = new Map();
