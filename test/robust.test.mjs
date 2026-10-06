@@ -2,7 +2,7 @@
 // load that fails anyway must leave the export that was open as it was. All data is made up.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { loadApp, importFiles, looseFile, plain, quietUi } from './harness.mjs';
+import { loadApp, importFiles, looseFile, plain, quietUi, BUILD_ORDER } from './harness.mjs';
 
 const U = n => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const PERSON = U(100);
@@ -135,4 +135,12 @@ test('a load that fails leaves the export that was open as it was', async () => 
   assert.equal(after, before);
   assert.ok(DB.generation > generation + 1, 'caches made during the failed load are not used');
   assert.equal(DB.people.get(PERSON).conversations[0], DB.convById.get(U(1)), 'links are drawn again');
+});
+
+test('a second load while one runs is refused, with a message', async () => {
+  const app = loadApp({ files: BUILD_ORDER });
+  app.run(`globalThis.__calls = []; toast = msg => __calls.push('toast: ' + msg); importExport = async () => __calls.push('import');`);
+  app.api.App.loading = true;
+  await app.api.startLoad([looseFile('x/users.json', [])]);
+  assert.deepEqual(plain(app.run('__calls')), ['toast: Still reading the files from before. Try again when that is done.']);
 });

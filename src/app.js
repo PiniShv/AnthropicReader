@@ -56,13 +56,20 @@ function loaderAction(note, label, action) {
   btn.focus();
 }
 
+// One import at a time: a second one would write into the same DB while the first still runs.
+function loadBusy() {
+  if (App.loading) toast('Still reading the files from before. Try again when that is done.');
+  return App.loading;
+}
+
 async function startLoad(files, handles) {
-  if (!files || !files.length) return;
+  if (!files || !files.length || loadBusy()) return;
   $('#landing').hidden = false;
   $('#shell').hidden = true;
   Loader.reset();
   announce('Reading the export…');
   $$('#dropzone button').forEach(b => (b.disabled = true));
+  App.loading = true;
   try {
     const before = DB.warnings.length;
     await importExport(files, Loader);
@@ -87,6 +94,7 @@ async function startLoad(files, handles) {
     // A failed import leaves DB as it was, so an export that was open is still there.
     if (hasRecords()) loaderAction('The export that was open is not changed.', 'Back to the open export', showApp);
   } finally {
+    App.loading = false;
     $$('#dropzone button').forEach(b => (b.disabled = false));
   }
 }
@@ -162,7 +170,7 @@ async function setupLanding() {
     prevent(e);
     dz.classList.remove('over');
     const dt = e.dataTransfer;
-    if (!dt || !dt.files || (!dt.files.length && !(dt.items && dt.items.length))) return;
+    if (!dt || !dt.files || (!dt.files.length && !(dt.items && dt.items.length)) || loadBusy()) return;
     if (!$('#shell').hidden && !confirm('Add the dropped files to the export that is open now?')) return;
     // Grab persistent handles synchronously (Chrome) so "Reopen last export" works later.
     let handlePromises = [];

@@ -91,6 +91,7 @@ A few small pieces carry most of the app. When you add something, reach for thes
 - **Choose files / Choose a folder** use the File System Access API when it exists (`showOpenFilePicker`, `showDirectoryPicker`) and fall back to `<input type="file">`.
 - File handles are stored in IndexedDB (`HandleStore`), so **Reopen last export** can open the same files after a reload. Only handles are stored, never content. The saved folders are listed one level at a time and their files opened, 16 at a time (`filesFromHandles()`), and the files keep folder order, as with a drop.
 - Dropping files on an open export asks first, then adds them to the same model. That is how several exports are merged.
+- Only one import runs at a time (`App.loading`). Files dropped or picked while one runs are refused with a message, because two imports would write into the same model at once.
 
 ### Loading screen
 
