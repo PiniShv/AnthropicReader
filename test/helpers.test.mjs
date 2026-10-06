@@ -299,6 +299,19 @@ test('artifact ids in chat JSON and chat links use the shared UUID pattern', () 
   assert.equal(api.RE_CHAT_URL.exec('https://claude.ai/chat/------------------------------------'), null);
 });
 
+/* ---------- Previews ---------- */
+
+test('a stylesheet gets only its own url() paths inlined, never the same text elsewhere', async () => {
+  const file = text => ({ size: text.length, bytes: async () => new TextEncoder().encode(text) });
+  const css = '.a{background:url(a.png)} .b{background:url("data.png")} .c{content:"a.png"} .d{background:url( \'a.png\' )} .e{background:url(a.png?v=1)}';
+  const files = new Map([['styles/site.css', file(css)], ['styles/a.png', file('PNG-A')], ['styles/data.png', file('PNG-D')]]);
+  const e = await api.encodeCss(files.get('styles/site.css'), 'styles/site.css', files, api.newEncoding());
+  assert.ok(e.url.startsWith('data:text/css;base64,'));
+  const out = Buffer.from(e.url.split(',')[1], 'base64').toString();
+  const png = s => 'data:image/png;base64,' + Buffer.from(s).toString('base64');
+  assert.equal(out, `.a{background:url(${png('PNG-A')})} .b{background:url("${png('PNG-D')}")} .c{content:"a.png"} .d{background:url( '${png('PNG-A')}' )} .e{background:url(a.png?v=1)}`);
+});
+
 /* ---------- Conversation branches ---------- */
 
 // m1 → m2 → m3 → m4 is the first try; m3b is an edit of m3 with its own answer m4b.

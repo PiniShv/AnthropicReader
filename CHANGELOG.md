@@ -29,6 +29,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Fixed
 
+- In the preview of a multi-file artifact, a stylesheet's images and fonts no longer break other paths that contain the same name. Before, inlining `a.png` also changed `data.png` and any other text with `a.png` in it.
 - Downloaded files get names that also work on Windows: no dot or space at the end, and no name that Windows keeps for a device (`CON`, `NUL`, `COM1`, …). In the per-person zip, the paths of artifact files are now cleaned like the other paths.
 - Zip files made on Windows, with backslashes in the file names inside, now load fully. Before, their artifacts and other files in folders were not found.
 - Files dropped while an export is still loading no longer start a second load into the same data, with mixed results and warnings. The page asks you to wait until the first load is done.

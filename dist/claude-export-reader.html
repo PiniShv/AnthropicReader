@@ -3270,18 +3270,23 @@ async function encodeFile(node, name, enc) {
   return e;
 }
 
-// A stylesheet, with the url()s inside it resolved relative to the stylesheet's folder.
+// A url() in CSS whose path (group 2) has no "#…" or "?…": its start, path and end.
+const RE_CSS_URL = /(url\(\s*["']?)([^"')#?]+)(["']?\s*\))/g;
+
+// A stylesheet, with the url()s inside it resolved relative to the stylesheet's folder. Only
+// the path inside url( ) is replaced, so "a.png" never changes "data.png" elsewhere.
 async function encodeCss(node, ref, files, enc) {
   let e = enc.css.get(node);
   if (!e) {
     const dir = ref.includes('/') ? ref.slice(0, ref.lastIndexOf('/') + 1) : '';
-    let css = new TextDecoder().decode(await node.bytes());
-    const urls = new Set();
-    css.replace(/url\(\s*["']?([^"')#?]+)["']?\s*\)/g, (all, u) => { urls.add(u); return all; });
-    for (const u of urls) {
+    const text = new TextDecoder().decode(await node.bytes());
+    const urls = new Map();
+    for (const [, , u] of text.matchAll(RE_CSS_URL)) {
       const full = dir + u.replace(/^\.\//, '');
-      if (files.has(full) && !(isMedia(full) && files.get(full).size > INLINE_MEDIA_CAP)) css = css.split(u).join((await encodeFile(files.get(full), full, enc)).url);
+      if (urls.has(u) || !files.has(full) || (isMedia(full) && files.get(full).size > INLINE_MEDIA_CAP)) continue;
+      urls.set(u, (await encodeFile(files.get(full), full, enc)).url);
     }
+    const css = text.replace(RE_CSS_URL, (all, start, u, end) => (urls.has(u) ? start + urls.get(u) + end : all));
     const bytes = new TextEncoder().encode(css);
     e = { url: dataUrl(ref, bytes), len: bytes.length };
     enc.css.set(node, e);
