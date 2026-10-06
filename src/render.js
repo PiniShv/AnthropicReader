@@ -1,4 +1,5 @@
-/* Rendering helpers: escaping, markdown, formatting, highlighting. */
+/* Rendering helpers: escaping, markdown, formatting, highlighting. Pure formatting and
+ * sanitizing: nothing here keeps state for a drawn page or binds a handler (that is ui.js). */
 'use strict';
 
 const ESC_MAP = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
@@ -114,7 +115,8 @@ function safeUrl(u) {
 }
 
 // Post-process sanitized markdown HTML: links open in new tabs, blocks get dir=auto
-// (Hebrew/Arabic paragraphs render right-to-left), code blocks get a copy button.
+// (Hebrew/Arabic paragraphs render right-to-left), code blocks get a Copy button. The click
+// listener in app.js handles every .copy-code button, so the HTML holds no per-page key.
 function finishMarkdown(html) {
   const tpl = document.createElement('template');
   tpl.innerHTML = html;
@@ -141,7 +143,6 @@ function finishMarkdown(html) {
     const b = document.createElement('button');
     b.className = 'btn small copy-code';
     b.type = 'button';
-    b.dataset.on = viewKey(copyPre);
     b.textContent = 'Copy';
     pre.appendChild(b);
   });
@@ -186,25 +187,7 @@ function plainTextHtml(text) {
   return s.replace(/\bhttps?:\/\/[^\s<>"')\]]+/g, url => `<a href="${url}" target="_blank" rel="noopener noreferrer">${url}</a>`);
 }
 
-/* ---------- Code / JSON display ---------- */
-
-const PRE_LIMIT = 60000;
-
-// <pre> with large content cut to PRE_LIMIT and a "show all" button that expands in place.
-function preHtml(text, opts) {
-  text = String(text == null ? '' : text);
-  const wrap = opts && opts.wrap ? ' wrap' : '';
-  if (text.length <= PRE_LIMIT) return `<pre class="code${wrap}">${esc(text)}</pre>`;
-  // Show all: the full text replaces the cut one in the <pre> right before the button's row.
-  const showAll = el => {
-    const row = el.closest('.row');
-    const pre = row && row.previousElementSibling;
-    if (pre) { pre.textContent = text; row.remove(); }
-  };
-  return `<pre class="code${wrap}">${esc(text.slice(0, PRE_LIMIT))}</pre>
-    <div class="row" style="margin-top:6px"><span class="muted" style="font-size:13px">Showing ${fmtBytes(PRE_LIMIT)} of ${fmtBytes(text.length)}.</span>
-    <button class="btn small" type="button" ${on(showAll)}>Show all</button></div>`;
-}
+/* ---------- JSON display ---------- */
 
 function jsonPretty(v) {
   try { return JSON.stringify(v, null, 2); } catch (e) { return String(v); }

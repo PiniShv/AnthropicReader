@@ -345,6 +345,9 @@ function setupShell() {
 
   // Controls in the view run the function bound in their markup with on() (ui.js).
   document.addEventListener('click', e => {
+    // The Copy button of a code block in Markdown (finishMarkdown in render.js).
+    const copy = e.target.closest('button.copy-code');
+    if (copy) { copyPre(copy); return; }
     const el = e.target.closest('[data-on]');
     if (el) {
       // Action links are buttons in disguise: never also follow their href.

@@ -1,4 +1,5 @@
-/* App state, DOM shortcuts, and the lifetime of one drawn page (a "view"). */
+/* App state, DOM shortcuts, and the lifetime of one drawn page (a "view"), with the view
+ * helpers that bind behaviour: on(), blk(), preHtml(). */
 'use strict';
 
 const App = {
@@ -55,6 +56,25 @@ function blk({ cls = '', id = '', style = '', open = false, summary, body = '' }
   const lazy = render && !open ? ` data-lazy="${viewKey(render)}"` : '';
   return `<details class="blk${cls ? ' ' + cls : ''}"${id ? ` id="${esc(id)}"` : ''}${style ? ` style="${style}"` : ''}${open ? ' open' : ''}${lazy}>` +
     `<summary>${summary}</summary><div class="blk-body">${body}${render && open ? render() : ''}</div></details>`;
+}
+
+const PRE_LIMIT = 60000;
+
+// <pre> with large content cut to PRE_LIMIT and a "Show all" button that expands in place.
+// The button keeps the full text, so it is not put into the page twice.
+function preHtml(text, opts) {
+  text = String(text == null ? '' : text);
+  const wrap = opts && opts.wrap ? ' wrap' : '';
+  if (text.length <= PRE_LIMIT) return `<pre class="code${wrap}">${esc(text)}</pre>`;
+  // Show all: the full text replaces the cut one in the <pre> right before the button's row.
+  const showAll = el => {
+    const row = el.closest('.row');
+    const pre = row && row.previousElementSibling;
+    if (pre) { pre.textContent = text; row.remove(); }
+  };
+  return `<pre class="code${wrap}">${esc(text.slice(0, PRE_LIMIT))}</pre>
+    <div class="row" style="margin-top:6px"><span class="muted" style="font-size:13px">Showing ${fmtBytes(PRE_LIMIT)} of ${fmtBytes(text.length)}.</span>
+    <button class="btn small" type="button" ${on(showAll)}>Show all</button></div>`;
 }
 
 /* The raw text behind a preview or rendered Markdown, folded away below it. opts: label, desc
