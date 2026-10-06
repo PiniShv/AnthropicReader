@@ -142,7 +142,6 @@ let threadSeq = 0;
  *       anchor {id, top} (keep this message at the same screen position after a redraw). */
 function drawThread(conv, opts) {
   const thread = $('#thread');
-  if (!thread) return;
   const tok = ++threadSeq;
   const path = currentPath(conv);
   const terms = opts.q ? searchTerms(opts.q) : [];

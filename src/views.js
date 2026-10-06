@@ -77,6 +77,8 @@ function renderRoute(r) {
     }
   } catch (err) {
     console.error(err);
+    // The page was not drawn, so the hooks it queued have nothing to work on.
+    VIEW.mounts.length = 0;
     return `<div class="page"><div class="notice warn">Something went wrong while drawing this page: ${esc(err.message)}</div></div>`;
   }
 }
@@ -133,7 +135,6 @@ function tableHtml(spec) {
   after(() => {
     // No wrapper element (it would change the page): the toolbar sits right before the rows.
     const wrap = document.getElementById(id);
-    if (!wrap) return;   // the view failed after this table was made
     const bar = wrap.previousElementSibling;
     // Filter text per row, made again on each page draw, so names changed by a later import match.
     mountTable({ spec, st, wrap, bar, chips: chips ? bar.previousElementSibling : null, ft: new WeakMap() });
@@ -249,7 +250,6 @@ function viewHome() {
   const last = DB.conversations.length ? Math.max(...DB.conversations.map(c => c.lastTs || 0)) : 0;
   after(() => {
     const inp = $('#home-person-q');
-    if (!inp) return;
     const draw = () => {
       const list = peopleMatching(inp.value).filter(p => p.total() > 0 || inp.value).slice(0, 12);
       $('#home-people').innerHTML = list.map(personCardHtml).join('') || '<div class="empty">No one matches.</div>';

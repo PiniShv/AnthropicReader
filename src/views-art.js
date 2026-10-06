@@ -106,7 +106,6 @@ function viewArtifact(id, vid) {
 
 async function drawVersion(a, vid, view, pickBoard) {
   const box = $('#art-main');
-  if (!box) return;
   const info = versionInfo(a, vid);
   const board = App.route.query.board || '';
   const tabs = [['preview', 'Preview'], ['source', 'Source'], ['files', 'Files']];
@@ -192,7 +191,6 @@ async function openArtifactFile(path, node) {
 
 async function drawPage(a) {
   const box = $('#art-main');
-  if (!box) return;
   if (!a.pageNode) { box.innerHTML = '<div class="card empty">This doc has no page.md in the loaded files.</div>'; return; }
   const { signal } = VIEW.ac;
   let md;

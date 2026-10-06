@@ -3302,6 +3302,8 @@ function renderRoute(r) {
     }
   } catch (err) {
     console.error(err);
+    // The page was not drawn, so the hooks it queued have nothing to work on.
+    VIEW.mounts.length = 0;
     return `<div class="page"><div class="notice warn">Something went wrong while drawing this page: ${esc(err.message)}</div></div>`;
   }
 }
@@ -3358,7 +3360,6 @@ function tableHtml(spec) {
   after(() => {
     // No wrapper element (it would change the page): the toolbar sits right before the rows.
     const wrap = document.getElementById(id);
-    if (!wrap) return;   // the view failed after this table was made
     const bar = wrap.previousElementSibling;
     // Filter text per row, made again on each page draw, so names changed by a later import match.
     mountTable({ spec, st, wrap, bar, chips: chips ? bar.previousElementSibling : null, ft: new WeakMap() });
@@ -3474,7 +3475,6 @@ function viewHome() {
   const last = DB.conversations.length ? Math.max(...DB.conversations.map(c => c.lastTs || 0)) : 0;
   after(() => {
     const inp = $('#home-person-q');
-    if (!inp) return;
     const draw = () => {
       const list = peopleMatching(inp.value).filter(p => p.total() > 0 || inp.value).slice(0, 12);
       $('#home-people').innerHTML = list.map(personCardHtml).join('') || '<div class="empty">No one matches.</div>';
@@ -3865,7 +3865,6 @@ let threadSeq = 0;
  *       anchor {id, top} (keep this message at the same screen position after a redraw). */
 function drawThread(conv, opts) {
   const thread = $('#thread');
-  if (!thread) return;
   const tok = ++threadSeq;
   const path = currentPath(conv);
   const terms = opts.q ? searchTerms(opts.q) : [];
@@ -4513,7 +4512,6 @@ function viewArtifact(id, vid) {
 
 async function drawVersion(a, vid, view, pickBoard) {
   const box = $('#art-main');
-  if (!box) return;
   const info = versionInfo(a, vid);
   const board = App.route.query.board || '';
   const tabs = [['preview', 'Preview'], ['source', 'Source'], ['files', 'Files']];
@@ -4599,7 +4597,6 @@ async function openArtifactFile(path, node) {
 
 async function drawPage(a) {
   const box = $('#art-main');
-  if (!box) return;
   if (!a.pageNode) { box.innerHTML = '<div class="card empty">This doc has no page.md in the loaded files.</div>'; return; }
   const { signal } = VIEW.ac;
   let md;
@@ -5093,7 +5090,6 @@ function viewSearch(q, t) {
   const s = focusScope();
   after(async () => {
     const box = $('#search-results');
-    if (!box) return;
     if (!q.trim()) { box.innerHTML = '<div class="empty">Type in the search box above. Use quotes for exact phrases, e.g. <code>"design system"</code>.</div>'; return; }
     box.innerHTML = '<div class="empty" id="search-progress">Searching…</div>';
     const onProgress = msg => { const p = $('#search-progress'); if (p) p.textContent = msg; };
@@ -7435,7 +7431,9 @@ function showManifestOnly() {
 function showApp() {
   $('#landing').hidden = true;
   $('#shell').hidden = false;
-  if (App.focus && !DB.people.has(App.focus)) App.focus = null;
+  // Keep the focus if that person is still loaded. After a reload the tab starts with none,
+  // so take the one saved for this tab.
+  writeFocus(App.focus || savedFocus());
   updateFocusButton();
   renderSidebar();
   if (!location.hash || location.hash === '#' || location.hash === '#/') navigate('#/', true);
@@ -7571,10 +7569,20 @@ window.addEventListener('hashchange', onNav);
 
 /* ---------- Focus (person scope) ---------- */
 
-// The one place that changes the focus. Then it opens `go`, or draws the current page again.
-function setFocus(id, go) {
+// The one writer of App.focus: a person of the loaded export, or null. The copy saved for this
+// tab (sessionStorage) always matches it.
+function writeFocus(id) {
   App.focus = id && DB.people.has(id) ? id : null;
   try { sessionStorage.setItem('cer-focus', App.focus || ''); } catch (e) { /* ignore */ }
+}
+
+function savedFocus() {
+  try { return sessionStorage.getItem('cer-focus') || null; } catch (e) { return null; }
+}
+
+// Changes the focus, then opens `go`, or draws the current page again.
+function setFocus(id, go) {
+  writeFocus(id);
   updateFocusButton();
   if (go) navigate(go); else onRoute();
 }
@@ -7716,7 +7724,6 @@ function setupShell() {
 document.addEventListener('DOMContentLoaded', () => {
   setupLanding();
   setupShell();
-  try { App.focus = sessionStorage.getItem('cer-focus') || null; } catch (e) { App.focus = null; }
   // Exposed for scripted use / testing: ExportReader.load([File, ...])
   window.ExportReader = { load: files => startLoad(files), DB: () => DB };
   // "?demo" opens the made-up sample export right away (shareable demo links, screenshots).

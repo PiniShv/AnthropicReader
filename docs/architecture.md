@@ -139,7 +139,7 @@ Progress is reported in bytes, so the loading bar moves smoothly.
 
 ## Rendering and sanitizing
 
-Views are plain functions that return HTML strings built with template literals. The router puts the string into `#main`. Behaviour is bound where the markup is made: `<button ${on(() => copyText(p.id))}>` keeps the function for the current view and writes only a short key (`data-on`) into the markup. One delegated `click` listener and one `change` listener on `document` call it. Parts that need wiring after insertion (tables, filters, the conversation thread) use `after(fn)` hooks.
+Views are plain functions that return HTML strings built with template literals. The router puts the string into `#main`. Behaviour is bound where the markup is made: `<button ${on(() => copyText(p.id))}>` keeps the function for the current view and writes only a short key (`data-on`) into the markup. One delegated `click` listener and one `change` listener on `document` call it. Parts that need wiring after insertion (tables, filters, the conversation thread) use `after(fn)` hooks. If drawing a page fails, `renderRoute()` drops the hooks it queued, so a hook can count on its markup being in the page.
 
 Everything that belongs to one drawn page lives in `VIEW` (`src/ui.js`): its `after()` hooks, the functions behind its `on()` keys and lazy blocks (`viewKey()`), and an `AbortController`. Keys come from one counter for the whole session, so an element left over from an old page can never call a function of the new one. A part that is drawn again in place (the conversation thread, after a branch switch or an option change) first drops the keys of its old content with `dropKeys()`, and a lazy block's key is dropped once its body is drawn. When the route changes, `onRoute()` aborts the old view and starts a new one. Listeners added with the view's `signal` are removed, and async drawers (artifact versions, docs, search) check `signal.aborted` after each `await`, so a slow draw never writes into a newer page.
 
@@ -212,7 +212,7 @@ The app uses hash routes, so it works from `file://` and a reload keeps your pla
 
 `navigate()` uses `history.pushState` / `replaceState` and draws the page. `onRoute()` ends the old view, draws the new one, runs its `after()` hooks and redraws the sidebar. Because a link click fires both `popstate` and `hashchange`, the app draws only when the hash really changed.
 
-**Focus mode** keeps the focused person's id in `App.focus` (and in `sessionStorage` for this tab). Only `setFocus()` changes it. Lists, sidebar counts and search read `focusScope()`: the focused person's records, which `finalize()` linked to them, or everyone's (`scopeOf()`).
+**Focus mode** keeps the focused person's id in `App.focus` (and in `sessionStorage` for this tab). Only `writeFocus()` changes it, and it keeps both copies the same: `setFocus()` uses it when you pick a person, and `showApp()` after each load (which keeps the focus if that person is still loaded, or, after a reload, takes the one saved for this tab). Lists, sidebar counts and search read `focusScope()`: the focused person's records, which `finalize()` linked to them, or everyone's (`scopeOf()`).
 
 ## Search
 

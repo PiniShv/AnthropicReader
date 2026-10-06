@@ -89,7 +89,9 @@ function showManifestOnly() {
 function showApp() {
   $('#landing').hidden = true;
   $('#shell').hidden = false;
-  if (App.focus && !DB.people.has(App.focus)) App.focus = null;
+  // Keep the focus if that person is still loaded. After a reload the tab starts with none,
+  // so take the one saved for this tab.
+  writeFocus(App.focus || savedFocus());
   updateFocusButton();
   renderSidebar();
   if (!location.hash || location.hash === '#' || location.hash === '#/') navigate('#/', true);
@@ -225,10 +227,20 @@ window.addEventListener('hashchange', onNav);
 
 /* ---------- Focus (person scope) ---------- */
 
-// The one place that changes the focus. Then it opens `go`, or draws the current page again.
-function setFocus(id, go) {
+// The one writer of App.focus: a person of the loaded export, or null. The copy saved for this
+// tab (sessionStorage) always matches it.
+function writeFocus(id) {
   App.focus = id && DB.people.has(id) ? id : null;
   try { sessionStorage.setItem('cer-focus', App.focus || ''); } catch (e) { /* ignore */ }
+}
+
+function savedFocus() {
+  try { return sessionStorage.getItem('cer-focus') || null; } catch (e) { return null; }
+}
+
+// Changes the focus, then opens `go`, or draws the current page again.
+function setFocus(id, go) {
+  writeFocus(id);
   updateFocusButton();
   if (go) navigate(go); else onRoute();
 }
@@ -370,7 +382,6 @@ function setupShell() {
 document.addEventListener('DOMContentLoaded', () => {
   setupLanding();
   setupShell();
-  try { App.focus = sessionStorage.getItem('cer-focus') || null; } catch (e) { App.focus = null; }
   // Exposed for scripted use / testing: ExportReader.load([File, ...])
   window.ExportReader = { load: files => startLoad(files), DB: () => DB };
   // "?demo" opens the made-up sample export right away (shareable demo links, screenshots).

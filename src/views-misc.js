@@ -193,7 +193,6 @@ function viewSearch(q, t) {
   const s = focusScope();
   after(async () => {
     const box = $('#search-results');
-    if (!box) return;
     if (!q.trim()) { box.innerHTML = '<div class="empty">Type in the search box above. Use quotes for exact phrases, e.g. <code>"design system"</code>.</div>'; return; }
     box.innerHTML = '<div class="empty" id="search-progress">Searching…</div>';
     const onProgress = msg => { const p = $('#search-progress'); if (p) p.textContent = msg; };
