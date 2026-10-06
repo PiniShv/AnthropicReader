@@ -36,6 +36,7 @@ cd AnthropicReader
 | `npm run build` | Builds `dist/claude-export-reader.html` from `src/` and `vendor/`. |
 | `npm run build:check` | Fails if `dist/claude-export-reader.html` does not match the sources. CI runs this. |
 | `npm test` | Runs the tests in `test/` with Node's built-in test runner. |
+| `node scripts/check-vendor.mjs` | Checks that the files in `vendor/` are the official npm builds named in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md), and lists known security advisories and newer releases. Needs the network, so CI does not run it. |
 | `npm run demo` | Writes the made-up sample export (six zip parts and a manifest) to `demo/`, for trying the reader on real files. `npm run demo -- <folder>` writes them somewhere else. |
 | `npm run snapshot -- --out <folder>` | Saves the HTML of every page of the sample data, with every block opened, using headless Chrome (Node 22+; set `CHROME=<path>` if Chrome is not found). Run it before a refactor. After it, `npm run snapshot -- --compare <folder>` fails if any page changed. |
 
@@ -47,7 +48,7 @@ Read [docs/architecture.md](docs/architecture.md) for the full picture. In short
 
 - `src/*.js` are **classic browser scripts, not modules**. The build puts them into one page in a fixed order (see `APP_SCRIPTS` in `scripts/build.mjs`). They share one global scope, so a file can use functions from the files before it.
 - `src/model.js` reads the export into memory. The `views*.js` files draw pages from that model.
-- `vendor/` holds marked and DOMPurify, unchanged. Do not edit these files.
+- `vendor/` holds marked and DOMPurify, unchanged. Do not edit these files; to update one, see [Updating a vendored library](#updating-a-vendored-library).
 - `dist/` holds the built file. It is committed, so people can download it straight from GitHub.
 
 ## Coding style
@@ -79,6 +80,52 @@ Claude exports change over time. When you find a field the reader does not show 
 8. **Document it** in [docs/export-format.md](docs/export-format.md), again with invented examples only.
 
 Be defensive: export fields are often missing, `null`, empty, or of a different type than usual. Older exports must keep working.
+
+## Updating a vendored library
+
+`vendor/` holds marked and DOMPurify as their **official minified builds from npm, unchanged**. [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) lists, for each file, its version, the npm file it comes from and its SHA-256 checksum. `npm test` fails if a file, its checksum and its version do not agree, so every update follows these steps.
+
+Update a library when it has a security fix, and keep DOMPurify current: it is the sanitizer. Stay on the same major version unless you have a reason, because a new major version can change the output.
+
+1. **Look for advisories and new releases** (needs the network):
+
+   ```bash
+   node scripts/check-vendor.mjs
+   ```
+
+2. **Save a snapshot of the pages before the change** (Node 22+ and Chrome):
+
+   ```bash
+   npm run build && npm run snapshot -- --out ../snapshot-before
+   ```
+
+3. **Download the official file** of the new version. jsDelivr serves the files of the npm package, so the URL is `https://cdn.jsdelivr.net/npm/<package>@<version>/<path>`, with the path from the table in the notices. For example:
+
+   ```bash
+   curl -fsSL -o vendor/purify.min.js https://cdn.jsdelivr.net/npm/dompurify@3.4.16/dist/purify.min.js
+   ```
+
+   Never edit, re-minify or reformat the file.
+
+4. **Update THIRD_PARTY_NOTICES.md:** the Version column, the npm file (for example `dompurify@3.4.16/dist/purify.min.js`), the line in the **Checksums** block, and the library's section (heading, source and license links, and the license text if it changed). Get the new checksum with `shasum -a 256 vendor/<file>` (or `sha256sum` on Linux).
+
+5. **Check that it is the official file.** Run `node scripts/check-vendor.mjs` again. It downloads the package from the npm registry, checks it against the registry's `integrity` value, and compares it byte for byte with your file and with the checksum in the notices. No line may say `FAIL`.
+
+6. **Find other mentions of the old version** and update them (older CHANGELOG entries stay as they are):
+
+   ```bash
+   git grep -nF "<old version>" -- . ":!vendor" ":!dist"
+   ```
+
+7. **Build, test and compare the pages:**
+
+   ```bash
+   npm run build && npm test && npm run snapshot -- --compare ../snapshot-before
+   ```
+
+   The sample data does not try to break the sanitizer. So also open the old and the new build in a browser and, in the console, compare what `mdToHtml()` returns for some hostile input (event handlers, `javascript:` links, remote images, `<iframe>`, `<svg>`). In the pull request, explain every page and every output that changed. A sanitizer update must never let more through without a reason.
+
+8. **Write it down.** Add a line under **Unreleased** in [CHANGELOG.md](CHANGELOG.md) (under **Security** for a security fix). Commit `vendor/`, `dist/`, THIRD_PARTY_NOTICES.md and CHANGELOG.md together.
 
 ## Pull requests
 
