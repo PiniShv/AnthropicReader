@@ -1273,11 +1273,12 @@ function splitFrontmatter(text) {
  * out because their attributes load files (mask="url(…)", fill, filter, marker-end), and CSS
  * escapes and image-set() get past any check of the value. On top of that, everything that
  * loads, runs or posts on its own is forbidden. id and name could take over the reader's own
- * element ids. <img> keeps its src for one step: finishMarkdown() turns a remote one into a link. */
+ * element ids, and tabindex its Tab order. <img> keeps its src for one step: finishMarkdown()
+ * turns a remote one into a link. */
 const PURIFY_CONFIG = {
   USE_PROFILES: { html: true },
-  FORBID_TAGS: ['style', 'form', 'input', 'button', 'textarea', 'select', 'video', 'audio', 'source', 'track', 'picture', 'image', 'object', 'embed', 'iframe', 'link', 'meta'],
-  FORBID_ATTR: ['style', 'srcset', 'ping', 'background', 'id', 'name'],
+  FORBID_TAGS: ['style', 'form', 'input', 'button', 'textarea', 'select', 'video', 'audio', 'source', 'track', 'picture', 'image', 'object', 'embed', 'iframe', 'link', 'meta', 'template'],
+  FORBID_ATTR: ['style', 'srcset', 'ping', 'background', 'id', 'name', 'tabindex'],
   ALLOW_DATA_ATTR: false,
 };
 
@@ -1316,22 +1317,24 @@ function finishMarkdown(html) {
   const tpl = document.createElement('template');
   tpl.innerHTML = html;
   const root = tpl.content;
-  root.querySelectorAll('a[href]').forEach(a => {
-    // In-app links (#/…) stay in this tab; everything else opens a new one.
-    if ((a.getAttribute('href') || '').startsWith('#')) { a.removeAttribute('target'); return; }
-    a.setAttribute('target', '_blank');
-    a.setAttribute('rel', 'noopener noreferrer');
-  });
   // The reader works offline and must not call home: remote images become plain links.
   root.querySelectorAll('img').forEach(img => {
     const src = img.getAttribute('src') || '';
     if (/^(data:|blob:)/i.test(src)) return;
     const a = document.createElement('a');
-    a.href = safeUrl(src);
-    a.target = '_blank';
-    a.rel = 'noopener noreferrer';
+    a.setAttribute('href', src);
     a.textContent = '🖼 ' + (img.getAttribute('alt') || 'image') + ' (online image, not loaded)';
     img.replaceWith(a);
+  });
+  // In-app links (#/…) stay in this tab, and web and mail links open a new one. Any other link
+  // (relative, "//host", tel:) is not clickable: from a file:// page it opens a path on the
+  // computer, or on Windows a network share.
+  root.querySelectorAll('a[href]').forEach(a => {
+    const href = a.getAttribute('href');
+    if (href.trim().startsWith('#')) { a.removeAttribute('target'); return; }
+    if (safeUrl(href) === '#') { a.removeAttribute('href'); a.removeAttribute('target'); return; }
+    a.setAttribute('target', '_blank');
+    a.setAttribute('rel', 'noopener noreferrer');
   });
   root.querySelectorAll('p,li,h1,h2,h3,h4,h5,h6,blockquote,td,th').forEach(el => el.setAttribute('dir', 'auto'));
   root.querySelectorAll('pre').forEach(pre => {

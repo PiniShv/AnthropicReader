@@ -41,6 +41,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 - Markdown from the export could make the reader load files from the internet, which would tell a server when the export was opened. SVG attributes such as `mask`, `fill`, `filter`, `clip-path` and `marker-end` with a `url(…)` got through the sanitizer. It now keeps only an allow-list of HTML tags and attributes: SVG and MathML in Markdown show as their plain text, and `id`, `name` and `background` attributes are removed.
 - In a browser where the sanitizer cannot run, Markdown from the export is now shown as plain text. Before, it was shown as HTML without cleaning.
+- Links in Markdown from the export are clickable only for web and mail addresses. A relative or `//host` link opened a path on your computer, or on Windows a network share. Export text can also no longer change the Tab order of the page (`tabindex`).
 - DOMPurify, the library that cleans HTML from the export before it is shown, is updated from 3.2.6 to 3.4.16. This brings the fixes for the 20 security advisories published against 3.2.6. Most of them need options or modes the reader does not use, but the sanitizer should never lag behind.
 - The GitHub workflows pin every action to a full commit SHA instead of a version tag, because a tag can be moved to other code. Dependabot keeps the pins current.
 
